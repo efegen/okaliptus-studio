@@ -2579,6 +2579,11 @@ export function HomePage({ layout, onNavigate }) {
   const debtorStudentCount = parseNumericValue(weeklyKpiData?.debtorStudentCount, null);
   const collectionRateValue = revenueTotal > 0 ? Math.round((cashInflowTotal / revenueTotal) * 100) : 0;
   const collectionRateBarWidth = clampBarWidth(collectionRateValue);
+  const monthlyCashInflowTotal = parseNumericValue(weeklyKpiData?.monthlyCashInflow?.total, 0);
+  const monthlyRevenueTotal = parseNumericValue(weeklyKpiData?.monthlyRevenue?.total, 0);
+  const monthlyCollectionRateValue = monthlyRevenueTotal > 0 ? Math.round((monthlyCashInflowTotal / monthlyRevenueTotal) * 100) : 0;
+  const monthlyCollectionRateBarWidth = clampBarWidth(monthlyCollectionRateValue);
+  const currentMonthLabel = getIstanbulToday().toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' }).toLocaleUpperCase('tr-TR');
   const weeklyCapacity = studioSettings?.weeklyCapacity ?? null;
   const occupancyPercent = occupancyRatio !== null ? Math.round(occupancyRatio * 100) : (weeklyCapacity ? Math.round(lessonsPlanned / weeklyCapacity * 100) : 0);
   const occupancyBarWidth = clampBarWidth(occupancyPercent);
@@ -2605,7 +2610,6 @@ export function HomePage({ layout, onNavigate }) {
         <div className="page-head">
           <div>
             <div className="eyebrow">{formatWeekHeader(weekStart)}</div>
-            <h1 className="page-title">Bu hafta</h1>
           </div>
           <div className="head-actions">
             <div className="head-stats" style={{display:"flex",gap:32}}>
@@ -2682,13 +2686,13 @@ export function HomePage({ layout, onNavigate }) {
 
           <div className="card">
             <div className="card-head">
-              <h3 className="card-title">Bu hafta gelir</h3>
-              <span className="card-sub">%{collectionRateValue} · hedef</span>
+              <h3 className="card-title">Tahsilat <span style={{opacity:0.55, fontWeight:500, fontSize:"0.85em"}}>· {currentMonthLabel}</span></h3>
+              <span className="card-sub">%{monthlyCollectionRateValue} · hedef</span>
             </div>
             <div className="income-row">
-              <div className="income-main">{fmtTL(cashInflowTotal)}</div>
+              <div className="income-main">{fmtTL(monthlyCashInflowTotal)}</div>
             </div>
-            <div className="progress"><div className="progress-bar" style={{ width: collectionRateBarWidth + "%" }}></div></div>
+            <div className="progress"><div className="progress-bar" style={{ width: monthlyCollectionRateBarWidth + "%" }}></div></div>
             <IncomeSparkline />
             <div className="sparkline-labels"><span>8 hafta önce</span><span>bu hafta</span></div>
           </div>
@@ -2715,23 +2719,22 @@ export function HomePage({ layout, onNavigate }) {
       <div className="page-head page-head-solo">
         <div>
           <div className="eyebrow">{formatWeekHeader(weekStart)}</div>
-          <h1 className="page-title page-title-serif">Bu hafta</h1>
         </div>
       </div>
 
       <div className="kpi-row">
         <div className="kpi-card">
-          <div className="kpi-card-label">Tahsilat / Ciro</div>
+          <div className="kpi-card-label">Tahsilat / Ciro <span style={{opacity:0.55, fontWeight:500}}>· {currentMonthLabel}</span></div>
           <div className="kpi-card-main">
-            <span className="kpi-card-val">{fmtTL(cashInflowTotal)}</span>
+            <span className="kpi-card-val">{fmtTL(monthlyCashInflowTotal)}</span>
             <span className="kpi-card-sep">/</span>
-            <span className="kpi-card-val2">{fmtTL(revenueTotal)}</span>
+            <span className="kpi-card-val2">{fmtTL(monthlyRevenueTotal)}</span>
           </div>
           <div className="kpi-card-bar">
-            <div className="kpi-card-bar-fill" style={{width: `${collectionRateBarWidth}%`}} />
+            <div className="kpi-card-bar-fill" style={{width: `${monthlyCollectionRateBarWidth}%`}} />
           </div>
           <div className="kpi-card-sub">
-            Tahsilat oranı <strong>%{collectionRateValue}</strong>
+            Tahsilat oranı <strong>%{monthlyCollectionRateValue}</strong>
           </div>
         </div>
 

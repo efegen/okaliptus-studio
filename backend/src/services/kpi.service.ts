@@ -22,6 +22,13 @@ type WeeklyKpiResult = {
   receivable: string;
   activeCreditValue: string;
   debtorStudentCount: string;
+  monthStart: string;
+  monthlyCashInflow: {
+    total: string;
+  };
+  monthlyRevenue: {
+    total: string;
+  };
 };
 
 export async function getWeeklyKpi(): Promise<WeeklyKpiResult> {
@@ -34,6 +41,15 @@ export async function getWeeklyKpi(): Promise<WeeklyKpiResult> {
             AT TIME ZONE 'Europe/Istanbul') AS week_start,
           (date_trunc('week', now() AT TIME ZONE 'Europe/Istanbul')
             AT TIME ZONE 'Europe/Istanbul' + INTERVAL '7 days') AS week_end
+      ),
+
+      -- Ay penceresi: cari ay başı ve sonu
+      month_window AS (
+        SELECT
+          (date_trunc('month', now() AT TIME ZONE 'Europe/Istanbul')
+            AT TIME ZONE 'Europe/Istanbul') AS month_start,
+          (date_trunc('month', now() AT TIME ZONE 'Europe/Istanbul')
+            AT TIME ZONE 'Europe/Istanbul' + INTERVAL '1 month') AS month_end
       ),
 
       -- §4.1 Tahsilat (cash + iban payments in the week)
@@ -103,6 +119,34 @@ export async function getWeeklyKpi(): Promise<WeeklyKpiResult> {
         SELECT COUNT(*) AS debtor_student_count
         FROM v_student_summary
         WHERE (lesson_debt + product_debt) > 0.01
+      ),
+
+      -- Aylık tahsilat (cash + iban)
+      monthly_inflow AS (
+        SELECT COALESCE(SUM(amount), 0) AS total
+        FROM payments, month_window
+        WHERE paid_at >= month_window.month_start
+          AND paid_at <  month_window.month_end
+          AND source IN ('cash', 'iban')
+          AND deleted_at IS NULL
+      ),
+
+      -- Aylık ciro (tamamlanmış dersler + ürün satışları)
+      monthly_lesson_rev AS (
+        SELECT COALESCE(SUM(l.price_snapshot - l.discount_amount), 0) AS lesson_revenue
+        FROM lessons l, month_window
+        WHERE l.status = 'completed'
+          AND l.starts_at >= month_window.month_start
+          AND l.starts_at <  month_window.month_end
+          AND l.deleted_at IS NULL
+      ),
+
+      monthly_product_rev AS (
+        SELECT COALESCE(SUM(ps.total_amount), 0) AS product_revenue
+        FROM product_sales ps, month_window
+        WHERE ps.sold_at >= month_window.month_start
+          AND ps.sold_at <  month_window.month_end
+          AND ps.deleted_at IS NULL
       )
 
     SELECT
@@ -138,9 +182,15 @@ export async function getWeeklyKpi(): Promise<WeeklyKpiResult> {
       -- financial health
       receivable.total_receivable::text               AS receivable,
       deferred.active_credit_value::text              AS active_credit_value,
-      debtor_students.debtor_student_count::text      AS debtor_student_count
+      debtor_students.debtor_student_count::text      AS debtor_student_count,
 
-    FROM date_window, inflow, lesson_rev, product_rev, lesson_counts, receivable, deferred, debtor_students
+      -- aylık finansal
+      month_window.month_start::text                                                              AS month_start,
+      monthly_inflow.total::text                                                                  AS monthly_cash_inflow_total,
+      (monthly_lesson_rev.lesson_revenue + monthly_product_rev.product_revenue)::text             AS monthly_revenue_total
+
+    FROM date_window, month_window, inflow, lesson_rev, product_rev, lesson_counts, receivable, deferred, debtor_students,
+         monthly_inflow, monthly_lesson_rev, monthly_product_rev
   `);
 
   const row = result.rows[0];
@@ -171,5 +221,12 @@ export async function getWeeklyKpi(): Promise<WeeklyKpiResult> {
     receivable: r["receivable"] as string,
     activeCreditValue: r["active_credit_value"] as string,
     debtorStudentCount: r["debtor_student_count"] as string,
+    monthStart: r["month_start"] as string,
+    monthlyCashInflow: {
+      total: r["monthly_cash_inflow_total"] as string,
+    },
+    monthlyRevenue: {
+      total: r["monthly_revenue_total"] as string,
+    },
   };
 }
