@@ -22,7 +22,7 @@ const LESSON_STATUS_TR = {
   no_show:   'Gelmedi',
 };
 
-const LESSON_MODE_TR = { online: 'Online', onsite: 'Stüdyo' };
+const LESSON_MODE_TR = { online: 'Online', onsite: 'Yüzyüze' };
 
 const ModeIcon = {
   Onsite: (p) => (
@@ -53,6 +53,83 @@ function fmtDateTime(iso) {
   const date = d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' });
   const time = d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
   return `${date} · ${time}`;
+}
+
+// Tek satır tarih formatı — smart year (cari yıl gizlenir).
+function fmtRowDate(iso, { withTime = false } = {}) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  const now = new Date();
+  const sameYear = d.getFullYear() === now.getFullYear();
+  const date = d.toLocaleDateString('tr-TR', {
+    day: 'numeric', month: 'short', ...(sameYear ? {} : { year: 'numeric' }),
+  });
+  if (!withTime) return date;
+  const time = d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+  return `${date} · ${time}`;
+}
+
+// Tarih grup etiketi: "Bugün" / "Dün" / "Bu hafta" / "Geçen hafta" / "Nisan 2026".
+function dateBucket(iso) {
+  if (!iso) return { key: '0-unknown', label: '—' };
+  const d = new Date(iso);
+  const now = new Date();
+  const startOfDay = (x) => { const c = new Date(x); c.setHours(0,0,0,0); return c; };
+  const today = startOfDay(now);
+  const target = startOfDay(d);
+  const diffDays = Math.round((today.getTime() - target.getTime()) / 86_400_000);
+
+  // Pazartesi başlangıçlı haftalık pencere
+  const dow = (today.getDay() + 6) % 7; // 0 = Pzt
+  const startOfWeek = new Date(today); startOfWeek.setDate(today.getDate() - dow);
+  const startOfPrevWeek = new Date(startOfWeek); startOfPrevWeek.setDate(startOfWeek.getDate() - 7);
+
+  if (diffDays === 0) return { key: '1-today',     label: 'Bugün' };
+  if (diffDays === -1) return { key: '0-tomorrow', label: 'Yarın' };
+  if (diffDays < -1) {
+    // Gelecek tarih — "Önümüzdeki günler" başlığı altında topla
+    return { key: '-1-future', label: 'Yaklaşan' };
+  }
+  if (diffDays === 1) return { key: '2-yesterday', label: 'Dün' };
+  if (target >= startOfWeek)     return { key: '3-this-week', label: 'Bu hafta' };
+  if (target >= startOfPrevWeek) return { key: '4-prev-week', label: 'Geçen hafta' };
+
+  // Aylık bucket — en yeni ay 5'ten başlayarak küçülür
+  const monthsBehind = (today.getFullYear() - target.getFullYear()) * 12 + (today.getMonth() - target.getMonth());
+  const monthLabel = d.toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' });
+  return { key: `5-${String(1000 - monthsBehind).padStart(4,'0')}-${target.getFullYear()}-${target.getMonth()}`, label: monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1) };
+}
+
+function bucketByDate(items, { dateKey = 'date' } = {}) {
+  const groups = new Map();
+  for (const it of items) {
+    const b = dateBucket(it[dateKey]);
+    if (!groups.has(b.key)) groups.set(b.key, { key: b.key, label: b.label, items: [] });
+    groups.get(b.key).items.push(it);
+  }
+  return Array.from(groups.values()).sort((a, b) => a.key.localeCompare(b.key));
+}
+
+// Tek birleşik durum etiketi — ders status + ödeme durumu
+function lessonStatusLabel(l) {
+  if (l.status === 'scheduled') return { label: 'Planlı',  tone: 'scheduled' };
+  if (l.status === 'cancelled') return { label: 'İptal',   tone: 'neutral' };
+  if (l.status === 'no_show')   return { label: 'Gelmedi', tone: 'warn' };
+  // completed
+  if (l.prepaid_package_id)     return { label: 'Tamamlandı · Krediden', tone: 'credit' };
+  const remaining = money(l.remaining_receivable);
+  const paid = money(l.paid_amount);
+  if (remaining < 0.01 && paid > 0.01) return { label: 'Tamamlandı · Ödendi',    tone: 'paid' };
+  if (paid > 0.01 && remaining > 0.01) return { label: 'Tamamlandı · Kısmi',     tone: 'partial' };
+  return                                    { label: 'Tamamlandı · Borçlu',    tone: 'open' };
+}
+
+function saleStatusLabel(s) {
+  const remaining = money(s.remaining_receivable);
+  const paid = money(s.paid_amount);
+  if (remaining < 0.01) return { label: 'Ödendi', tone: 'paid' };
+  if (paid > 0.01)      return { label: 'Kısmi',  tone: 'partial' };
+  return                       { label: 'Açık',   tone: 'open' };
 }
 
 function toDateTimeLocalValue(value = new Date()) {
@@ -115,27 +192,23 @@ function buildActivity({ lessons, packages, productSales }) {
 
   for (const l of lessons ?? []) {
     if (l.deleted_at) continue;
-    const pay = lessonPaymentState(l);
     const remaining = money(l.remaining_receivable);
     const paid = money(l.paid_amount);
     const gross = money(l.price_snapshot);
     const discount = money(l.discount_amount);
-    // Karar 7: etkin ders tutarı = price_snapshot - discount_amount.
     const net = money(l.net_amount ?? (gross - discount));
+    const status = lessonStatusLabel(l);
     items.push({
-      key:          `lesson-${l.id}`,
-      date:         l.starts_at,
-      dateFmt:      'datetime',
-      kind:         'lesson',
-      lessonStatus: l.status,
-      typeLabel:    'Ders',
-      title:        LESSON_MODE_TR[l.mode] || l.mode,
-      sub:          l.note?.trim() || null,
-      badges: [
-        { cls: 'sp-badge-' + l.status,            label: LESSON_STATUS_TR[l.status] || l.status },
-        ...(pay ? [{ cls: 'sp-badge-pay-' + pay.tone, label: pay.label }] : []),
-        ...(discount > 0.01 ? [{ cls: 'sp-badge-discount', label: `İndirim -${fmtTL(discount)}` }] : []),
-      ],
+      key:           `lesson-${l.id}`,
+      date:          l.starts_at,
+      withTime:      true,
+      kind:          'lesson',
+      lessonStatus:  l.status,
+      paymentTone:   status.tone,
+      title:         LESSON_MODE_TR[l.mode] || l.mode,
+      sub:           l.note?.trim() || null,
+      status,
+      discount,
       amount:     l.prepaid_package_id ? null
                 : l.status !== 'completed' ? net
                 : remaining > 0.01 ? remaining
@@ -147,6 +220,12 @@ function buildActivity({ lessons, packages, productSales }) {
                 : l.status !== 'completed' ? 'quiet'
                 : remaining > 0.01 ? 'warn'
                 : 'quiet',
+      _search: [
+        LESSON_STATUS_TR[l.status],
+        LESSON_MODE_TR[l.mode],
+        l.note,
+        status.label,
+      ].filter(Boolean).join(' ').toLowerCase(),
     });
   }
 
@@ -157,37 +236,35 @@ function buildActivity({ lessons, packages, productSales }) {
     items.push({
       key:        `pkg-${p.package_id}`,
       date:       p.purchased_at,
-      dateFmt:    'date',
+      withTime:   false,
       kind:       'package',
-      typeLabel:  'Paket',
       title:      `${total} kredi · ${fmtTL(money(p.unit_price))}/ders`,
       sub:        remaining > 0 ? `${used}/${total} kullanıldı` : 'Tükendi',
-      badges:     [],
+      status:     remaining > 0 ? { label: 'Aktif', tone: 'paid' } : { label: 'Tükendi', tone: 'neutral' },
       amount:     money(p.total_amount),
       amountTone: 'quiet',
+      _search: ['paket', String(total), 'kredi', remaining > 0 ? 'aktif' : 'tükendi'].join(' ').toLowerCase(),
     });
   }
 
   for (const s of productSales ?? []) {
-    const paid = money(s.paid_amount);
     const remaining = money(s.remaining_receivable);
     const total = money(s.total_amount);
-    const payState =
-      remaining < 0.01 ? { tone: 'paid',    label: 'Ödendi' } :
-      paid > 0.01      ? { tone: 'partial', label: 'Kısmi'  } :
-                         { tone: 'open',    label: 'Açık'   };
+    const status = saleStatusLabel(s);
     items.push({
       key:        `sale-${s.product_sale_id}`,
+      saleId:     s.product_sale_id,
       date:       s.sold_at,
-      dateFmt:    'date',
+      withTime:   false,
       kind:       'sale',
-      typeLabel:  'Ürün',
       title:      'Ürün satışı',
-      sub:        remaining > 0.01 ? `${fmtTL(remaining)} kalan` : null,
-      badges:     [{ cls: 'sp-badge-pay-' + payState.tone, label: payState.label }],
-      amount:     total,
+      sub:        s.note?.trim() || null,
+      status,
+      paymentTone: status.tone,
+      amount:     remaining > 0.01 ? remaining : total,
       amountSub:  remaining > 0.01 ? `/ ${fmtTL(total)}` : null,
       amountTone: remaining > 0.01 ? 'warn' : 'quiet',
+      _search: ['ürün', 'satış', s.note, status.label].filter(Boolean).join(' ').toLowerCase(),
     });
   }
 
@@ -457,15 +534,49 @@ function Tabs({ tab, setTab, counts }) {
 // extra sub-filter row (upcoming / completed / cancelled) since that's the
 // operationally useful split — other tabs don't need one.
 
-const LESSON_SUBFILTERS = [
-  { id: 'all',       label: 'Tümü',           match: () => true },
-  { id: 'upcoming',  label: 'Yaklaşan',       match: l => l.status === 'scheduled' },
-  { id: 'completed', label: 'Tamamlanan',     match: l => l.status === 'completed' },
-  { id: 'cancelled', label: 'İptal / Gelmedi', match: l => l.status === 'cancelled' || l.status === 'no_show' },
+const KAYITLAR_FILTERS = [
+  { id: 'all',     label: 'Tümü',    match: () => true },
+  { id: 'lesson',  label: 'Ders',    match: i => i.kind === 'lesson' },
+  { id: 'sale',    label: 'Ürün',    match: i => i.kind === 'sale' },
+  { id: 'package', label: 'Paket',   match: i => i.kind === 'package' },
 ];
 
+const LESSON_SUBFILTERS = [
+  { id: 'all',       label: 'Tümü',            match: () => true },
+  { id: 'upcoming',  label: 'Yaklaşan',        match: i => i.lessonStatus === 'scheduled' },
+  { id: 'completed', label: 'Tamamlanan',      match: i => i.lessonStatus === 'completed' },
+  { id: 'cancelled', label: 'İptal / Gelmedi', match: i => i.lessonStatus === 'cancelled' || i.lessonStatus === 'no_show' },
+];
+
+const PRODUCT_FILTERS = [
+  { id: 'all',     label: 'Tümü',   match: () => true },
+  { id: 'open',    label: 'Açık',   match: i => i.paymentTone === 'open' },
+  { id: 'partial', label: 'Kısmi',  match: i => i.paymentTone === 'partial' },
+  { id: 'paid',    label: 'Ödendi', match: i => i.paymentTone === 'paid' },
+];
+
+const PAGE_SIZE = 20;
+
+const KIND_ICON = {
+  lesson:  Icon.Calendar,
+  sale:    Icon.Tag,
+  package: Icon.Layers,
+};
+
 function ActivityView({ items, tab }) {
-  const [lessonSub, setLessonSub] = React.useState('all');
+  const filterDef =
+    tab === 'all'      ? KAYITLAR_FILTERS  :
+    tab === 'lessons'  ? LESSON_SUBFILTERS :
+    tab === 'products' ? PRODUCT_FILTERS   :
+    null;
+
+  const [filterId, setFilterId] = React.useState('all');
+  const [search,   setSearch]   = React.useState('');
+  const [order,    setOrder]    = React.useState('desc');
+  const [pageSize, setPageSize] = React.useState(PAGE_SIZE);
+
+  React.useEffect(() => { setFilterId('all'); setSearch(''); setPageSize(PAGE_SIZE); }, [tab]);
+  React.useEffect(() => { setPageSize(PAGE_SIZE); }, [filterId, search, order]);
 
   let scoped = items;
   if (tab === 'lessons')  scoped = items.filter(i => i.kind === 'lesson');
@@ -476,97 +587,179 @@ function ActivityView({ items, tab }) {
     return <EmptyBlock title={empty.title} sub={empty.sub} />;
   }
 
-  let visible = scoped;
-  let subFilter = null;
-  if (tab === 'lessons') {
-    const f = LESSON_SUBFILTERS.find(x => x.id === lessonSub) ?? LESSON_SUBFILTERS[0];
-    visible = scoped.filter(i => f.match({ status: i.lessonStatus }));
-    subFilter = (
-      <div className="sp-filter">
-        {LESSON_SUBFILTERS.map(sf => (
-          <button
-            key={sf.id}
-            type="button"
-            className={'sp-chip' + (lessonSub === sf.id ? ' is-active' : '')}
-            onClick={() => setLessonSub(sf.id)}
-          >
-            {sf.id === 'all' ? `${sf.label} (${scoped.length})` : sf.label}
-          </button>
-        ))}
-      </div>
-    );
-  }
+  const activeFilter = filterDef ? (filterDef.find(x => x.id === filterId) ?? filterDef[0]) : null;
+  let visible = activeFilter ? scoped.filter(activeFilter.match) : scoped;
+
+  const q = search.trim().toLowerCase();
+  if (q) visible = visible.filter(i => (i._search || '').includes(q));
+
+  visible = [...visible].sort((a, b) => {
+    const t = new Date(a.date).getTime() - new Date(b.date).getTime();
+    return order === 'asc' ? t : -t;
+  });
+
+  const total = visible.length;
+  const sliced = visible.slice(0, pageSize);
+  const groups = bucketByDate(sliced);
 
   return (
     <div className="sp-activity">
-      {subFilter}
-      {visible.length === 0 ? (
-        <div className="sp-state-msg sp-state-msg-inline">Bu filtrede kayıt yok.</div>
+      <ActivityToolbar
+        filterDef={filterDef}
+        filterId={filterId}
+        setFilterId={setFilterId}
+        scoped={scoped}
+        search={search}
+        setSearch={setSearch}
+      />
+
+      {total === 0 ? (
+        <div className="sp-state-msg sp-state-msg-inline">
+          {q ? `"${search.trim()}" için kayıt yok.` : 'Bu filtrede kayıt yok.'}
+        </div>
       ) : (
-        <ul className="sp-rows">
-          {visible.map(i => <ActivityRow key={i.key} item={i} />)}
-        </ul>
+        <>
+          <div className="sp-table-head">
+            <span className="sp-th sp-th-icon" />
+            <button
+              type="button"
+              className="sp-th sp-th-date sp-th-sortable"
+              onClick={() => setOrder(o => (o === 'asc' ? 'desc' : 'asc'))}
+              title={order === 'desc' ? 'Eskiden yeniye' : 'Yeniden eskiye'}
+            >
+              Tarih <span className="sp-th-arrow">{order === 'desc' ? '↓' : '↑'}</span>
+            </button>
+            <span className="sp-th sp-th-title">Açıklama</span>
+            <span className="sp-th sp-th-status">Durum</span>
+            <span className="sp-th sp-th-money">Tutar</span>
+          </div>
+
+          <ul className="sp-rows">
+            {groups.map(g => (
+              <React.Fragment key={g.key}>
+                <li className="sp-bucket-head">{g.label}</li>
+                {g.items.map(i => <ActivityRow key={i.key} item={i} />)}
+              </React.Fragment>
+            ))}
+          </ul>
+
+          {sliced.length < total && (
+            <div className="sp-more-row">
+              <button
+                type="button"
+                className="sp-load-more"
+                onClick={() => setPageSize(s => s + PAGE_SIZE)}
+              >
+                Daha fazla göster
+                <span className="sp-load-more-n">+{Math.min(PAGE_SIZE, total - sliced.length)}</span>
+              </button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
 }
 
+function ActivityToolbar({ filterDef, filterId, setFilterId, scoped, search, setSearch }) {
+  return (
+    <div className="sp-toolbar">
+      {filterDef && (
+        <div className="sp-filter">
+          {filterDef.map(f => {
+            const count = f.id === 'all' ? scoped.length : scoped.filter(f.match).length;
+            return (
+              <button
+                key={f.id}
+                type="button"
+                className={'sp-chip' + (filterId === f.id ? ' is-active' : '')}
+                onClick={() => setFilterId(f.id)}
+              >
+                {f.label}
+                <span className="sp-chip-n">{count}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      <div className="sp-toolbar-search">
+        <Icon.Search width="13" height="13" />
+        <input
+          type="text"
+          placeholder="Ara..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
+        {search && (
+          <button
+            type="button"
+            className="sp-toolbar-search-clear"
+            onClick={() => setSearch('')}
+            aria-label="Aramayı temizle"
+          >×</button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function emptyCopy(tab) {
-  if (tab === 'lessons')  return { title: 'Henüz ders yok',        sub: 'Bu öğrenciye yeni bir ders planlayın.' };
-  if (tab === 'products') return { title: 'Ürün satışı yok',        sub: 'Bu öğrenciye henüz ürün satışı kaydı girilmedi.' };
-  return                       { title: 'Hareket yok',              sub: 'Bu öğrenci için kayıtlı bir hareket bulunmuyor.' };
+  if (tab === 'lessons')  return { title: 'Henüz ders yok',  sub: 'Bu öğrenciye yeni bir ders planlayın.' };
+  if (tab === 'products') return { title: 'Ürün satışı yok', sub: 'Bu öğrenciye henüz ürün satışı kaydı girilmedi.' };
+  return                       { title: 'Hareket yok',       sub: 'Bu öğrenci için kayıtlı bir hareket bulunmuyor.' };
 }
 
 function ActivityRow({ item }) {
-  const sign = item.signed && item.amount > 0 ? '+' : '';
-  const amountClass =
-    'sp-money-main' +
-    (item.amountTone === 'credit' ? ' sp-money-credit' :
-     item.amountTone === 'warn'   ? ' sp-money-warn'   : '');
-
-  const pillCls =
-    item.kind === 'balance'
-      ? `sp-type-pill sp-type-pill-balance sp-type-pill-balance-${item.balanceDir}`
-      : `sp-type-pill sp-type-pill-${item.kind}`;
-
-  const dateText = item.dateFmt === 'datetime' ? fmtDateTime(item.date) : fmtDate(item.date);
+  const Icn = KIND_ICON[item.kind] || Icon.Calendar;
+  const dateText = fmtRowDate(item.date, { withTime: !!item.withTime });
+  const status = item.status;
 
   return (
     <li className={'sp-row sp-row-activity sp-row-activity-' + item.kind}>
-      <span className={pillCls}>{item.typeLabel}</span>
+      <span className={'sp-row-icon sp-row-icon-' + item.kind} aria-hidden="true">
+        <Icn width="14" height="14" />
+      </span>
 
-      <div className="sp-row-when">
-        <div className="sp-row-date">{dateText}</div>
-        <div className="sp-row-sub">{item.title}</div>
+      <div className="sp-row-date">{dateText}</div>
+
+      <div className="sp-row-title">
+        <div className="sp-row-title-main">{item.title}</div>
+        {item.sub && <div className="sp-row-title-sub">{item.sub}</div>}
       </div>
 
-      <div className="sp-row-desc">
-        {item.sub ? <span>{item.sub}</span> : <span className="sp-muted">—</span>}
-      </div>
-
-      <div className="sp-row-badges">
-        {(item.badges ?? []).map((b, i) => (
-          <span key={i} className={'sp-badge ' + b.cls}>{b.label}</span>
-        ))}
+      <div className="sp-row-status">
+        {status && (
+          <span className={'sp-badge sp-badge-tone-' + status.tone}>{status.label}</span>
+        )}
+        {item.discount > 0.01 && (
+          <span className="sp-badge sp-badge-discount" title={`İndirim: ${fmtTL(item.discount)}`}>
+            −{fmtTL(item.discount)}
+          </span>
+        )}
       </div>
 
       <div className="sp-row-money">
-        {item.amount == null ? (
-          <span className="sp-muted">—</span>
-        ) : item.amountTone === 'quiet' ? (
-          <span className="sp-money-quiet">{fmtTL(item.amount)}</span>
-        ) : item.amountTone === 'mute' ? (
-          <span className="sp-muted">—</span>
-        ) : (
-          <>
-            <span className={amountClass}>
-              {sign}{fmtTL(Math.abs(item.amount))}
-            </span>
-            {item.amountSub && <span className="sp-money-hint">{item.amountSub}</span>}
-          </>
-        )}
+        <ActivityAmount item={item} />
       </div>
     </li>
+  );
+}
+
+function ActivityAmount({ item }) {
+  if (item.amount == null || item.amountTone === 'mute') {
+    return <span className="sp-muted">—</span>;
+  }
+  const cls =
+    'sp-money-main' +
+    (item.amountTone === 'warn'   ? ' sp-money-warn'   :
+     item.amountTone === 'credit' ? ' sp-money-credit' :
+     item.amountTone === 'quiet'  ? ' sp-money-quiet'  : '');
+  return (
+    <>
+      <span className={cls}>{fmtTL(item.amount)}</span>
+      {item.amountSub && <span className="sp-money-hint">{item.amountSub}</span>}
+    </>
   );
 }
 
@@ -575,7 +768,7 @@ function ActivityRow({ item }) {
 // (which folds multiple events into the "current state" of a lesson/sale),
 // this splits every state change into its own entry with the exact timestamp.
 
-const MOVEMENT_LESSON_MODE_TR = { online: 'Online', onsite: 'Stüdyo' };
+const MOVEMENT_LESSON_MODE_TR = { online: 'Online', onsite: 'Yüzyüze' };
 
 function fmtFullDateTime(iso) {
   if (!iso) return '—';
@@ -711,50 +904,194 @@ function describeMovement(m) {
   }
 }
 
+const MOVEMENT_CATEGORY = {
+  lesson_scheduled:        'lessons',
+  lesson_completed:        'lessons',
+  lesson_cancelled:        'lessons',
+  lesson_no_show:          'lessons',
+  package_purchased:       'packages',
+  product_sale:            'products',
+  payment_lesson:          'payments',
+  payment_product_sale:    'payments',
+  payment_package:         'payments',
+  lesson_discount_updated: 'discount',
+};
+
+const MOVEMENT_FILTERS = [
+  { id: 'all',      label: 'Tümü',     match: () => true },
+  { id: 'lessons',  label: 'Dersler',  match: m => MOVEMENT_CATEGORY[m.kind] === 'lessons' },
+  { id: 'payments', label: 'Ödemeler', match: m => MOVEMENT_CATEGORY[m.kind] === 'payments' },
+  { id: 'products', label: 'Ürünler',  match: m => MOVEMENT_CATEGORY[m.kind] === 'products' },
+  { id: 'discount', label: 'İndirim',  match: m => MOVEMENT_CATEGORY[m.kind] === 'discount' },
+];
+
+const MV_PILL_ICON = {
+  lesson:      Icon.Calendar,
+  'lesson-done':Icon.Check,
+  'lesson-off':Icon.ChevronL,
+  package:     Icon.Layers,
+  sale:        Icon.Tag,
+  payment:     Icon.Wallet,
+  discount:    Icon.Tag,
+  other:       Icon.Calendar,
+};
+
 function MovementsView({ items }) {
+  const [filterId, setFilterId] = React.useState('all');
+  const [search,   setSearch]   = React.useState('');
+  const [order,    setOrder]    = React.useState('desc');
+  const [pageSize, setPageSize] = React.useState(PAGE_SIZE);
+
+  React.useEffect(() => { setPageSize(PAGE_SIZE); }, [filterId, search, order]);
+
   if (!items || items.length === 0) {
     return <EmptyBlock title="Hareket yok" sub="Bu öğrenci için henüz kayıtlı bir işlem bulunmuyor." />;
   }
 
+  const enriched = items.map(m => {
+    const desc = describeMovement(m);
+    const searchText = [
+      desc.typeLabel, desc.title, desc.sub,
+      m.details?.note, m.details?.source,
+    ].filter(Boolean).join(' ').toLowerCase();
+    return { m, desc, searchText, occurred_at: m.occurred_at };
+  });
+
+  const activeFilter = MOVEMENT_FILTERS.find(x => x.id === filterId) ?? MOVEMENT_FILTERS[0];
+  let visible = enriched.filter(e => activeFilter.match(e.m));
+
+  const q = search.trim().toLowerCase();
+  if (q) visible = visible.filter(e => e.searchText.includes(q));
+
+  visible = [...visible].sort((a, b) => {
+    const t = new Date(a.occurred_at).getTime() - new Date(b.occurred_at).getTime();
+    return order === 'asc' ? t : -t;
+  });
+
+  const total = visible.length;
+  const sliced = visible.slice(0, pageSize);
+  const groups = bucketByDate(sliced, { dateKey: 'occurred_at' });
+
   return (
-    <ul className="sp-rows sp-mv-rows">
-      {items.map((m, idx) => {
-        const desc = describeMovement(m);
-        return (
-          <li
-            key={`${m.kind}-${idx}-${m.occurred_at}`}
-            className={'sp-row sp-row-mv sp-row-mv-' + desc.pillTone}
-          >
-            <span className={'sp-type-pill sp-type-pill-mv sp-type-pill-mv-' + desc.pillTone}>
-              {desc.typeLabel}
-            </span>
+    <div className="sp-activity sp-activity-mv">
+      <div className="sp-toolbar">
+        <div className="sp-filter">
+          {MOVEMENT_FILTERS.map(f => {
+            const count = f.id === 'all' ? enriched.length : enriched.filter(e => f.match(e.m)).length;
+            return (
+              <button
+                key={f.id}
+                type="button"
+                className={'sp-chip' + (filterId === f.id ? ' is-active' : '')}
+                onClick={() => setFilterId(f.id)}
+              >
+                {f.label}
+                <span className="sp-chip-n">{count}</span>
+              </button>
+            );
+          })}
+        </div>
 
-            <div className="sp-row-when">
-              <div className="sp-row-date">{fmtFullDateTime(m.occurred_at)}</div>
-              {desc.title && <div className="sp-row-sub">{desc.title}</div>}
-            </div>
+        <div className="sp-toolbar-search">
+          <Icon.Search width="13" height="13" />
+          <input
+            type="text"
+            placeholder="Ara..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+          {search && (
+            <button
+              type="button"
+              className="sp-toolbar-search-clear"
+              onClick={() => setSearch('')}
+              aria-label="Aramayı temizle"
+            >×</button>
+          )}
+        </div>
+      </div>
 
-            <div className="sp-row-desc">
-              {desc.sub ? <span>{desc.sub}</span> : <span className="sp-muted">—</span>}
-            </div>
+      {total === 0 ? (
+        <div className="sp-state-msg sp-state-msg-inline">
+          {q ? `"${search.trim()}" için hareket yok.` : 'Bu filtrede hareket yok.'}
+        </div>
+      ) : (
+        <>
+          <div className="sp-table-head sp-table-head-mv">
+            <span className="sp-th sp-th-icon" />
+            <button
+              type="button"
+              className="sp-th sp-th-date sp-th-sortable"
+              onClick={() => setOrder(o => (o === 'asc' ? 'desc' : 'asc'))}
+            >
+              Zaman <span className="sp-th-arrow">{order === 'desc' ? '↓' : '↑'}</span>
+            </button>
+            <span className="sp-th sp-th-title">Olay</span>
+            <span className="sp-th sp-th-money">Tutar</span>
+          </div>
 
-            <div className="sp-row-money">
-              {desc.amount == null ? (
-                <span className="sp-muted">—</span>
-              ) : desc.amountTone === 'paid' ? (
-                <span className="sp-money-main sp-money-credit">+{fmtTL(Math.abs(desc.amount))}</span>
-              ) : desc.amountTone === 'discount' ? (
-                <span className="sp-money-main sp-money-warn">-{fmtTL(Math.abs(desc.amount))}</span>
-              ) : desc.amountTone === 'mute' ? (
-                <span className="sp-muted">—</span>
-              ) : (
-                <span className="sp-money-quiet">{fmtTL(desc.amount)}</span>
-              )}
+          <ul className="sp-rows sp-mv-rows">
+            {groups.map(g => (
+              <React.Fragment key={g.key}>
+                <li className="sp-bucket-head">{g.label}</li>
+                {g.items.map((e, idx) => (
+                  <MovementRow key={`${e.m.kind}-${idx}-${e.occurred_at}`} entry={e} />
+                ))}
+              </React.Fragment>
+            ))}
+          </ul>
+
+          {sliced.length < total && (
+            <div className="sp-more-row">
+              <button
+                type="button"
+                className="sp-load-more"
+                onClick={() => setPageSize(s => s + PAGE_SIZE)}
+              >
+                Daha fazla göster
+                <span className="sp-load-more-n">+{Math.min(PAGE_SIZE, total - sliced.length)}</span>
+              </button>
             </div>
-          </li>
-        );
-      })}
-    </ul>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function MovementRow({ entry }) {
+  const { m, desc } = entry;
+  const Icn = MV_PILL_ICON[desc.pillTone] || Icon.Calendar;
+
+  return (
+    <li className={'sp-row sp-row-mv sp-row-mv-' + desc.pillTone}>
+      <span className={'sp-row-icon sp-row-icon-mv sp-row-icon-mv-' + desc.pillTone} aria-hidden="true">
+        <Icn width="13" height="13" />
+      </span>
+
+      <div className="sp-row-date sp-row-date-mv">{fmtFullDateTime(m.occurred_at)}</div>
+
+      <div className="sp-row-title">
+        <div className="sp-row-title-main sp-row-title-main-mv">
+          {desc.typeLabel}
+          {desc.title && <span className="sp-row-title-mv-sep"> · </span>}
+          {desc.title && <span className="sp-row-title-mv-ctx">{desc.title}</span>}
+        </div>
+        {desc.sub && <div className="sp-row-title-sub">{desc.sub}</div>}
+      </div>
+
+      <div className="sp-row-money">
+        {desc.amount == null || desc.amountTone === 'mute' ? (
+          <span className="sp-muted">—</span>
+        ) : desc.amountTone === 'paid' ? (
+          <span className="sp-money-main sp-money-credit">+{fmtTL(Math.abs(desc.amount))}</span>
+        ) : desc.amountTone === 'discount' ? (
+          <span className="sp-money-main sp-money-warn">−{fmtTL(Math.abs(desc.amount))}</span>
+        ) : (
+          <span className="sp-money-quiet">{fmtTL(desc.amount)}</span>
+        )}
+      </div>
+    </li>
   );
 }
 

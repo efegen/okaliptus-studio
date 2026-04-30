@@ -2447,16 +2447,26 @@ input, select { font-family: inherit; }
 
 .sp-tab-card { padding: 0; overflow: hidden; }
 
-/* --- Filter chips --- */
+/* --- Toolbar (filter chips + search) --- */
 .sp-lessons { display: flex; flex-direction: column; }
-.sp-filter {
-  display: flex; gap: 6px;
-  padding: 12px 16px;
+.sp-toolbar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
   border-bottom: 1px solid var(--line);
   flex-wrap: wrap;
 }
+.sp-filter {
+  display: flex; gap: 5px;
+  flex-wrap: wrap;
+  flex: 1;
+  min-width: 0;
+}
 .sp-chip {
-  padding: 4px 10px;
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 10px 4px 11px;
   border-radius: 999px;
   border: 1px solid var(--line-2);
   background: var(--surface);
@@ -2465,6 +2475,7 @@ input, select { font-family: inherit; }
   font-weight: 500;
   cursor: pointer;
   transition: all 0.12s;
+  white-space: nowrap;
 }
 .sp-chip:hover { color: var(--ink); border-color: var(--line-strong); }
 .sp-chip.is-active {
@@ -2472,50 +2483,174 @@ input, select { font-family: inherit; }
   color: var(--surface);
   border-color: var(--ink);
 }
+.sp-chip-n {
+  font-size: 10.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  background: var(--bg-2);
+  color: var(--ink-3);
+  padding: 1px 6px;
+  border-radius: 999px;
+  min-width: 16px;
+  text-align: center;
+}
+.sp-chip.is-active .sp-chip-n {
+  background: rgba(255,255,255,0.18);
+  color: var(--surface);
+}
+
+.sp-toolbar-search {
+  position: relative;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px;
+  background: var(--surface);
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  color: var(--ink-3);
+  min-width: 180px;
+  transition: border-color 0.12s;
+}
+.sp-toolbar-search:focus-within {
+  border-color: var(--ink-3);
+  color: var(--ink-2);
+}
+.sp-toolbar-search input {
+  flex: 1; min-width: 0;
+  background: transparent;
+  border: 0;
+  outline: 0;
+  font-size: 12.5px;
+  color: var(--ink);
+}
+.sp-toolbar-search input::placeholder { color: var(--ink-4); }
+.sp-toolbar-search-clear {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  color: var(--ink-3);
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 2px;
+}
+.sp-toolbar-search-clear:hover { color: var(--ink); }
 
 .sp-state-msg-inline { padding: 24px 20px; }
+
+/* --- Table head --- */
+.sp-table-head {
+  display: grid;
+  grid-template-columns: 28px 130px 1fr auto 130px;
+  gap: 14px;
+  align-items: center;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
+}
+.sp-table-head-mv {
+  grid-template-columns: 28px 170px 1fr 130px;
+}
+.sp-th { white-space: nowrap; }
+.sp-th-money { text-align: right; }
+.sp-th-sortable {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  font: inherit;
+  color: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 0;
+}
+.sp-th-sortable:hover { color: var(--ink); }
+.sp-th-arrow { font-size: 11px; color: var(--ink-2); }
+
+/* --- Date bucket head --- */
+.sp-bucket-head {
+  list-style: none;
+  padding: 12px 16px 4px;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--ink-3);
+  background: transparent;
+}
+.sp-rows .sp-bucket-head:first-child { padding-top: 8px; }
 
 /* --- Rows (shared list) --- */
 .sp-rows {
   list-style: none;
   margin: 0;
-  padding: 0;
+  padding: 0 0 4px;
 }
 .sp-row {
   display: grid;
-  grid-template-columns: 78px 158px 1fr auto 130px;
+  grid-template-columns: 28px 130px 1fr auto 130px;
   gap: 14px;
   align-items: center;
-  padding: 12px 16px;
+  padding: 11px 16px;
   border-bottom: 1px solid var(--line);
   font-size: 13px;
 }
 .sp-row:last-child { border-bottom: none; }
 .sp-row:hover { background: var(--bg); }
 
-.sp-row-when .sp-row-date {
+/* --- Type icon (leading column) --- */
+.sp-row-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px; height: 28px;
+  border-radius: 8px;
+  background: var(--bg-2);
+  color: var(--ink-3);
+  flex-shrink: 0;
+}
+.sp-row-icon-lesson  { background: var(--accent-2); color: var(--accent-ink); }
+.sp-row-icon-sale    { background: var(--bg-2);     color: var(--ink-2); }
+.sp-row-icon-package { background: var(--sage-2);   color: var(--sage-ink); }
+
+.sp-row-date {
   font-weight: 600;
   color: var(--ink);
   font-variant-numeric: tabular-nums;
+  font-size: 12.5px;
 }
-.sp-row-when .sp-row-sub {
-  font-size: 11px;
-  color: var(--ink-3);
-  margin-top: 1px;
-}
-
-.sp-row-badges {
-  display: flex; gap: 5px;
-  flex-wrap: wrap;
-}
-.sp-row-desc {
-  color: var(--ink-2);
-  font-size: 12px;
+.sp-row-title {
   min-width: 0;
+}
+.sp-row-title-main {
+  color: var(--ink);
+  font-weight: 500;
+  font-size: 13px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.sp-row-title-sub {
+  color: var(--ink-3);
+  font-size: 11.5px;
+  margin-top: 2px;
+  font-style: italic;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sp-row-status {
+  display: inline-flex; gap: 5px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .sp-row-money {
   text-align: right;
   font-variant-numeric: tabular-nums;
@@ -2526,10 +2661,10 @@ input, select { font-family: inherit; }
   color: var(--ink);
   font-size: 13px;
 }
-.sp-money-warn { color: var(--warn); }
+.sp-money-warn   { color: var(--warn); }
 .sp-money-credit { color: var(--sage-ink); }
 .sp-money-quiet {
-  color: var(--ink-3);
+  color: var(--ink-2);
   font-weight: 500;
   font-size: 13px;
 }
@@ -2537,82 +2672,111 @@ input, select { font-family: inherit; }
   font-size: 11px;
   color: var(--ink-4);
   margin-left: 4px;
+  font-weight: 500;
 }
 
 .sp-muted { color: var(--ink-4); }
 
-/* --- Badges (status + payment) --- */
+/* --- Activity wrapper --- */
+.sp-activity { display: flex; flex-direction: column; }
+
+/* --- Unified status badge (single label per row) --- */
 .sp-badge {
   display: inline-flex; align-items: center; gap: 4px;
-  padding: 2px 8px;
+  padding: 3px 9px;
   border-radius: 999px;
   font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.01em;
+  letter-spacing: 0.005em;
   white-space: nowrap;
+  line-height: 1.3;
 }
-.sp-badge-completed { background: var(--sage-2); color: var(--sage-ink); }
-.sp-badge-scheduled { background: var(--accent-2); color: var(--accent-ink); }
-.sp-badge-cancelled { background: var(--bg-2);  color: var(--ink-3); }
-.sp-badge-no_show   { background: var(--warn-2); color: var(--warn); }
+.sp-badge-tone-scheduled { background: var(--accent-2); color: var(--accent-ink); }
+.sp-badge-tone-paid      { background: var(--sage-2);   color: var(--sage-ink); }
+.sp-badge-tone-credit    { background: var(--bg-2);     color: var(--ink-2); border: 1px solid var(--line-2); }
+.sp-badge-tone-partial   { background: var(--warn-2);   color: var(--warn); }
+.sp-badge-tone-open      { background: var(--warn);     color: var(--surface); }
+.sp-badge-tone-warn      { background: var(--warn-2);   color: var(--warn); }
+.sp-badge-tone-neutral   { background: var(--bg-2);     color: var(--ink-3); }
+.sp-badge-discount       {
+  background: transparent;
+  color: var(--ink-3);
+  border: 1px dashed var(--line-strong);
+  font-weight: 500;
+}
 
-.sp-badge-pay-paid    { background: var(--sage-2); color: var(--sage-ink); }
-.sp-badge-pay-credit  { background: var(--bg-2);   color: var(--ink-2); }
-.sp-badge-pay-partial { background: var(--warn-2); color: var(--warn); }
-.sp-badge-pay-open    { background: var(--warn-2); color: var(--warn); }
-.sp-badge-discount    { background: var(--bg-2);   color: var(--ink-2); }
-
-/* --- Activity rows --- */
-.sp-activity { display: flex; flex-direction: column; }
-.sp-row-activity .sp-row-when .sp-row-date {
+/* --- Load more --- */
+.sp-more-row {
+  display: flex;
+  justify-content: center;
+  padding: 14px 16px 18px;
+  border-top: 1px solid var(--line);
+}
+.sp-load-more {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 7px 16px;
+  background: var(--surface);
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  color: var(--ink-2);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.sp-load-more:hover {
+  border-color: var(--ink-3);
+  color: var(--ink);
+}
+.sp-load-more-n {
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--bg-2);
+  color: var(--ink-3);
+  padding: 1px 7px;
+  border-radius: 999px;
   font-variant-numeric: tabular-nums;
 }
-.sp-row-activity .sp-row-when .sp-row-sub {
-  color: var(--ink-2);
-  font-weight: 500;
-  font-size: 12px;
-}
 
-/* --- Type pills (leading column in activity rows) --- */
-.sp-type-pill {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 3px 10px;
-  min-width: 62px;
-  border-radius: 999px;
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  background: var(--bg-2);
-  color: var(--ink-2);
-  white-space: nowrap;
-  justify-self: start;
-  border: 1px solid transparent;
+/* --- Movements (audit / event log mode) --- */
+.sp-activity-mv .sp-toolbar {
+  background: var(--bg);
 }
-.sp-type-pill-package      { background: var(--accent-2); color: var(--accent-ink); }
-.sp-type-pill-sale         { background: var(--surface);  color: var(--ink-2); border-color: var(--line-2); }
-.sp-type-pill-balance-pos  { background: var(--sage-2);   color: var(--sage-ink); }
-.sp-type-pill-balance-neg  { background: var(--warn-2);   color: var(--warn); }
-.sp-type-pill-balance-zero { background: var(--bg-2);     color: var(--ink-3); }
-
-/* --- Movements (granular event stream) --- */
 .sp-mv-rows .sp-row-mv {
-  grid-template-columns: 160px 170px 1fr 130px;
+  grid-template-columns: 28px 170px 1fr 130px;
+  padding: 8px 16px;
+  font-size: 12.5px;
+  background: transparent;
 }
-.sp-type-pill-mv {
-  min-width: 150px;
-  font-size: 10px;
+.sp-mv-rows .sp-row-mv:hover { background: var(--bg); }
+
+.sp-row-icon-mv {
+  width: 24px; height: 24px;
+  border-radius: 6px;
 }
-.sp-type-pill-mv-lesson      { background: var(--accent-2); color: var(--accent-ink); }
-.sp-type-pill-mv-lesson-done { background: var(--sage-2);   color: var(--sage-ink); }
-.sp-type-pill-mv-lesson-off  { background: var(--warn-2);   color: var(--warn); }
-.sp-type-pill-mv-package     { background: var(--accent-2); color: var(--accent-ink); }
-.sp-type-pill-mv-sale        { background: var(--surface);  color: var(--ink-2); border-color: var(--line-2); }
-.sp-type-pill-mv-payment     { background: var(--sage-2);   color: var(--sage-ink); }
-.sp-type-pill-mv-discount    { background: var(--warn-2);   color: var(--warn); }
-.sp-type-pill-mv-other       { background: var(--bg-2);     color: var(--ink-3); }
+.sp-row-icon-mv-lesson      { background: var(--accent-2); color: var(--accent-ink); }
+.sp-row-icon-mv-lesson-done { background: var(--sage-2);   color: var(--sage-ink); }
+.sp-row-icon-mv-lesson-off  { background: var(--warn-2);   color: var(--warn); }
+.sp-row-icon-mv-package     { background: var(--accent-2); color: var(--accent-ink); }
+.sp-row-icon-mv-sale        { background: var(--bg-2);     color: var(--ink-2); }
+.sp-row-icon-mv-payment     { background: var(--sage-2);   color: var(--sage-ink); }
+.sp-row-icon-mv-discount    { background: var(--warn-2);   color: var(--warn); }
+.sp-row-icon-mv-other       { background: var(--bg-2);     color: var(--ink-3); }
+
+.sp-row-date-mv {
+  font-family: var(--f-mono);
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--ink-2);
+  letter-spacing: -0.01em;
+}
+.sp-row-title-main-mv {
+  color: var(--ink);
+  font-weight: 500;
+  font-size: 12.5px;
+}
+.sp-row-title-mv-sep { color: var(--ink-4); margin: 0 2px; }
+.sp-row-title-mv-ctx { color: var(--ink-3); font-weight: 400; }
 
 /* Package bar (now used only in active-package sidebar card) */
 .sp-pkg-bar {
@@ -2769,10 +2933,38 @@ input, select { font-family: inherit; }
 @media (max-width: 720px) {
   .sp-header { flex-direction: column; align-items: stretch; }
   .sp-actions { justify-content: flex-start; flex-wrap: wrap; }
-  .sp-row { grid-template-columns: 1fr; gap: 4px; }
-  .sp-mv-rows .sp-row-mv { grid-template-columns: 1fr; gap: 4px; }
-  .sp-row-money { text-align: left; }
   .sp-fin-ex { min-width: 0; flex: 1; }
+
+  /* Tablo başlığı mobilde gizli — bilgi satıra inline geliyor */
+  .sp-table-head { display: none; }
+
+  /* Kart-vari satır */
+  .sp-row,
+  .sp-mv-rows .sp-row-mv {
+    grid-template-columns: 28px 1fr auto;
+    grid-template-areas:
+      "icon date  money"
+      "icon title status";
+    gap: 4px 10px;
+    align-items: start;
+    padding: 10px 14px;
+  }
+  .sp-row > .sp-row-icon  { grid-area: icon; align-self: center; }
+  .sp-row > .sp-row-date  { grid-area: date; }
+  .sp-row > .sp-row-title { grid-area: title; }
+  .sp-row > .sp-row-status{ grid-area: status; justify-content: flex-end; }
+  .sp-row > .sp-row-money { grid-area: money; }
+
+  .sp-mv-rows .sp-row-mv {
+    grid-template-areas:
+      "icon date  money"
+      "icon title title";
+  }
+
+  .sp-toolbar { flex-direction: column; align-items: stretch; }
+  .sp-toolbar-search { min-width: 0; }
+
+  .sp-row-money { text-align: right; }
 }
 
 /* â”€â”€â”€ Create Lesson Modal (refined) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
