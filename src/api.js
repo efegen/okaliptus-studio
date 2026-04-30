@@ -62,12 +62,13 @@ function getErrorMessage(payload) {
 
 async function apiRequest(path, options = {}) {
   const baseUrls = buildApiBaseUrls();
-  let lastError = null;
+  let lastNetworkError = null;
 
   for (const baseUrl of baseUrls) {
     const url = `${baseUrl}${path}`;
+    let response;
     try {
-      const response = await fetch(url, {
+      response = await fetch(url, {
         method: options.method || "GET",
         credentials: "include",
         headers: {
@@ -77,33 +78,35 @@ async function apiRequest(path, options = {}) {
         },
         body: options.body,
       });
-
-      const contentType = response.headers.get("content-type") || "";
-      const payload = contentType.includes("application/json")
-        ? await response.json()
-        : await response.text();
-
-      if (!response.ok) {
-        const msg = getErrorMessage(payload);
-        console.error(`[api] ${url} → HTTP ${response.status}: ${msg}`);
-        if (response.status === 401 && !path.startsWith('/auth')) {
-          window.dispatchEvent(new CustomEvent('auth:unauthorized'));
-        }
-        throw new Error(msg);
-      }
-
-      return payload;
     } catch (error) {
+      // Only network-level failures (ECONNREFUSED, CORS block, etc.) fall back
+      // to the next baseUrl. HTTP error responses are handled below.
       if (error instanceof TypeError) {
-        // Network-level failure (ECONNREFUSED, CORS block, etc.)
         console.error(`[api] ${url} → network error:`, error.message);
       }
-      lastError = error;
+      lastNetworkError = error;
+      continue;
     }
+
+    const contentType = response.headers.get("content-type") || "";
+    const payload = contentType.includes("application/json")
+      ? await response.json()
+      : await response.text();
+
+    if (!response.ok) {
+      const msg = getErrorMessage(payload);
+      console.error(`[api] ${url} → HTTP ${response.status}: ${msg}`);
+      if (response.status === 401 && !path.startsWith('/auth')) {
+        window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+      }
+      throw new Error(msg);
+    }
+
+    return payload;
   }
 
-  const finalError = lastError instanceof Error
-    ? lastError
+  const finalError = lastNetworkError instanceof Error
+    ? lastNetworkError
     : new Error("API istegi basarisiz oldu.");
   console.error("[api] tum adaylar basarisiz oldu, son hata:", finalError.message);
   throw finalError;

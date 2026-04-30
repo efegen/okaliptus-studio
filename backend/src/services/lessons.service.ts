@@ -4,6 +4,7 @@ import {
   DiscountNotAllowedError,
   DiscountWouldExceedNetError,
   InvalidStatusTransitionError,
+  LessonConflictError,
   LessonNotFoundError,
   StudentNotFoundError,
   ValidationError,
@@ -315,6 +316,41 @@ export async function createLesson(input: CreateLessonInput): Promise<LessonRow>
       throw new ValidationError(
         "No active instructor or lesson type is configured; cannot create a lesson.",
       );
+    }
+
+    const conflictResult = await client.query<{
+      student_conflict: boolean;
+      instructor_conflict: boolean;
+    }>(
+      `
+        SELECT
+          EXISTS (
+            SELECT 1 FROM lessons
+            WHERE deleted_at IS NULL
+              AND status NOT IN ('cancelled', 'no_show')
+              AND student_id = $1
+              AND starts_at < $2::timestamptz + ($3 * INTERVAL '1 minute')
+              AND (starts_at + duration_minutes * INTERVAL '1 minute') > $2::timestamptz
+          ) AS student_conflict,
+          EXISTS (
+            SELECT 1 FROM lessons
+            WHERE deleted_at IS NULL
+              AND status NOT IN ('cancelled', 'no_show')
+              AND instructor_id = $4
+              AND starts_at < $2::timestamptz + ($3 * INTERVAL '1 minute')
+              AND (starts_at + duration_minutes * INTERVAL '1 minute') > $2::timestamptz
+          ) AS instructor_conflict
+      `,
+      [input.studentId, input.startsAt, defaults.duration_minutes, defaults.instructor_id],
+    );
+
+    const { student_conflict, instructor_conflict } = conflictResult.rows[0];
+
+    if (student_conflict) {
+      throw new LessonConflictError("Bu öğrencinin bu saatte zaten bir dersi var.");
+    }
+    if (instructor_conflict) {
+      throw new LessonConflictError("Bu eğitmenin bu saatte zaten bir dersi var.");
     }
 
     const insertResult = await client.query<LessonRow>(

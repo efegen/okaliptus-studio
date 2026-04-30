@@ -104,6 +104,12 @@ export class ValidationError extends AppError {
   }
 }
 
+export class LessonConflictError extends AppError {
+  constructor(message = "This time slot conflicts with an existing lesson.") {
+    super("LESSON_CONFLICT", message, 409);
+  }
+}
+
 export class DiscountNotAllowedError extends AppError {
   constructor(message = "Discount cannot be applied to this lesson.") {
     super("DISCOUNT_NOT_ALLOWED", message, 409);
