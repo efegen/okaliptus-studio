@@ -1253,6 +1253,15 @@ complete_lesson(p_lesson_id, p_product_sale?):
   RETURN { lesson, product_sale_id?, payment_id? }
 ```
 
+**Return shape (v1.4 hizalaması):** `complete_lesson` çağrısı **`{ lesson, product_sale_id }` objesi** döndürür — düz `LessonRow` değil. Tüm caller'lar destructure etmek zorundadır:
+
+```ts
+const { lesson: completed } = await completeLesson(lessonId);
+// completed.status, completed.prepaid_package_id, completed.price_snapshot ...
+```
+
+v1.2 ile birlikte opsiyonel ürün satışı parametresi eklendiğinde return shape genişledi; bazı eski caller'lar (mevcut smoke test'leri 01/04/05/06/08/10 dahil) düz `LessonRow` varsaymaya devam ediyordu. v1.4'te tüm call site'lar destructure formatına hizalandı (§11 "Smoke test bulguları" notu).
+
 **Advisory lock mantığı:** `student_prepaid_<id>` anahtarı sayesinde aynı öğrenci için paralel `complete_lesson` çağrıları seri işlenir; iki completed ders aynı paketin son kredisini görüp ikisi de tüketmeye çalışamaz.
 
 **Atomiklik (v1.2):** Ders tamamlama, ürün satışı yaratma ve ödeme yazma tek transaction'dadır. Kredi tahsisi race condition koruması (advisory lock) sale/payment oluşturulmadan önce alındığı için sale insert'inin trigger validasyonları tutarlı bir lesson satırı görür.
@@ -1623,11 +1632,16 @@ requireAuth(req, res, next):
   IF user IS NULL:
     RETURN 401 { error: { code: 'UNAUTHORIZED', message: 'Session expired or invalid.' } }
 
-  -- Sliding window (best-effort, fail silently)
-  UPDATE sessions
+  -- Sliding window. AWAIT edilir (request-level update eşzamanlı tamamlanır)
+  -- ama fail silently — DB hatası session'ı invalidate etmez. Caller bir
+  -- sonraki SELECT'te güncel expires_at'ı görmek istiyorsa bu await zorunlu;
+  -- önceki "fire-and-forget" davranış smoke test'inde sliding doğrulamasını
+  -- bozuyordu (§11 "Smoke test bulguları" notu).
+  await UPDATE sessions
     SET last_seen_at = now(),
         expires_at   = now() + interval '30 days'
     WHERE token = token
+  -- .catch ile yutulur
 
   req.currentUser = { id, username, displayName }
   next()
@@ -1636,6 +1650,7 @@ requireAuth(req, res, next):
 **v1.3 sapmaları:**
 - v1.3 spec'i `req.user = { id, username, full_name }` öneriyordu; v1.4 kodu `req.currentUser = { id, username, displayName }` (camelCase + display_name kolonu).
 - v1.3 spec'i 401 verirken `res.clearCookie('session')` öneriyordu; v1.4 sadece 401 döner — frontend `auth:unauthorized` event'i ile login ekranına yönlendirir, ölü cookie bir sonraki login'de üzerine yazılır.
+- v1.4 sliding update **await** edilir (önceki implementasyon fire-and-forget'di → sonraki SELECT eski `expires_at`'ı görüyordu). Latency etkisi tek `UPDATE ... WHERE token` sorgusu mertebesinde; hata `.catch` ile yutulur, oturum invalidate olmaz.
 
 **`actor_user_id` enjeksiyonu:** Mevcut mutating *iş servisleri* (`createLesson`, `completeLesson`, `uncompleteLesson`, `setLessonDiscount`, `createCashPayment`, `createPrepaidPackage`, `createProductSale`, `updateSettings`, `createLessonType`, `updateLessonType`, ...) `actorUserId` parametresi alır; route handler `req.currentUser.id`'yi servise geçirir; servis `insertAuditLog` çağrısında bu değeri `audit_logs.actor_user_id`'ye yazar. Auth event'leri (login/logout) audit'a yazılmaz (§2.14).
 
@@ -2080,6 +2095,11 @@ v1.4, v1.3 spec'inde söz verilen ama implementasyonda *kasıtlı olarak* sadele
 - PWA artefaktları (manifest, service worker, apple-touch-icon, theme-color) v1.4 kapsamı dışı; ayrı sprint'te eklenecek (mobile + iOS PWA hedefi).
 
 **Why (genel gerekçe):** Spec v1.3 auth tarafında "ideal" güvenlik modelini tarif ediyordu; v1.4 onu "yeterli + sade" modeline indirdi. Solo developer + kapalı admin sistemi + henüz canlıya çıkmamış proje → over-engineered güvenlik özellikleri taşımak hem geliştirme hızını hem yüzey alanını şişiriyordu. Auth event audit, rate limit, password change UI gibi her özellik *yokluğu kadar var olduğu güvenlikle de* ölçülmeli; bu sürümde kapsam, ileri revizyonda kanıtlanmış ihtiyaç sonrası genişler.
+
+**Smoke test bulguları (v1.4 kod düzeltmeleri):** Smoke test paketi yazılırken iki gerçek bug yakalandı; spec ile kod arasındaki uyumsuzluk değil, kodun kendi içinde sessiz hatalardı. Her ikisi de canlıya çıkmadan önce kapatıldı.
+
+1. **`validateSession` sliding update fire-and-forget'di.** [auth.service.ts](backend/src/services/auth.service.ts) içinde session lookup başarılı olduktan sonra `expires_at + last_seen_at` UPDATE'i `pool.query(...).catch(() => {})` olarak çağrılıyordu — Promise await edilmediği için caller bir sonraki SELECT'te eski `expires_at` değerini görüyordu. Spec §2.14 + §3.13 davranışı (sliding 30 gün) doğru tarif ediyordu, kod o davranışı bozuyordu. Düzeltme: tek karakter — `await pool.query(...).catch(...)`. `.catch` korunduğu için DB hatası hâlâ session'ı invalidate etmez; latency tek satır UPDATE mertebesinde. Doğrulama: smoke test 14-auth.ts B senaryosu (1 sn ardışık iki SELECT'te `expires_at` farkını ölçüyor).
+2. **`completeLesson` return shape genişlemişti, eski caller'lar destructure etmiyordu.** v1.2'de opsiyonel `productSale` parametresi eklendiğinde dönüş `LessonRow`'dan `{ lesson, product_sale_id }`'e çıkmıştı (§5.2 pseudocode'unda zaten görünüyordu, ama call site'lar güncellenmemişti). Mevcut smoke test'leri 01/04/05/06/08/10 düz `LessonRow` varsayıp `done.status`, `done.prepaid_package_id` okuyordu → her seferinde `undefined` dönüyor, assertion fail oluyordu. Etkilenen 6 dosyada `const { lesson: done } = await completeLesson(...)` formatına geçildi; başka caller (HTTP route handler'ı) zaten yeni shape'i kullanıyordu, üretim akışı etkilenmedi. Doğrulama: 17/17 smoke yeşil.
 
 ### v1.3 (önceki)
 
