@@ -16,13 +16,19 @@ import { kpiRouter } from "./routes/kpi.router.js";
 import { settingsRouter } from "./routes/settings.router.js";
 import { instructorsRouter } from "./routes/instructors.router.js";
 import { lessonTypesRouter } from "./routes/lesson-types.router.js";
+import { authRouter } from "./routes/auth.router.js";
+import { requireAuth } from "./middleware/requireAuth.js";
 
 export function createApp() {
   const app = express();
 
   app.disable("x-powered-by");
   app.use((req, res, next) => {
-    res.setHeader("Access-Control-Allow-Origin", req.headers.origin ?? "*");
+    const origin = req.headers.origin;
+    if (origin) {
+      res.setHeader("Access-Control-Allow-Origin", origin);
+      res.setHeader("Access-Control-Allow-Credentials", "true");
+    }
     res.setHeader("Vary", "Origin");
     res.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -36,8 +42,14 @@ export function createApp() {
   });
   app.use(express.json());
 
-  // ── Top-level resource routers ─────────────────────────────────────────────
+  // ── Public routes (no auth required) ──────────────────────────────────────
   app.use("/health", healthRouter);
+  app.use("/auth", authRouter);
+
+  // ── Auth gate ─────────────────────────────────────────────────────────────
+  app.use(requireAuth);
+
+  // ── Protected resource routers ────────────────────────────────────────────
   app.use("/lessons", lessonsRouter);
   app.use("/payments", paymentsRouter);
   app.use("/packages", packagesRouter);
@@ -49,7 +61,6 @@ export function createApp() {
   app.use("/students", studentsRouter);
 
   // ── Student sub-resources (nested under /students/:studentId) ─────────────
-  // These keep the :studentId param distinct from resource :id params.
   app.get("/students/:studentId/lessons", listStudentLessonsHandler);
   app.get("/students/:studentId/packages", listStudentPackagesHandler);
   app.get("/students/:studentId/product-sales", listStudentProductSalesHandler);

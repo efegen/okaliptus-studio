@@ -5,7 +5,10 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
-      '/kpi': 'http://127.0.0.1:4000',
+      '^/(auth|kpi|lessons|students|payments|packages|product-sales|settings|instructors|lesson-types|health)': {
+        target: 'http://127.0.0.1:4000',
+        changeOrigin: true,
+      },
     },
   },
 })

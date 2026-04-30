@@ -69,6 +69,7 @@ async function apiRequest(path, options = {}) {
     try {
       const response = await fetch(url, {
         method: options.method || "GET",
+        credentials: "include",
         headers: {
           Accept: "application/json",
           ...(options.body ? { "Content-Type": "application/json" } : {}),
@@ -85,6 +86,9 @@ async function apiRequest(path, options = {}) {
       if (!response.ok) {
         const msg = getErrorMessage(payload);
         console.error(`[api] ${url} → HTTP ${response.status}: ${msg}`);
+        if (response.status === 401 && !path.startsWith('/auth')) {
+          window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+        }
         throw new Error(msg);
       }
 
@@ -107,6 +111,26 @@ async function apiRequest(path, options = {}) {
 
 async function apiGet(path) {
   return apiRequest(path);
+}
+
+// ─── Auth ────────────────────────────────────────────────────────────────────
+
+export async function login(username, password) {
+  await apiRequest('/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ username, password }),
+  });
+  return getMe();
+}
+
+export async function logout() {
+  return apiRequest('/auth/logout', { method: 'POST' });
+}
+
+export async function getMe() {
+  const payload = await apiRequest('/auth/me');
+  if (!payload?.data) throw new Error('Kullanıcı bilgisi alınamadı.');
+  return payload.data;
 }
 
 // ─── KPI ────────────────────────────────────────────────────────────────────

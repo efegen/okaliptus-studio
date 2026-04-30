@@ -202,17 +202,29 @@ input, select { font-family: inherit; }
 
 .header-actions { display: flex; gap: 6px; align-items: center; }
 
+.header-profile-wrap { position: relative; }
 .header-profile {
-  display: flex; align-items: center; gap: 10px;
-  padding: 4px 4px 4px 10px;
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 4px 4px 4px 12px;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: var(--bg);
   cursor: pointer;
+  font: inherit;
+  color: inherit;
+  line-height: 1;
   transition: background 0.12s;
 }
 .header-profile:hover { background: var(--surface-2); }
-.header-profile-name { font-size: 13px; font-weight: 500; color: var(--ink); }
+.header-profile-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+  white-space: nowrap;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 /* --- Avatar --- */
 .avatar {
@@ -3655,3 +3667,154 @@ input, select { font-family: inherit; }
 .lt-status-btn:last-child { border-right: none; }
 .lt-status-btn.is-active { background: var(--sage-2, #d6f0e0); color: var(--sage-ink, #1a6639); }
 .lt-status-btn.is-passive { background: var(--bg-2); color: var(--ink-2); }
+
+/* ── Login ────────────────────────────────────────────────────────────────── */
+.login-root {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(
+    160deg,
+    oklch(0.94 0.014 75)  0%,
+    oklch(0.90 0.024 130) 55%,
+    oklch(0.93 0.012 80)  100%
+  );
+}
+.login-card {
+  width: 100%;
+  max-width: 340px;
+  background: oklch(0.995 0.003 80 / 0.88);
+  backdrop-filter: blur(12px);
+  border: 1px solid oklch(0.88 0.015 100 / 0.6);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: 36px 32px 32px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.login-logo {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  margin-bottom: 10px;
+}
+.login-title {
+  font-family: var(--f-serif);
+  font-size: 1.2rem;
+  font-weight: 500;
+  color: var(--ink);
+  margin: 0 0 24px;
+  letter-spacing: -0.01em;
+}
+.login-form {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.login-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.login-field label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-2);
+  letter-spacing: 0.01em;
+}
+.login-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.login-field input {
+  width: 100%;
+  padding: 8px 11px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-sm);
+  background: oklch(0.97 0.006 80 / 0.7);
+  color: var(--ink);
+  font-size: 13.5px;
+  outline: none;
+  transition: border-color 0.15s, background 0.15s;
+}
+.login-field input:focus {
+  border-color: var(--sage);
+  background: oklch(0.97 0.006 80 / 0.95);
+}
+.login-field input:disabled { opacity: 0.6; }
+.login-field input.has-toggle { padding-right: 38px; }
+.login-eye-btn {
+  position: absolute;
+  right: 8px;
+  background: none;
+  border: none;
+  padding: 2px;
+  cursor: pointer;
+  color: var(--ink-4);
+  display: flex;
+  align-items: center;
+  transition: color 0.15s;
+}
+.login-eye-btn:hover { color: var(--ink-2); }
+.login-error {
+  font-size: 12.5px;
+  color: var(--warn);
+  text-align: center;
+}
+.login-btn {
+  width: 100%;
+  padding: 9px;
+  background: var(--sage);
+  color: oklch(0.97 0.006 145);
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 13.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+  margin-top: 4px;
+  letter-spacing: 0.01em;
+}
+.login-btn:hover:not(:disabled) { background: oklch(0.42 0.09 145); }
+.login-btn:disabled { opacity: 0.65; cursor: default; }
+
+/* ── Profile menu ─────────────────────────────────────────────────────────── */
+.profile-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 160px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  padding: 6px;
+  z-index: 200;
+}
+.profile-menu-name {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-3);
+  padding: 6px 10px 8px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 4px;
+}
+.profile-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  background: none;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--ink-2);
+  cursor: pointer;
+  text-align: left;
+}
+.profile-menu-item:hover { background: var(--bg-2); color: var(--ink); }

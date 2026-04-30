@@ -8,7 +8,8 @@ import { StudentProfilePage } from './student-profile';
 import { SettingsPage } from './settings';
 import { LessonTypesPage } from './lesson-types';
 import { InstructorsPage } from './instructors';
-import { getSettings } from './api';
+import { LoginPage } from './login';
+import { getSettings, getMe, logout as apiLogout } from './api';
 
 const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
   "homeLayout": "detayli",
@@ -16,7 +17,7 @@ const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
   "density": "compact"
 }/*EDITMODE-END*/;
 
-function App() {
+function App({ currentUser, onLogout }) {
   const [page, setPage] = React.useState(() => localStorage.getItem("okaliptus-page") || "home");
   const [studentDetailId, setStudentDetailId] = React.useState(null);
   const [tweaks, setTweaks] = React.useState(TWEAK_DEFAULTS);
@@ -65,7 +66,7 @@ function App() {
     <div className={cls}>
       <Sidebar page={page} setPage={navigate} />
       <div style={{display:"flex",flexDirection:"column",minWidth:0}}>
-        <Header page={page} />
+        <Header page={page} user={currentUser} onLogout={onLogout} />
         <main className="main" data-screen-label={page}>
           {page === "home" && <HomePage layout={tweaks.homeLayout} onNavigate={navigate} />}
           {page === "students" && (
@@ -124,5 +125,43 @@ function App() {
   );
 }
 
+function Root() {
+  const [authState, setAuthState] = React.useState('loading');
+  const [currentUser, setCurrentUser] = React.useState(null);
+
+  React.useEffect(() => {
+    getMe()
+      .then(user => {
+        setCurrentUser(user);
+        setAuthState('authenticated');
+      })
+      .catch(() => setAuthState('unauthenticated'));
+  }, []);
+
+  React.useEffect(() => {
+    function handler() {
+      setCurrentUser(null);
+      setAuthState('unauthenticated');
+    }
+    window.addEventListener('auth:unauthorized', handler);
+    return () => window.removeEventListener('auth:unauthorized', handler);
+  }, []);
+
+  function handleLogin(user) {
+    setCurrentUser(user);
+    setAuthState('authenticated');
+  }
+
+  async function handleLogout() {
+    try { await apiLogout(); } catch {}
+    setCurrentUser(null);
+    setAuthState('unauthenticated');
+  }
+
+  if (authState === 'loading') return null;
+  if (authState === 'unauthenticated') return <LoginPage onLogin={handleLogin} />;
+  return <App currentUser={currentUser} onLogout={handleLogout} />;
+}
+
 const root = ReactDOM.createRoot(document.getElementById("root"));
-root.render(<App />);
+root.render(<Root />);
