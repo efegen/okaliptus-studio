@@ -32,7 +32,7 @@ import { deletePayment, getPaymentById } from "../../src/services/payments.servi
 import { pool } from "../../src/db/connection.js";
 import {
   section, step, info, assert, assertEqual, assertRejects,
-  cleanupSmoke, closePool, daysAgo,
+  cleanupSmoke, closePool, daysAgo, nextSlotIso,
 } from "./_shared.js";
 
 async function run(): Promise<void> {
@@ -66,10 +66,10 @@ async function run(): Promise<void> {
     step("Lesson oluşturup tamamlanıyor (1 kredi tüketilecek)...");
     const lesson = await createLesson({
       studentId: student.id,
-      startsAt: daysAgo(5),
+      startsAt: nextSlotIso(),
       mode: "onsite",
     });
-    const done = await completeLesson(lesson.id);
+    const { lesson: done } = await completeLesson(lesson.id);
     assertEqual(done.prepaid_package_id, pkg1.id, "lesson paketten kredi düştü");
     info("lesson.id (pkg1'den kredi kullandı)", lesson.id);
 

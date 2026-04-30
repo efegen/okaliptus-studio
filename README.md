@@ -51,12 +51,65 @@ The spec covers data model, API contracts, UI page structure, auth flows, and mi
 
 ## Scripts
 
+### Backend (run from `backend/`)
+
 ```bash
-npm run migrate          # Run pending SQL migrations
-npm run bootstrap        # Seed instructor + admin users from .env
-npm run smoke            # Run smoke test suite against local DB
-npm run reset-db         # Drop and recreate local DB (dev only)
+npm run db:migrate       # Run pending SQL migrations
+npm run db:bootstrap     # Seed instructor + admin users from .env
+
+# Smoke test paketi (service-layer integration)
+npm run smoke            # Run all smoke tests (sequential)
+npm run smoke -- --bail  # Stop at first failure (CI mode)
+npm run smoke -- --only 11,99   # Run specific files
+npm run smoke:single -- 11      # Same, alias
+npm run smoke:reset      # Reset DB → migrate → bootstrap → run all (full clean run)
 ```
+
+### Frontend (run from repo root)
+
+```bash
+npm run dev              # Vite dev server (port 5173)
+npm run build            # Production build to dist/
+npm run preview          # Serve built artifacts
+
+# Frontend smoke (Vitest + React Testing Library)
+npm run test             # Run all *.test.{js,jsx} once
+npm run test:watch       # Watch mode for TDD
+npm run test:ui          # Vitest browser UI
+```
+
+## Test Coverage
+
+The project ships with two parallel smoke layers:
+
+**Backend smoke** (`backend/scripts/smoke/`) — direct service-layer
+integration tests against a local Postgres. Covers spec §7 scenarios plus
+v1.4 additions (uncomplete lesson, audit coverage, DB-level invariants,
+auth, KPI end-to-end). 17 files, ~60-90s wall time. The KPI E2E test
+(`99-kpi-end-to-end.ts`) is delta-based, so residual data from prior runs
+does not invalidate it; for a fully clean run, use `npm run smoke:reset`.
+
+**Frontend smoke** (`src/__tests__/`) — Vitest + React Testing Library
+component-level tests with mocked `fetch`. Covers login form, API client
+behavior (401 dispatch, credential cookies), students list, student
+profile, home dashboard, auth gating. 6 files, runs in <5s.
+
+Pre-deploy verification:
+
+```bash
+# 1. Backend (full clean run)
+cd backend && npm run smoke:reset
+
+# 2. Frontend
+cd .. && npm run test
+
+# 3. Manual browser smoke
+npm run dev   # backend in another terminal
+```
+
+If all three are green, v1.4 is production-ready (modulo Vercel/Railway
+deploy hygiene — CORS whitelist, env vars, custom domain — handled
+separately).
 
 ## License
 

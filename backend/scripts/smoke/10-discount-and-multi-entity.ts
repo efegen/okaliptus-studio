@@ -40,6 +40,7 @@ import {
   closePool,
   isoNow,
   daysAgo,
+  nextSlotIso,
   overrideDefaultLessonTypePrice,
 } from "./_shared.js";
 
@@ -77,7 +78,7 @@ async function run(): Promise<void> {
 
     const lessonA = await createLesson({
       studentId: studentA.id,
-      startsAt: isoNow(),
+      startsAt: nextSlotIso(),
       mode: "onsite",
     });
     assertEqual(lessonA.instructor_id, seed.instr_id, "lesson.instructor_id = default");
@@ -90,7 +91,7 @@ async function run(): Promise<void> {
     section("B — Completed + exact 900 TL payment");
     const studentB = await createStudent({ fullName: "SMOKE10_B"});
     studentIds.push(studentB.id);
-    const lessonB = await createLesson({ studentId: studentB.id, startsAt: daysAgo(1), mode: "onsite" });
+    const lessonB = await createLesson({ studentId: studentB.id, startsAt: nextSlotIso(), mode: "onsite" });
     await completeLesson(lessonB.id);
     await createCashPayment({
       targetType: "lesson",
@@ -110,7 +111,7 @@ async function run(): Promise<void> {
     section("C — Partial 300 TL payment → remaining 600");
     const studentC = await createStudent({ fullName: "SMOKE10_C"});
     studentIds.push(studentC.id);
-    const lessonC = await createLesson({ studentId: studentC.id, startsAt: daysAgo(1), mode: "onsite" });
+    const lessonC = await createLesson({ studentId: studentC.id, startsAt: nextSlotIso(), mode: "onsite" });
     await completeLesson(lessonC.id);
     await createCashPayment({
       targetType: "lesson",
@@ -129,7 +130,7 @@ async function run(): Promise<void> {
     section("D — Overpayment reject (901 > 900)");
     const studentD = await createStudent({ fullName: "SMOKE10_D"});
     studentIds.push(studentD.id);
-    const lessonD = await createLesson({ studentId: studentD.id, startsAt: daysAgo(1), mode: "onsite" });
+    const lessonD = await createLesson({ studentId: studentD.id, startsAt: nextSlotIso(), mode: "onsite" });
     await completeLesson(lessonD.id);
     await assertRejects(
       () =>
@@ -153,7 +154,7 @@ async function run(): Promise<void> {
     section("E — Discount 200 TL → net 700, 700 kabul, 701 red");
     const studentE = await createStudent({ fullName: "SMOKE10_E"});
     studentIds.push(studentE.id);
-    const lessonE = await createLesson({ studentId: studentE.id, startsAt: daysAgo(1), mode: "onsite" });
+    const lessonE = await createLesson({ studentId: studentE.id, startsAt: nextSlotIso(), mode: "onsite" });
     await completeLesson(lessonE.id);
     const dE = await setLessonDiscount({ lessonId: lessonE.id, discountAmount: "200" });
     assertMoney(dE.lesson.discount_amount, "200", "E: discount_amount = 200");
@@ -175,7 +176,7 @@ async function run(): Promise<void> {
 
     // After 700 paid, remaining = 0 so even 1 TL would overpay. Using a second
     // lesson to verify the 701 rejection cleanly.
-    const lessonE2 = await createLesson({ studentId: studentE.id, startsAt: daysAgo(2), mode: "onsite" });
+    const lessonE2 = await createLesson({ studentId: studentE.id, startsAt: nextSlotIso(), mode: "onsite" });
     await completeLesson(lessonE2.id);
     await setLessonDiscount({ lessonId: lessonE2.id, discountAmount: "200" });
     await assertRejects(
@@ -195,7 +196,7 @@ async function run(): Promise<void> {
     section("F — paid=800: 100 TL discount kabul, 200 TL discount red");
     const studentF = await createStudent({ fullName: "SMOKE10_F"});
     studentIds.push(studentF.id);
-    const lessonF = await createLesson({ studentId: studentF.id, startsAt: daysAgo(1), mode: "onsite" });
+    const lessonF = await createLesson({ studentId: studentF.id, startsAt: nextSlotIso(), mode: "onsite" });
     await completeLesson(lessonF.id);
     await createCashPayment({
       targetType: "lesson",
@@ -230,7 +231,7 @@ async function run(): Promise<void> {
     section("G — Discount remove (0) + audit_logs event");
     const studentG = await createStudent({ fullName: "SMOKE10_G"});
     studentIds.push(studentG.id);
-    const lessonG = await createLesson({ studentId: studentG.id, startsAt: daysAgo(1), mode: "onsite" });
+    const lessonG = await createLesson({ studentId: studentG.id, startsAt: nextSlotIso(), mode: "onsite" });
     await completeLesson(lessonG.id);
     await setLessonDiscount({ lessonId: lessonG.id, discountAmount: "150" });
     await setLessonDiscount({ lessonId: lessonG.id, discountAmount: "0" });
@@ -279,10 +280,10 @@ async function run(): Promise<void> {
 
     const lessonH = await createLesson({
       studentId: studentH.id,
-      startsAt: daysAgo(1),
+      startsAt: nextSlotIso(),
       mode: "onsite",
     });
-    const completedH = await completeLesson(lessonH.id);
+    const { lesson: completedH } = await completeLesson(lessonH.id);
     assertEqual(completedH.prepaid_package_id, pkg.prepaidPackage.id, "H: ders krediden kapandı");
     assertMoney(completedH.price_snapshot, "450", "H: price_snapshot = paket unit_price");
     assertMoney(completedH.discount_amount, "0", "H: paket dersinde discount=0");
@@ -316,7 +317,7 @@ async function run(): Promise<void> {
     // Use now-minus-1min to avoid future scheduling edge case but still in week.
     const lessonI = await createLesson({
       studentId: studentI.id,
-      startsAt: isoNow(-60_000),
+      startsAt: nextSlotIso(),
       mode: "onsite",
     });
     await completeLesson(lessonI.id);

@@ -22,6 +22,9 @@ async function main() {
     const username = entry.slice(0, colonIdx).trim();
     const password = entry.slice(colonIdx + 1).trim();
     if (!username || !password) throw new Error(`Invalid entry: "${entry}"`);
+    if (password.length < 6) {
+      throw new Error(`Password too short for "${username}" (min 6 chars)`);
+    }
     return { username, password };
   });
 

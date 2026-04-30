@@ -195,6 +195,14 @@ export async function getDebtors() {
   return payload.data;
 }
 
+export async function getStudentsKpi() {
+  const payload = await apiGet('/students/kpi');
+  if (typeof payload?.data !== 'object' || payload.data === null || Array.isArray(payload.data)) {
+    throw new Error('Öğrenci KPI verisi alınamadı.');
+  }
+  return payload.data;
+}
+
 export async function getStudentById(studentId) {
   const payload = await apiGet(`/students/${encodeURIComponent(studentId)}`);
   if (typeof payload?.data !== 'object' || payload.data === null || Array.isArray(payload.data)) {

@@ -35,7 +35,7 @@ import { createPrepaidPackage, getPrepaidPackageStatus } from "../../src/service
 import { pool } from "../../src/db/connection.js";
 import {
   section, step, info, ok, assert, assertMoney, assertEqual,
-  cleanupSmoke, closePool, daysAgo, overrideDefaultLessonTypePrice,
+  cleanupSmoke, closePool, daysAgo, nextSlotIso, overrideDefaultLessonTypePrice,
 } from "./_shared.js";
 
 type LessonRow = {
@@ -87,12 +87,12 @@ async function run(): Promise<void> {
     step("2 adet scheduled lesson oluşturuluyor (A ve B)...");
     const lessonA = await createLesson({
       studentId: student.id,
-      startsAt: daysAgo(3),
+      startsAt: nextSlotIso(),
       mode: "onsite",
     });
     const lessonB = await createLesson({
       studentId: student.id,
-      startsAt: daysAgo(2),
+      startsAt: nextSlotIso(),
       mode: "online",
     });
     info("lessonA.id", lessonA.id);
@@ -107,7 +107,7 @@ async function run(): Promise<void> {
 
     const results = await Promise.allSettled([
       completeLesson(lessonA.id).then(
-        (lesson) => ({ ok: true, lesson } as const),
+        ({ lesson }) => ({ ok: true, lesson } as const),
       ).catch(
         (err: unknown) => ({
           ok: false,
@@ -117,7 +117,7 @@ async function run(): Promise<void> {
         } as const),
       ),
       completeLesson(lessonB.id).then(
-        (lesson) => ({ ok: true, lesson } as const),
+        ({ lesson }) => ({ ok: true, lesson } as const),
       ).catch(
         (err: unknown) => ({
           ok: false,

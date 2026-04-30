@@ -8,7 +8,10 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "db:migrate": "tsx src/db/migrate.ts",
-    "db:bootstrap": "tsx scripts/bootstrap.ts"
+    "db:bootstrap": "tsx scripts/bootstrap.ts",
+    "smoke": "tsx scripts/smoke/run-all.ts",
+    "smoke:single": "tsx scripts/smoke/run-all.ts --only",
+    "smoke:reset": "tsx scripts/reset_db.ts && tsx src/db/migrate.ts && tsx scripts/bootstrap.ts && tsx scripts/smoke/run-all.ts"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

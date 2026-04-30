@@ -3,8 +3,9 @@ import { getLessonTypes, createLessonType, updateLessonType } from './api';
 import { Icon } from './layout';
 
 function formatPriceTRY(raw) {
+  if (raw === null || raw === undefined || raw === '') return '—';
   const n = Number(raw);
-  if (!Number.isFinite(n)) return '';
+  if (!Number.isFinite(n)) return '—';
   const hasFraction = Math.abs(n - Math.trunc(n)) > 0.0001;
   return `₺${n.toLocaleString('tr-TR', {
     minimumFractionDigits: hasFraction ? 2 : 0,
@@ -13,6 +14,30 @@ function formatPriceTRY(raw) {
 }
 
 const EMPTY_FORM = { name: '', default_duration_minutes: '60', default_price: '' };
+const FILTERS = [
+  { key: 'all', label: 'Tümü' },
+  { key: 'active', label: 'Aktif' },
+  { key: 'passive', label: 'Pasif' },
+];
+
+const TONE_KEYS = ['lesson', 'payment', 'sale', 'package', 'student'];
+
+function getLessonTypeTone(id) {
+  const n = typeof id === 'number' ? id : parseInt(id, 10);
+  if (!Number.isFinite(n)) return TONE_KEYS[0];
+  return TONE_KEYS[Math.abs(n) % TONE_KEYS.length];
+}
+
+function getLessonTypeMark(name) {
+  return String(name || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map(part => part[0])
+    .join('')
+    .toLocaleUpperCase('tr-TR') || 'DT';
+}
 
 function LessonTypeModal({ initial, onSave, onClose }) {
   const isNew = !initial;
@@ -51,8 +76,13 @@ function LessonTypeModal({ initial, onSave, onClose }) {
 
   return (
     <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal">
-        <h3>{isNew ? 'Yeni Ders Türü' : 'Ders Türünü Düzenle'}</h3>
+      <div className="modal lt-modal">
+        <div className="lt-modal-head">
+          <div className="lt-modal-mark" aria-hidden="true">
+            <Icon.Layers width="18" height="18" />
+          </div>
+          <h3>{isNew ? 'Yeni ders türü' : 'Ders türünü düzenle'}</h3>
+        </div>
 
         <form onSubmit={handleSubmit}>
           <div className="form-row">
@@ -77,7 +107,7 @@ function LessonTypeModal({ initial, onSave, onClose }) {
               />
             </div>
             <div className="form-row" style={{ margin: 0 }}>
-              <label>Varsayılan Fiyat (₺)</label>
+              <label>Liste fiyatı (₺)</label>
               <input
                 type="number"
                 min={0}
@@ -92,7 +122,7 @@ function LessonTypeModal({ initial, onSave, onClose }) {
           {!isNew && (
             <div className="form-row" style={{ marginTop: 8 }}>
               <label>Durum</label>
-              <div className="lt-status-toggle">
+              <div className="lt-status-toggle" aria-label="Ders türü durumu">
                 <button
                   type="button"
                   className={'lt-status-btn' + (form.is_active ? ' is-active' : '')}
@@ -124,34 +154,51 @@ function LessonTypeModal({ initial, onSave, onClose }) {
 }
 
 function LessonTypeCard({ lt, onEdit }) {
+  const tone = getLessonTypeTone(lt.id);
+  const isActive = !!lt.is_active;
+  const className = [
+    'lt-card',
+    `lt-tone-${tone}`,
+    isActive ? '' : 'is-passive',
+  ].filter(Boolean).join(' ');
+
   return (
-    <div className={'lt-card' + (lt.is_active ? '' : ' lt-card-passive')}>
-      <div className="lt-card-head">
-        <span className={'pill ' + (lt.is_active ? 'pill-sage' : 'pill-neutral')}>
-          {lt.is_active ? 'Aktif' : 'Pasif'}
-        </span>
-        <button className="lt-edit-btn" onClick={() => onEdit(lt)} aria-label="Düzenle">
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-            <path d="M11.5 2.5l2 2L5 13H3v-2L11.5 2.5z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/>
-          </svg>
-          Düzenle
+    <article className={className}>
+      <header className="lt-card-top">
+        <span className="lt-card-mark" aria-hidden="true">{getLessonTypeMark(lt.name)}</span>
+        <button
+          type="button"
+          className="iconbtn lt-card-edit"
+          onClick={() => onEdit(lt)}
+          aria-label={`${lt.name} düzenle`}
+          title="Düzenle"
+        >
+          <Icon.Edit width="14" height="14" />
         </button>
+      </header>
+
+      <div className="lt-card-body">
+        <h2 className="lt-card-name">{lt.name}</h2>
+        <span className={'lt-card-status ' + (isActive ? 'is-active' : 'is-passive')}>
+          <span className="lt-card-status-dot" aria-hidden="true" />
+          {isActive ? 'Aktif' : 'Pasif'}
+        </span>
       </div>
 
-      <div className="lt-card-name">{lt.name}</div>
-
-      <div className="lt-card-meta">
-        <div className="lt-meta-item">
-          <span className="lt-meta-label">Süre</span>
-          <span className="lt-meta-value">{lt.default_duration_minutes} dk</span>
+      <dl className="lt-card-stats">
+        <div className="lt-card-stat">
+          <dt className="lt-card-stat-label">Süre</dt>
+          <dd className="lt-card-stat-value">
+            <Icon.Clock width="14" height="14" />
+            {lt.default_duration_minutes} dk
+          </dd>
         </div>
-        <div className="lt-meta-sep" />
-        <div className="lt-meta-item">
-          <span className="lt-meta-label">Varsayılan fiyat</span>
-          <span className="lt-meta-price">{formatPriceTRY(lt.default_price)}</span>
+        <div className="lt-card-stat">
+          <dt className="lt-card-stat-label">Liste fiyatı</dt>
+          <dd className="lt-card-stat-value is-price">{formatPriceTRY(lt.default_price)}</dd>
         </div>
-      </div>
-    </div>
+      </dl>
+    </article>
   );
 }
 
@@ -160,6 +207,8 @@ export function LessonTypesPage() {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState(null);
   const [modal, setModal] = React.useState(null); // null | 'new' | lessonTypeObj
+  const [statusFilter, setStatusFilter] = React.useState('all');
+  const [query, setQuery] = React.useState('');
 
   React.useEffect(() => {
     let cancelled = false;
@@ -187,42 +236,100 @@ export function LessonTypesPage() {
   }
 
   const activeCount = items.filter(x => x.is_active).length;
+  const passiveCount = items.length - activeCount;
+  const normalizedQuery = query.trim().toLocaleLowerCase('tr-TR');
+  const visibleItems = React.useMemo(() => {
+    return items
+      .filter(item => {
+        if (statusFilter === 'active' && !item.is_active) return false;
+        if (statusFilter === 'passive' && item.is_active) return false;
+        if (!normalizedQuery) return true;
+        return item.name.toLocaleLowerCase('tr-TR').includes(normalizedQuery);
+      })
+      .sort((a, b) => {
+        if (a.is_active !== b.is_active) return a.is_active ? -1 : 1;
+        return a.name.localeCompare(b.name, 'tr-TR');
+      });
+  }, [items, normalizedQuery, statusFilter]);
+
+  const filterCounts = {
+    all: items.length,
+    active: activeCount,
+    passive: passiveCount,
+  };
 
   return (
-    <div className="page settings-page">
+    <div className="page lesson-types-page">
       <div className="page-head">
         <div>
           <div className="eyebrow">{activeCount} aktif · {items.length} toplam</div>
-          <h1 className="page-title">Ders Türleri</h1>
+          <h1 className="page-title">Ders türleri</h1>
         </div>
-        <div className="page-head-actions">
+        <div className="head-actions">
+          <label className="lt-search">
+            <Icon.Search width="15" height="15" />
+            <input
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              aria-label="Ders türü ara"
+              placeholder="Ara..."
+              disabled={items.length === 0}
+            />
+          </label>
           <button className="btn btn-primary" onClick={() => setModal('new')}>
             <Icon.Plus width="14" height="14"/>
-            Yeni Ders Türü
+            Yeni ders türü
           </button>
         </div>
       </div>
 
       {loading ? (
-        <div className="stg-loading">Yükleniyor…</div>
+        <div className="lt-state">Yükleniyor…</div>
       ) : error ? (
         <div className="stg-feedback stg-feedback-err">{error}</div>
       ) : items.length === 0 ? (
         <div className="lt-empty">
           <div className="lt-empty-icon">
-            <Icon.Repeat width="32" height="32"/>
+            <Icon.Layers width="28" height="28"/>
           </div>
-          <div className="lt-empty-text">Henüz ders türü tanımlı değil.</div>
+          <div className="lt-empty-title">Henüz ders türü tanımlı değil</div>
+          <div className="lt-empty-sub">İlk ders türünü ekleyerek programını şekillendirmeye başla.</div>
           <button className="btn btn-primary" onClick={() => setModal('new')}>
+            <Icon.Plus width="14" height="14"/>
             İlk ders türünü ekle
           </button>
         </div>
       ) : (
-        <div className="lt-grid">
-          {items.map(lt => (
-            <LessonTypeCard key={lt.id} lt={lt} onEdit={setModal} />
-          ))}
-        </div>
+        <>
+          <div className="lt-filters" role="tablist" aria-label="Durum filtresi">
+            {FILTERS.map(filter => (
+              <button
+                key={filter.key}
+                type="button"
+                role="tab"
+                className={'lt-chip' + (statusFilter === filter.key ? ' is-active' : '')}
+                onClick={() => setStatusFilter(filter.key)}
+                aria-pressed={statusFilter === filter.key}
+              >
+                {filter.label}
+                <span className="lt-chip-count">{filterCounts[filter.key]}</span>
+              </button>
+            ))}
+          </div>
+
+          {visibleItems.length === 0 ? (
+            <div className="lt-state lt-state-empty">
+              <Icon.Search width="20" height="20" />
+              <span>Eşleşen ders türü bulunamadı.</span>
+            </div>
+          ) : (
+            <div className="lt-grid">
+              {visibleItems.map(lt => (
+                <LessonTypeCard key={lt.id} lt={lt} onEdit={setModal} />
+              ))}
+            </div>
+          )}
+        </>
       )}
 
       {modal && (

@@ -1,6 +1,6 @@
 # Yoga Stüdyosu Dashboard — v1 Spesifikasyonu
 
-**Spec versiyonu:** 1.3 · son revizyon kapsamı için bkz. §11.
+**Spec versiyonu:** 1.4 · son revizyon kapsamı için bkz. §11.
 
 ## 0. Bağlam ve Hedef
 
@@ -75,7 +75,8 @@ Aşağıdaki kurallar şemayı ve servis katmanını yöneten otoritedir. Uyumsu
 - `no_show → completed`: serbest
 - `completed → cancelled`: **yasak** (istisnasız)
 - `completed → no_show`: **yasak** (istisnasız)
-- Completed durumdan geri sarma yapılamaz. Hatalı completed kaydı varsa düzeltme akışı şudur: bağlı payment'ları soft-delete et, sonra lesson'ı soft-delete et, yeni doğru kayıt oluştur.
+- `completed → scheduled` (uncomplete): **kısıtlı izin** (v1.4). Yalnızca son **24 saat içinde tamamlanmış**, **hiç aktif ödemesi olmayan** ve **bağlı ürün satışında ödeme bulunmayan** dersler geri alınabilir. Akış: bağlı aktif ürün satışları soft-delete edilir, `prepaid_package_id` ve `completed_at` NULL'a çekilir, status `scheduled` olur. Audit: `lesson_uncompleted`. Eski kayıtlar veya ödemeli kayıtlar için klasik düzeltme akışı geçerli (payment soft-delete + lesson soft-delete + yeniden oluştur). Detay: §5.7b.
+- Completed durumdan geri sarma yukarıdaki dar pencere dışında yapılamaz. Hatalı completed kaydı varsa düzeltme akışı şudur: bağlı payment'ları soft-delete et, sonra lesson'ı soft-delete et, yeni doğru kayıt oluştur.
 - Tüm status değişimleri `audit_logs`'a düşer.
 
 ### 2.3 Fiyat snapshot
@@ -194,31 +195,34 @@ V1'de bir dersin fiyatından indirim yapma gereksinimi için `lessons.discount_a
 **KPI:**
 - KPI/takvim v1'de instructor/lesson_type bazlı ayrıştırma yapmaz. Bu ayrıştırıcılar gelecek revizyonun konusudur.
 
-**Audit (v1.2 not):**
-- `lesson_types` üzerinde yapılan değişiklikler `audit_logs` tablosuna yazılmaz — bu, fiyat değişiminin sessizce yapılabildiği bilinçli bir boşluktur. v1.2 kapsamında geride bırakılmıştır; yeterince operasyonel ihtiyaç doğduğunda ayrı `lesson_type_*` action'ları eklenecek (§3.7 not).
+**Audit (v1.4 güncelleme):**
+- `lesson_types` create/update işlemleri **artık** `audit_logs`'a yazılır (`lesson_type_created`, `lesson_type_updated`). v1.2'deki "sessizce yapılır" notu v1.4 ile geçersizdir; CHECK listesi migration 0225 ile genişletildi. `studio_settings` PATCH'leri de `settings_updated` action'ı ile audit'a düşer.
 
-### 2.14 Kimlik doğrulama (Authentication, v1.3)
+### 2.14 Kimlik doğrulama (Authentication, v1.3 → v1.4)
 
-V1.3'ten itibaren sistem 3 admin user ile çalışır. Tek rol seviyesi: `admin`. Hepsi tüm kaynaklara erişir; rol-bazlı kısıtlama yoktur (gelecekte gerekirse genişletilir, §9).
+V1.3'ten itibaren sistem birden fazla admin user ile çalışır (deploy seed'i 3 user; üst sınır yok). Tek rol seviyesi: `admin`. Hepsi tüm kaynaklara erişir; rol-bazlı kısıtlama yoktur (gelecekte gerekirse genişletilir, §9).
 
-**Kapsam ve kurallar:**
+**Kapsam ve kurallar (v1.4 kod realitesine göre):**
 
 | Kural | Davranış |
 |---|---|
 | Korumalı endpoint | `/auth/*` ve `/health` dışındaki **tüm** endpoint'ler valid session cookie zorunludur. Yoksa `401 UNAUTHORIZED`. |
-| Session token | Opaque (32 byte url-safe random); httpOnly + secure (production) + SameSite=Lax cookie. JWT **değil** — server-side `sessions` tablosunda tutulur, revoke edilebilir (§3.13). |
-| Session TTL | Sliding 30 gün: her korumalı request `last_seen_at = now()` günceller, `expires_at = last_seen_at + 30d`. 30 gün hareket yoksa otomatik invalidate. |
-| Password kuralı | bcrypt cost 12, min 6 char, max 100 char. Plaintext hiçbir log/audit'e düşmez. **Min 6 kararı:** kapalı 3-admin sistemi + rate limit (5/15dk/IP) + bcrypt cost 12 birleşimi 6-haneli PIN'i pratik olarak kırılamaz yapar (~5 yıl ortalama brute force). 6-haneli sayısal şifre mobil klavyede hızlı girilir. |
-| Rate limit | `POST /auth/login` IP başına 5 deneme / 15 dk. Aşıldığında `429 RATE_LIMIT_EXCEEDED`. |
-| Şifre değişimi | Mevcut şifre + yeni şifre zorunlu. Başarılı değişim **tüm** session'ları invalidate eder (mevcut cihaz hariç — session_id korunur). Audit: `password_changed`. |
-| Logout | Tek session: `DELETE FROM sessions WHERE id = ?`. "Tüm cihazlardan çık": `DELETE FROM sessions WHERE user_id = ?`. |
-| Audit aktör | Her mutating service çağrısı `actor_user_id` taşır. NULL yalnızca legacy satırlar (v1.3 öncesi) ve sistem-otomatik audit'lar için. |
-| Hesap deaktive | `users.is_active = false` veya `deleted_at IS NOT NULL` → mevcut session'lar bir sonraki request'te 401 alır; yeni login imkânsız. |
-| Self-service password reset | **Yok** (§9). Admin DB'den manuel reset eder. 3 user için kabul edilmiş trade. |
-| Hesap oluşturma UI | **Yok** (§9). 3 admin DB seed ile oluşturulur (§3.12). Yeni user gerekirse CLI script (`scripts/create-user.ts`) ile. |
-| Face/Touch ID UX | Ayrı kod yok. iOS/macOS Keychain'in varsayılan şifre kaydet → Face/Touch ID ile autofill akışı kullanılır; uygulama tarafında özel implementasyon gerekmiyor. WebAuthn/passkey v1 kapsamı dışı (§9). |
+| Session token | Opaque (`crypto.randomBytes(32).toString('hex')` — 64 hex char); httpOnly + secure (production) + SameSite (production: `none`, dev: `lax`) cookie. JWT **değil** — server-side `sessions` tablosunda tutulur, revoke edilebilir (§3.13). Cross-origin (Vercel + Railway) dağıtımı için prod'da SameSite=None zorunludur. |
+| Session TTL | Sliding 30 gün: her korumalı request `last_seen_at = now()` ve `expires_at = now() + 30d` günceller. 30 gün hareketsizlik = session ölü. |
+| Password kuralı | bcrypt cost 12, **min 6 char**, max 100 char. Plaintext hiçbir log/audit'e düşmez. **Min 6 kararı:** kapalı admin sistemi + bcrypt cost 12 birleşimi 6-haneli PIN'i pratik olarak kırılamaz yapar; mobil klavyede hızlı girilir. Validation `auth.service.ts` ve bootstrap script'inde. |
+| Rate limit | **v1 dışı.** Kapalı admin sistemi için brute force riski düşük kabul edildi; ileride `express-rate-limit` ile eklenir. Şu an `POST /auth/login`'da rate limit yoktur. |
+| Şifre değişimi (UI) | **v1 dışı.** Settings → Hesap bölümü v1.4'te yok (§8.5, §9). Şifre reset gerekirse sysadmin DB'den manuel günceller (`bcrypt.hash($pw, 12)` + `UPDATE users SET password_hash = ...`). |
+| Logout | Tek session: `DELETE FROM sessions WHERE token = ?`. "Tüm cihazlardan çık" endpoint'i v1.4'te yok (§9). |
+| Auth audit | **v1.4'te yazılmaz.** Login/logout/password değişimi `audit_logs`'a düşmez; `audit_logs.action` CHECK listesi `user_login`/`user_logout`/`password_changed` action'larını **içermez** (§3.7). Mutating *iş* işlemleri (lesson, payment, package, ...) `actor_user_id` taşır ve audit'a yazılır — auth event'leri ayrı kategori sayılır ve v1 kapsamına alınmadı. İleride eklenirse: ayrı action'lar + entity_type=`'user'` + CHECK genişletmesi gerekir. |
+| Audit aktör | Her mutating *iş servisi* çağrısı `actorUserId` parametresi alır ve `audit_logs.actor_user_id` kolonuna yazar. NULL yalnızca v1.3 öncesi legacy satırlar için. |
+| Hesap deaktive | `users.is_active = false` → mevcut session'lar bir sonraki request'te 401 alır; yeni login imkânsız. (`users.deleted_at` kolonu **yok** — soft delete v1'de gerekmedi.) |
+| Self-service password reset | **Yok** (§9). |
+| Hesap oluşturma UI | **Yok** (§9). Admin'ler bootstrap script ile (§10) `.env`'den seed edilir. Yeni user gerekirse aynı bootstrap'a satır eklenip yeniden çalıştırılır (idempotent: `ON CONFLICT (username) DO NOTHING`). |
+| Face/Touch ID UX | iOS/macOS Keychain'in varsayılan şifre kaydet → Face/Touch ID ile autofill akışı kullanılır; uygulama tarafında özel implementasyon gerekmiyor. WebAuthn/passkey v1 kapsamı dışı (§9). |
 
-**Why:** 3 admin senaryosunda Clerk gibi external auth provider'a bağımlı olmak vendor lock-in + maliyet getirisi düşük. Kendi auth'umuz: opaque session + bcrypt, ihtiyaç doğarsa Lucia/Better-Auth gibi kütüphanelere göç ederken DB şeması korunur.
+**Why:** Kapalı admin senaryosunda Clerk gibi external auth provider'a bağımlı olmak vendor lock-in + maliyet getirisi düşük. Kendi auth'umuz: opaque session + bcrypt, ihtiyaç doğarsa Lucia/Better-Auth gibi kütüphanelere göç ederken DB şeması korunur.
+
+**v1.3 spec ile v1.4 kod arasındaki uyumlama:** v1.3 spec'i auth audit logging, rate limit, sliding-on-mutate, logout-everywhere, password change UI, IP/UA tracking, soft-delete users gibi ek özellikler içeriyordu. v1.4 bunların hepsini **kasıtlı olarak v1 dışına** çıkarttı (kapalı admin sistemi için over-engineering); geride kalan yüzey opaque session + sliding TTL + tek-cihaz logout + bcrypt cost 12. Detay ve gerekçeler §11 v1.4 sürüm notunda.
 
 ---
 
@@ -446,13 +450,16 @@ CREATE UNIQUE INDEX ux_payments_one_active_per_package
 
 ```sql
 -- NOTE: Bu final DDL, 0008 (ilk tablo) + 0203 (balance kayıtları purge) + 0214
--- (lesson_discount_updated action) + 0223 (actor_user_id + auth action'ları)
--- uygulandıktan sonraki durumdur.
+-- (lesson_discount_updated action) + 0224 (actor_user_id) + 0225 (lesson_uncompleted,
+-- lesson_type_*, settings_updated genişletmeleri) uygulandıktan sonraki durumdur.
+-- v1.3 spec'inde teklif edilen 3 auth action'ı (user_login, user_logout,
+-- password_changed) ve entity_type='user' v1.4'te kapsama alınmadı (§2.14).
 CREATE TABLE audit_logs (
   id              bigserial PRIMARY KEY,
   action          text NOT NULL CHECK (action IN (
                     'lesson_created',
                     'lesson_status_change',
+                    'lesson_uncompleted',     -- v1.4 (migration 0225)
                     'lesson_updated',
                     'lesson_deleted',
                     'lesson_discount_updated',
@@ -468,36 +475,44 @@ CREATE TABLE audit_logs (
                     'student_created',
                     'student_updated',
                     'student_deleted',
-                    -- Auth action'ları (v1.3, migration 0223)
-                    'user_login',
-                    'user_logout',
-                    'password_changed'
+                    'lesson_type_created',     -- v1.4 (migration 0225)
+                    'lesson_type_updated',     -- v1.4 (migration 0225)
+                    'settings_updated'         -- v1.4 (migration 0225)
                   )),
   entity_type     text NOT NULL CHECK (entity_type IN (
-                    'student', 'lesson', 'product_sale',
-                    'prepaid_package', 'payment',
-                    'user'                       -- v1.3
+                    'student',
+                    'lesson',
+                    'product_sale',
+                    'prepaid_package',
+                    'payment',
+                    'balance_transaction',     -- LEGACY: 0203 ile içerik silindi ama
+                                               -- CHECK listesinde kalıntı olarak duruyor.
+                                               -- Pratik etki yok; ileride drop edilebilir.
+                    'lesson_type',             -- v1.4 (migration 0225)
+                    'settings'                 -- v1.4 (migration 0225)
                   )),
   entity_id       bigint NOT NULL,
-  actor_user_id   bigint REFERENCES users(id),  -- v1.3, NULL = legacy/system
+  actor_user_id   bigint REFERENCES users(id), -- v1.3, NULL = legacy/system
   before          jsonb,
   after           jsonb,
   note            text,
   created_at      timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_audit_entity ON audit_logs (entity_type, entity_id);
-CREATE INDEX idx_audit_action ON audit_logs (action);
-CREATE INDEX idx_audit_created_at ON audit_logs (created_at);
-CREATE INDEX idx_audit_actor_user_id ON audit_logs (actor_user_id) WHERE actor_user_id IS NOT NULL;
+CREATE INDEX idx_audit_entity            ON audit_logs (entity_type, entity_id);
+CREATE INDEX idx_audit_action            ON audit_logs (action);
+CREATE INDEX idx_audit_created_at        ON audit_logs (created_at);
+CREATE INDEX idx_audit_logs_actor        ON audit_logs (actor_user_id, created_at DESC);
 ```
 
 **`actor_user_id` semantiği (v1.3):**
 - NOT NULL servis-level invariant'tır (DB-level değil — legacy satırlar için NULL kabul edilir).
-- Tüm yeni mutating servisler (`createLesson`, `completeLesson`, `setLessonDiscount`, `createCashPayment`, ...) çağrıldıkları request'in `req.user.id` değerini taşır.
-- Login başarısı + her mutation için audit yazılır; başarısız login (rate limited veya yanlış şifre) **audit_logs'a yazılmaz** (gürültü + DoS riski). Bunun yerine ayrı IP-bazlı sayaç in-memory tutulur (rate limiter).
+- Tüm mutating *iş servisleri* (`createLesson`, `completeLesson`, `uncompleteLesson`, `setLessonDiscount`, `createCashPayment`, `createPrepaidPackage`, `createProductSale`, `updateSettings`, `createLessonType`, `updateLessonType`, ...) çağrıldıkları request'in `req.currentUser.id` değerini taşır.
+- **v1.4'te login/logout/password değişimi audit'a yazılmaz** (§2.14). CHECK listesi bu yüzden 3 auth action'ını içermez; ileride eklenirse migration ile genişletilir.
 
-**Tarihsel not:** Audit action listesi önceki revizyonda balance-ile-ilgili action'ları (`balance_manual_adjustment`, `balance_refund`, `balance_overpayment_credit`, `balance_usage_debit`) ve `entity_type='balance_transaction'` değerini içeriyordu; bunlar v1 sadeleştirmesi ile kaldırılmıştır. Migration 0008 orijinal listeyi tanımlar; migration 0203 balance action/entity satırlarını DELETE eder ve CHECK constraint'leri daraltılmış listeye günceller. Migration 0214 `lesson_discount_updated` action'ını ekler. Migration 0223 `actor_user_id` kolonu + 3 auth action (`user_login`, `user_logout`, `password_changed`) + `entity_type='user'` ekler.
+**Tarihsel not:** Audit action listesi önceki revizyonda balance-ile-ilgili action'ları (`balance_manual_adjustment`, `balance_refund`, `balance_overpayment_credit`, `balance_usage_debit`) içeriyordu; v1 sadeleştirmesi ile kaldırılmıştır. Migration 0008 orijinal listeyi, 0203 daraltma, 0214 `lesson_discount_updated`, 0224 `actor_user_id` kolonu, 0225 `lesson_uncompleted` + `lesson_type_*` + `settings_updated` action'ları ile `lesson_type` + `settings` entity_type'larını ekler. `entity_type='balance_transaction'` CHECK listesinde kaldı ama hiçbir satır yok (0203 purge sonrası).
+
+**v1.3 spec sapması:** Spec v1.3 `lessons.actor_user_id` ve `payments.actor_user_id` kolonlarını öngörmüyordu; migration 0223 yanlışlıkla bu iki tabloya da `actor_user_id` ekledi. Kolonlar **kullanılmıyor** (servis sadece `audit_logs.actor_user_id`'ye yazıyor) → ölü kolon. Drop migration'ı v1.5+ kapsamına ertelendi (NULL hep, performans/disk etkisi yok).
 
 **`lesson_discount_updated` olayı (§2.12):**
 - `entity_type = 'lesson'`, `entity_id = <lesson id>`
@@ -695,9 +710,11 @@ Multi-entity + discount altyapısı (0210+, canlı öncesi):
 Ürün satışı ↔ ders bağı (v1.2):
   0221_product_sales_lesson_link.sql           (product_sales.lesson_id nullable kolon + index + v_product_sale_balances recreate)
 
-Auth (v1.3):
-  0222_users_and_sessions.sql                  (users + sessions tabloları; admin user'lar bootstrap aşamasında yaratılır — PII migration içinde tutulmaz)
-  0223_audit_logs_actor_user_id.sql            (actor_user_id kolonu + 3 auth action + entity_type='user' eklenir)
+Auth + audit genişletmesi (v1.3 → v1.4):
+  0222_users_sessions.sql                      (users + sessions tabloları; admin user'lar bootstrap aşamasında yaratılır — PII migration içinde tutulmaz)
+  0223_audit_actor.sql                         (lessons.actor_user_id + payments.actor_user_id — KULLANILMIYOR; spec sapması, drop bekleniyor)
+  0224_audit_actor_user.sql                    (audit_logs.actor_user_id kolonu + idx_audit_logs_actor)
+  0225_audit_extend_enums.sql                  (action listesi: lesson_uncompleted, lesson_type_created/updated, settings_updated; entity_type listesi: lesson_type, settings; v1.3 spec'indeki 3 auth action ve entity_type='user' EKLENMEDİ — §2.14, §11)
 ```
 
 **0203 migration'ının işi özetle:**
@@ -725,9 +742,11 @@ Auth (v1.3):
 **0221 migration'ının işi özetle (v1.2):**
 - 0221: `product_sales.lesson_id` (nullable) + index eklenir; `v_product_sale_balances` `CREATE OR REPLACE` ile yeniden yaratılır (`lesson_id` kolonu sona eklenir).
 
-**0222–0223 migration'larının işi özetle (v1.3, §2.14):**
-- 0222: `users` ve `sessions` tabloları yaratılır. **Admin kullanıcılar migration'da seed edilmez** (username + şifre PII'dir, public repo'ya commit edilemez); bootstrap aşamasında (§10) `.env`'den okunup yaratılırlar. `users` üzerinde `updated_at` trigger'ı kurulur.
-- 0223: `audit_logs.actor_user_id bigint REFERENCES users(id)` kolonu eklenir (NULL kabul; legacy + sistem-otomatik audit'lar için). `audit_logs_action_check` 3 yeni action ile genişletilir (`user_login`, `user_logout`, `password_changed`). `audit_logs_entity_type_check` `'user'` ile genişletilir. `idx_audit_actor_user_id` partial index eklenir.
+**0222–0225 migration'larının işi özetle (v1.3 → v1.4, §2.14):**
+- 0222: `users` (`display_name` kolonu, `is_active`, `password_hash`) ve `sessions` (`bigserial id` PK + `token text UNIQUE`, `expires_at`, `last_seen_at`) tabloları yaratılır. **Admin kullanıcılar migration'da seed edilmez** (username + şifre PII'dir, public repo'ya commit edilemez); bootstrap aşamasında (§10) `.env`'den okunup yaratılırlar. `users` üzerinde `updated_at` trigger'ı kurulur. `sessions` üzerinde `(token)` ve `(expires_at)` index'leri.
+- 0223: `lessons.actor_user_id` ve `payments.actor_user_id` kolonları eklenir. **v1.4'te kullanılmıyor** (servis sadece `audit_logs.actor_user_id`'ye yazıyor); ölü kolonlar olarak kaldı, drop ertelendi.
+- 0224: `audit_logs.actor_user_id bigint REFERENCES users(id) ON DELETE SET NULL` kolonu + `idx_audit_logs_actor (actor_user_id, created_at DESC)` index'i eklenir.
+- 0225: `audit_logs_action_check` listesi `lesson_uncompleted`, `lesson_type_created`, `lesson_type_updated`, `settings_updated` ile genişletilir. `audit_logs_entity_type_check` `lesson_type`, `settings` ile genişletilir. **v1.3 spec'indeki `user_login`/`user_logout`/`password_changed` action'ları ve `entity_type='user'` eklenmedi** — auth audit logging v1.4'te kapsam dışı (§2.14).
 
 **Kurallar:**
 - Her migration idempotent olmamalı (tek seferlik uygulanır); runner tablosu durum takibini yapar.
@@ -785,66 +804,67 @@ VALUES ('Yoga & Meditasyon', 60, true);
 - V1'de tek aktif ders tipi. `createLesson` `duration_minutes` değerini aktif seed'in `default_duration_minutes` alanından okur.
 - **Fiyat kaynağı:** `lesson.price_snapshot` create anında `lesson_type.default_price` üzerinden kopyalanır (§2.3). Öğrenci başına default fiyat yoktur; özel durumlar indirim ile modellenir.
 
-### 3.12 users (v1.3)
+### 3.12 users (v1.3 → v1.4 kod realitesi)
 
 ```sql
+-- Migration 0222'nin uyguladığı gerçek DDL.
 CREATE TABLE users (
   id              bigserial PRIMARY KEY,
-  username        text NOT NULL CHECK (
-                    username = lower(username)
-                    AND length(username) BETWEEN 3 AND 32
-                    AND username ~ '^[a-z0-9_-]+$'
-                  ),
+  username        text NOT NULL UNIQUE,
+  display_name    text NOT NULL,
   password_hash   text NOT NULL,                  -- bcrypt cost 12
-  full_name       text NOT NULL,
   is_active       boolean NOT NULL DEFAULT true,
-  deleted_at      timestamptz,
   created_at      timestamptz NOT NULL DEFAULT now(),
   updated_at      timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE UNIQUE INDEX ux_users_username_active
-  ON users (username)
-  WHERE deleted_at IS NULL;
+CREATE TRIGGER users_touch_updated_at
+  BEFORE UPDATE ON users
+  FOR EACH ROW EXECUTE FUNCTION trg_touch_updated_at();
 
 -- Migration 0222 yalnızca tabloyu yaratır; admin kullanıcılar (username +
 -- password) PII olduğu için migration'da hardcoded değildir. Bootstrap
 -- script (§10) deploy zamanında BOOTSTRAP_ADMINS env değerini okuyarak
 -- bcrypt(cost=12) ile hash'leyip insert yapar:
---   INSERT INTO users (username, password_hash, full_name) VALUES ($1, $2, $3);
+--   INSERT INTO users (username, display_name, password_hash) VALUES ($1, $1, $2)
+--   ON CONFLICT (username) DO NOTHING;
+-- (Bootstrap'ta display_name = username; kullanıcı DB'den manuel düzeltebilir.)
 -- Self-service şifre reset (forgotten password) yok — sysadmin DB üzerinden
--- manuel UPDATE ile reset yapar (bcrypt hash hesaplama scripti repo'da).
+-- manuel UPDATE ile reset yapar.
 ```
 
-**Kurallar:**
-- `username` lower-case + 3–32 char + `[a-z0-9_-]` karakter seti (CHECK). Servis insert/update öncesi `.toLowerCase().trim()` uygular.
-- Login formu username string'i alır; backend lower-case'e çevirip karşılaştırır. Username case-insensitive davranır ama DB'de hep lowercase saklanır.
-- v1.3'te tek rol: tüm aktif user'lar admin. `role` kolonu yoktur — gerekirse ileri revizyonda eklenir (§9).
-- Soft delete: FK referansları (audit_logs, sessions) korunur; `is_active = false` user login olamaz; mevcut session'ları bir sonraki request'te 401 alır.
-- **Email kolonu v1.3'te yok** — password reset email, notification gibi senaryolar v1 dışı (§9). İleride gerekirse `email text NULL UNIQUE` olarak eklenir, mevcut user'lar boş bırakılır.
+**Kurallar (v1.4 kod realitesi):**
+- `username` plain `UNIQUE`. v1.3 spec'i CHECK constraint (lowercase + `[a-z0-9_-]` + 3–32 char) öneriyordu; v1.4 bu CHECK'i **eklemedi** — kapalı admin sistemi için over-engineering kabul edildi. Bootstrap operatörü makul username üretmekle sorumlu.
+- Login formu username string'i alır; backend ham string ile karşılaştırır. Operatör DB'ye küçük harf yazmadıkça case-sensitive davranır.
+- v1.3'te tek rol: tüm aktif user'lar admin. `role` kolonu yoktur.
+- **Soft delete yok** (`deleted_at` kolonu eklenmedi). Hesap pasifleştirme `is_active = false` ile yapılır; mevcut session'ları bir sonraki request'te 401 alır (`validateSession` `is_active = true` filtresi ile).
+- **Email kolonu yok** — password reset email, notification gibi senaryolar v1 dışı (§9).
+- **Display field adı `display_name`** (spec v1.3 `full_name` öneriyordu). API çıkışlarında `displayName` (camelCase).
 
-### 3.13 sessions (v1.3)
+### 3.13 sessions (v1.3 → v1.4 kod realitesi)
 
 ```sql
+-- Migration 0222'nin uyguladığı gerçek DDL.
 CREATE TABLE sessions (
-  id            text PRIMARY KEY,                     -- 32 byte url-safe random, opaque
+  id            bigserial PRIMARY KEY,
   user_id       bigint NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token         text NOT NULL UNIQUE,                 -- crypto.randomBytes(32).toString('hex')
   expires_at    timestamptz NOT NULL,
   last_seen_at  timestamptz NOT NULL DEFAULT now(),
-  user_agent    text,
-  ip            text,
   created_at    timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_sessions_user_id ON sessions (user_id);
-CREATE INDEX idx_sessions_expires_at ON sessions (expires_at);
+CREATE INDEX sessions_token_idx   ON sessions (token);
+CREATE INDEX sessions_expires_idx ON sessions (expires_at);
 ```
 
-**Kurallar:**
-- `id` cookie'de düz tutulur (httpOnly + secure + SameSite=Lax). DB tarafında hash tutulması v1'de gerekli görülmedi (3 user, küçük blast radius); ileri revizyonda `id` SHA-256 hash'i tutulup cookie'de plaintext kalabilir.
-- Sliding window: her korumalı request `last_seen_at = now()` ve `expires_at = now() + interval '30 days'` günceller. 30 gün hareketsizlik = session ölü.
-- Cleanup: nightly cron (`DELETE FROM sessions WHERE expires_at < now()`) — yedek olarak request-zamanı `expires_at < now()` filtresi de validation'a dahildir.
-- `ON DELETE CASCADE`: user soft-delete edilirken session'lar otomatik silinir (hard delete'te de — pratikte hard delete yok).
+**Kurallar (v1.4 kod realitesi):**
+- **Şema farkı (v1.3 spec → v1.4 kod):** v1.3 spec `id text PRIMARY KEY` (opaque secret = PK) öneriyordu; v1.4 `bigserial id` + ayrı `token text UNIQUE` kullanır. Lookup `token` üstünden, JOIN'lerde `id` (integer FK ucuz). Token ileride hash'lenmek istenirse cookie değişmeden DB tarafı kolayca güncellenir.
+- `token` cookie'de düz tutulur (httpOnly + secure-prod + SameSite=Lax/dev veya None/prod, cross-origin Vercel+Railway için).
+- **Sliding window:** her korumalı request `last_seen_at = now()` ve `expires_at = now() + interval '30 days'` ile güncellenir (`auth.service.ts` `validateSession`).
+- **`user_agent` ve `ip` kolonları yok.** v1.3 spec'i öneriyordu (rate limit + audit IP/UA için); v1.4 rate limit ve auth audit'ı kapsam dışına çıkardığı için bu kolonlar da eklenmedi (§2.14, §11). İleride gerekirse `ALTER TABLE` ile eklenir.
+- Cleanup: request-zamanı `s.expires_at > now()` filtresi (`validateSession`) — request-time invalidation yeterli; nightly cron v1'de kurulmadı.
+- `ON DELETE CASCADE`: user hard-delete edilirken session'lar otomatik silinir (`is_active=false` kullanan akışta CASCADE devreye girmez; bir sonraki request 401 alır).
 
 ---
 
@@ -1433,6 +1453,53 @@ change_lesson_status(p_lesson_id, p_new_status):
   COMMIT
 ```
 
+### 5.7b Lesson Uncomplete (v1.4)
+
+**Ref:** §2.2. Endpoint: `POST /lessons/:id/uncomplete`. Bilinçli olarak dar bir geri-alma penceresi: yalnızca son 24 saat içinde tamamlanmış, hiç ödemesi olmayan dersler. Eski/ödemeli dersler için klasik düzeltme akışı (payment soft-delete + lesson soft-delete + yeniden oluştur) geçerlidir.
+
+```
+uncomplete_lesson(p_lesson_id, p_actor_user_id):
+  BEGIN TRANSACTION
+    lesson = SELECT * FROM lessons WHERE id = p_lesson_id FOR UPDATE
+    IF lesson IS NULL OR lesson.deleted_at IS NOT NULL:
+      RAISE LessonNotFoundError
+    IF lesson.status <> 'completed':
+      RAISE InvalidStatusTransitionError "Sadece 'tamamlandı' dersler geri alınabilir."
+    IF lesson.completed_at IS NULL OR lesson.completed_at < now() - interval '24 hours':
+      RAISE InvalidStatusTransitionError "24 saatten eski tamamlamalar geri alınamaz; ödemeyi silip dersi yeniden oluşturun."
+
+    -- Aktif ödeme varsa reddet
+    IF EXISTS (SELECT 1 FROM payments WHERE lesson_id = p_lesson_id AND deleted_at IS NULL):
+      RAISE InvalidStatusTransitionError "Dersin aktif ödemeleri var; önce ödemeleri silin."
+
+    -- Bağlı aktif ürün satışlarını işle: ödemesi olan satış varsa reddet, yoksa soft-delete
+    FOR sale IN (SELECT id FROM product_sales WHERE lesson_id = p_lesson_id AND deleted_at IS NULL):
+      IF EXISTS (SELECT 1 FROM payments WHERE product_sale_id = sale.id AND deleted_at IS NULL):
+        RAISE InvalidStatusTransitionError "Derse bağlı satışın ödemesi var; önce ödemeleri silin."
+      UPDATE product_sales SET deleted_at = now() WHERE id = sale.id
+
+    before = row_to_json(lesson)
+
+    UPDATE lessons
+      SET status             = 'scheduled',
+          completed_at       = NULL,
+          prepaid_package_id = NULL
+      WHERE id = p_lesson_id
+
+    after = SELECT row_to_json(l) FROM lessons l WHERE id = p_lesson_id
+
+    INSERT INTO audit_logs (action, entity_type, entity_id, before, after, note, actor_user_id)
+    VALUES ('lesson_uncompleted', 'lesson', p_lesson_id, before, after, 'Ders geri alındı', p_actor_user_id)
+  COMMIT
+```
+
+**Etkiler:**
+- Kredi-karşılanmış ders ise `prepaid_package_id` NULL'a çekilir → paket kredisi otomatik geri yüklenir (`v_prepaid_package_status.remaining_credits` türev hesabı). `discount_amount` zaten 0'dı (paket dersinde indirim yasak); değişmez.
+- Bağlı aktif ürün satışları otomatik soft-delete edilir. Bu satışlardan biri ödenmişse akış reddedilir → operatör önce ödemeyi siler.
+- `price_snapshot` korunur (§2.3 — completed olsa olmasa snapshot dokunulmazdır; uncomplete sonrası ders aynı fiyatla scheduled'a döner).
+
+**Audit:** `lesson_uncompleted` action (migration 0225 ile CHECK listesine eklendi). `before/after` tüm satırı içerir (paket bağı kopuşu izlenebilir).
+
 ### 5.8 Ders İndirimi (Set Lesson Discount)
 
 **Ref:** §2.12. Endpoint: `PATCH /lessons/:id/discount` (§10). Idempotent set — verilen değer `discount_amount` üzerine yazılır. 0 indirimi kaldırır. Sadece completed & non-prepaid derse uygulanabilir.
@@ -1487,135 +1554,90 @@ set_lesson_discount(p_lesson_id, p_new_discount, p_note?):
    - `chk_lessons_prepaid_no_discount` (paket dersinde discount = 0)
 3. Frontend validation (§8.2) — aynı kuralları form submit öncesi kontrol eder.
 
-### 5.9 Auth: Password ile login (v1.3)
+### 5.9 Auth: Password ile login (v1.3 → v1.4 kod realitesi)
 
 ```
-login_with_password(p_username, p_password, p_user_agent, p_ip):
-  ASSERT length(p_username) BETWEEN 3 AND 32
-  ASSERT p_username matches /^[a-z0-9_-]+$/i
-  ASSERT length(p_password) BETWEEN 8 AND 100
+login_with_password(p_username, p_password):
+  IF NOT (typeof p_password === 'string' AND length(p_password) >= 6):
+    RETURN null   -- "kullanıcı adı veya şifre hatalı" generic mesajı
 
-  -- Rate limit kontrolü request middleware'inde yapılır (express-rate-limit).
-  -- Bu fonksiyon servis katmanı; sadece kimlik doğrulama mantığını taşır.
-
-  user = SELECT * FROM users
-    WHERE username = lower(p_username)
+  user = SELECT id, password_hash FROM users
+    WHERE username = p_username
       AND is_active = true
-      AND deleted_at IS NULL
 
-  IF user IS NULL:
-    -- Username bulunamadı. Timing attack koruması için yine de bcrypt hesabı
-    -- yap (sahte hash ile karşılaştır), sonra reddet.
-    bcrypt.compare(p_password, DUMMY_HASH)
-    RAISE InvalidCredentialsError "Kullanıcı adı veya şifre hatalı."
+  hash = user?.password_hash ?? DUMMY_HASH  -- timing attack koruması
+  ok   = bcrypt.compare(p_password, hash)
+  IF NOT user OR NOT ok:
+    RETURN null
 
-  ok = bcrypt.compare(p_password, user.password_hash)
-  IF NOT ok:
-    RAISE InvalidCredentialsError "Kullanıcı adı veya şifre hatalı."
+  token = crypto.randomBytes(32).toString('hex')
+  INSERT INTO sessions (user_id, token, expires_at)
+  VALUES (user.id, token, now() + interval '30 days')
 
-  session_id = random_url_safe_bytes(32)
-
-  BEGIN TRANSACTION
-    INSERT INTO sessions (id, user_id, expires_at, user_agent, ip)
-    VALUES (session_id, user.id, now() + interval '30 days', p_user_agent, p_ip)
-
-    INSERT INTO audit_logs (action, entity_type, entity_id, actor_user_id, after)
-    VALUES ('user_login', 'user', user.id, user.id,
-            jsonb_build_object('method', 'password', 'ip', p_ip, 'ua', p_user_agent))
-  COMMIT
-
-  RETURN { session_id, user: { id, username, full_name } }
+  RETURN token
 ```
 
-**Cookie set:** HTTP route `Set-Cookie: session=<id>; HttpOnly; Secure; SameSite=Lax; Max-Age=2592000; Path=/`. (Dev ortamda Secure flag'i koşullu — http://localhost.)
+**Cookie set:** HTTP route `Set-Cookie: session=<token>; HttpOnly; Secure(prod); SameSite=None(prod) | Lax(dev); Max-Age=2592000; Path=/`. Cross-origin (Vercel + Railway) deploy'da SameSite=None zorunlu.
+
+**v1.3 sapması:** Spec v1.3 login sırasında `audit_logs`'a `user_login` satırı yazıyordu. v1.4'te yazılmaz (§2.14). User-agent/IP de kayda alınmaz (sessions tablosunda kolon yok).
 
 ### 5.10 Auth: Logout
 
 ```
-logout(p_session_id, p_actor_user_id):
-  BEGIN TRANSACTION
-    DELETE FROM sessions WHERE id = p_session_id RETURNING user_id INTO v_user_id
-
-    IF v_user_id IS NOT NULL:
-      INSERT INTO audit_logs (action, entity_type, entity_id, actor_user_id)
-      VALUES ('user_logout', 'user', v_user_id, p_actor_user_id)
-  COMMIT
+logout(p_token):
+  DELETE FROM sessions WHERE token = p_token
 ```
 
-**Variant — tüm cihazlardan çık:**
-```
-logout_everywhere(p_user_id, p_keep_session_id?):
-  -- p_keep_session_id verilirse o session korunur (örn. şifre değişiminde
-  -- kullanıcının mevcut cihazını dışarı atmamak için).
-  BEGIN TRANSACTION
-    DELETE FROM sessions
-    WHERE user_id = p_user_id
-      AND (p_keep_session_id IS NULL OR id <> p_keep_session_id)
+Tek session silme. **`user_logout` audit yazılmaz** (v1.4, §2.14). Cookie route handler tarafından `res.clearCookie('session')` ile temizlenir.
 
-    INSERT INTO audit_logs (action, entity_type, entity_id, actor_user_id, note)
-    VALUES ('user_logout', 'user', p_user_id, p_user_id, 'logout_everywhere')
-  COMMIT
-```
+**`logout_everywhere` v1.4 dışı:** Tüm cihazlardan çıkış endpoint'i v1 kapsamında değil (§9). Bir admin'in tüm session'larını silmek gerekirse sysadmin DB'den `DELETE FROM sessions WHERE user_id = ?` çalıştırır.
 
 ### 5.11 Auth: Password değişimi
 
+**v1.4 dışı (§9).** Settings → Hesap UI bölümü v1 kapsamına alınmadı; `PATCH /auth/password` endpoint'i de yok. Şifre değişimi gerekirse sysadmin DB'den manuel UPDATE yapar:
+
 ```
-change_password(p_user_id, p_current_password, p_new_password, p_session_id):
-  ASSERT length(p_new_password) BETWEEN 8 AND 100
-  ASSERT p_current_password <> p_new_password
-
-  user = SELECT * FROM users WHERE id = p_user_id FOR UPDATE
-  IF user IS NULL OR NOT user.is_active OR user.deleted_at IS NOT NULL:
-    RAISE UnauthorizedError
-
-  ok = bcrypt.compare(p_current_password, user.password_hash)
-  IF NOT ok:
-    RAISE InvalidCredentialsError "Mevcut şifre hatalı."
-
-  new_hash = bcrypt.hash(p_new_password, 12)
-
-  BEGIN TRANSACTION
-    UPDATE users SET password_hash = new_hash WHERE id = p_user_id
-
-    -- Tüm diğer session'ları invalidate et; mevcut cihazı koru.
-    DELETE FROM sessions
-    WHERE user_id = p_user_id AND id <> p_session_id
-
-    INSERT INTO audit_logs (action, entity_type, entity_id, actor_user_id)
-    VALUES ('password_changed', 'user', p_user_id, p_user_id)
-  COMMIT
+node -e "console.log(require('bcryptjs').hashSync(process.argv[1], 12))" '<yeni-sifre>'
+-- çıktıyı al, sonra:
+UPDATE users SET password_hash = '<bcrypt-hash>' WHERE username = '<username>';
+DELETE FROM sessions WHERE user_id = (SELECT id FROM users WHERE username = '<username>');
 ```
 
-### 5.12 RequireAuth middleware (request-level)
+Bcrypt cost 12, min 6 char invariant'ı şu an yalnızca bootstrap script ve `auth.service.ts` `login` validation'ında zorlanır; manuel UPDATE'te operatörün dikkatli olması gerekir.
+
+### 5.12 RequireAuth middleware (v1.4 kod realitesi)
 
 ```
 requireAuth(req, res, next):
-  session_id = req.cookies.session
-  IF session_id IS NULL:
-    RAISE UnauthorizedError
+  token = parse cookie 'session' from req.headers.cookie
+  IF token IS NULL:
+    RETURN 401 { error: { code: 'UNAUTHORIZED', message: 'Authentication required.' } }
 
-  session = SELECT s.*, u.id AS user_id, u.is_active, u.deleted_at, u.username, u.full_name
+  user = SELECT u.id, u.username, u.display_name
     FROM sessions s
     JOIN users u ON u.id = s.user_id
-    WHERE s.id = session_id
+    WHERE s.token = token
       AND s.expires_at > now()
+      AND u.is_active = true
 
-  IF session IS NULL OR NOT session.is_active OR session.deleted_at IS NOT NULL:
-    res.clearCookie('session')
-    RAISE UnauthorizedError
+  IF user IS NULL:
+    RETURN 401 { error: { code: 'UNAUTHORIZED', message: 'Session expired or invalid.' } }
 
-  -- Sliding window: last_seen + expires güncelle (best-effort, hata istisna fırlatmaz)
+  -- Sliding window (best-effort, fail silently)
   UPDATE sessions
     SET last_seen_at = now(),
-        expires_at = now() + interval '30 days'
-    WHERE id = session_id
+        expires_at   = now() + interval '30 days'
+    WHERE token = token
 
-  req.user = { id: session.user_id, username: session.username, full_name: session.full_name }
-  req.session_id = session_id
+  req.currentUser = { id, username, displayName }
   next()
 ```
 
-**`actor_user_id` enjeksiyonu:** Mevcut servisler (`createLesson`, `setLessonDiscount`, `createCashPayment`, ...) v1.3'te `actorUserId` parametresi alır; route handler `req.user.id`'yi servise geçirir; servis `insertAuditLog` çağrısında bu değeri taşır. Audit log her satırda dolu olur.
+**v1.3 sapmaları:**
+- v1.3 spec'i `req.user = { id, username, full_name }` öneriyordu; v1.4 kodu `req.currentUser = { id, username, displayName }` (camelCase + display_name kolonu).
+- v1.3 spec'i 401 verirken `res.clearCookie('session')` öneriyordu; v1.4 sadece 401 döner — frontend `auth:unauthorized` event'i ile login ekranına yönlendirir, ölü cookie bir sonraki login'de üzerine yazılır.
+
+**`actor_user_id` enjeksiyonu:** Mevcut mutating *iş servisleri* (`createLesson`, `completeLesson`, `uncompleteLesson`, `setLessonDiscount`, `createCashPayment`, `createPrepaidPackage`, `createProductSale`, `updateSettings`, `createLessonType`, `updateLessonType`, ...) `actorUserId` parametresi alır; route handler `req.currentUser.id`'yi servise geçirir; servis `insertAuditLog` çağrısında bu değeri `audit_logs.actor_user_id`'ye yazar. Auth event'leri (login/logout) audit'a yazılmaz (§2.14).
 
 ---
 
@@ -1636,7 +1658,8 @@ requireAuth(req, res, next):
 | Kısmi ödeme | **İzinli.** `0 < amount < remaining_debt` kabul edilir. Kalan borç azalır. |
 | cancelled/no_show lesson'a payment | **Yasak.** Sadece completed. |
 | scheduled lesson'a payment | **Yasak.** Ön ödeme için prepaid_package. |
-| Completed → cancelled/no_show/scheduled | **İstisnasız yasak.** Düzeltme için §5.6 + soft-delete + yeniden oluşturma. |
+| Completed → cancelled/no_show | **İstisnasız yasak.** Düzeltme için §5.6 + soft-delete + yeniden oluşturma. |
+| Completed → scheduled (uncomplete) | **Kısıtlı izin (v1.4, §5.7b).** Yalnızca son 24 saat içinde tamamlanmış + ödemesi olmayan + bağlı satışında ödeme bulunmayan dersler. Eski/ödemeli kayıtlar için klasik soft-delete + yeniden oluştur. |
 | Aynı anda iki completion (aynı öğrenci, son 1 kredi) | Advisory xact lock (`student_prepaid_<id>`) ile serileştirilir; sadece biri paketten düşebilir. |
 | Geçmiş tarihli lesson/payment | **Serbest.** `event_date < created_at` izinli. |
 | Öğrenci soft delete edildiğinde bağlı kayıtlar | RESTRICT sayesinde FK ihlali. Önce bağlı kayıtlar soft delete edilmeli. |
@@ -1816,9 +1839,7 @@ Takvim, ana sayfada `WeekCalendar` bileşeni ile gösterilir. Ayrı bir "Program
 
 Ödeme akışı ile ilişkili bir ayar (örneğin "Mahsup etkin" toggle'ı) v1'de yoktur (§2.6).
 
-**v1.3 hesap bölümü:** Settings ekranının altında "Hesap" bölümü:
-- **Şifre değiştir** (mevcut şifre + yeni şifre + onay) → `PATCH /auth/password`. Başarılı değişimde "Diğer cihazlardan çıkış yapıldı" notu görüntülenir.
-- **Tüm cihazlardan çıkış yap** → `POST /auth/logout-everywhere?keepCurrent=true`.
+**v1.4 — Hesap bölümü v1 kapsamı dışı (§9).** v1.3 spec'i Settings altında şifre değiştir + tüm cihazlardan çıkış öneriyordu; v1.4 bu UI bölümünü ve karşılığındaki `PATCH /auth/password` / `POST /auth/logout-everywhere` endpoint'lerini kapsam dışına çıkardı. Settings ekranı yalnızca "Genel" + "Aktivite" sekmeleri sunar.
 
 **Face/Touch ID kullanımı:** iOS Safari ve macOS Safari/Chrome şifre kaydetme prompt'unu kendileri sunar; kullanıcı kabul ederse bir sonraki girişte Face/Touch ID ile şifreyi otomatik dolduruluyor. Uygulamanın bunun için ekstra bir akışı yok — login formu standart `<input type="password" autocomplete="current-password">` kullanır, gerisini OS halleder.
 
@@ -1846,7 +1867,11 @@ V1 kapsamı dışında kalan özellikler:
 - **Multi-instructor CRUD UI'sı** — `instructors` tablosu ve seed mevcut, `InstructorsPage` v1.2'de read-only listedir. Yeni eğitmen ekleme / düzenleme / pasifleştirme ekranı yoktur; çoklu eğitmen senaryosu DB seed'iyle yapılır. Lesson type CRUD'u v1.2'de UI'da var (§2.13); eğitmen tarafı ileri revizyonun konusudur.
 - **Rol bazlı yetkilendirme (RBAC)** — v1.3'te 3 admin user var (§2.14), tek seviye, hepsi her yere erişir. Scheduler/viewer gibi kısıtlı roller v1 kapsamı dışı. Gerekirse `users.role` kolonu + `requireRole(...)` middleware ile genişletilir.
 - **Self-service password reset** — "şifremi unuttum" email akışı yoktur (§2.14). 3 user için sysadmin DB'den manuel reset eder. Email gönderimi altyapısı (SMTP, Resend, SendGrid vb.) v1 kapsamında değildir.
-- **Hesap oluşturma / kayıt UI'sı** — yeni user DB seed ile yaratılır. Self-signup endpoint yoktur; account provisioning operatöre bağlıdır.
+- **Hesap oluşturma / kayıt UI'sı** — yeni user bootstrap script + `.env` ile yaratılır. Self-signup endpoint yoktur; account provisioning operatöre bağlıdır.
+- **Settings → Hesap UI bölümü** (v1.4'te kapsam dışı) — şifre değiştir + tüm cihazlardan çıkış UI'sı yok; karşılık gelen `PATCH /auth/password` ve `POST /auth/logout-everywhere` endpoint'leri de yok. Sysadmin DB'den manuel halleder (§5.11).
+- **Auth audit logging** (v1.4'te kapsam dışı) — login/logout/password değişimi `audit_logs`'a yazılmaz; CHECK listesi `user_login`/`user_logout`/`password_changed` action'larını içermez (§2.14, §3.7). Mutating *iş* event'leri (lesson, payment, ...) audit'a düşmeye devam eder.
+- **Login rate limit** (v1.4'te kapsam dışı) — `POST /auth/login`'da rate limit middleware'i yok. Kapalı admin sistemi için kabul edildi; ileride `express-rate-limit` ile eklenir (§2.14).
+- **Session IP/UA kaydı** (v1.4'te kapsam dışı) — `sessions` tablosunda `user_agent`/`ip` kolonu yok (§3.13). Audit + rate limit gereksinimleri olmadığı için eklenmedi.
 - **SSO / OAuth / sosyal login** — Google/Apple ile giriş v1 kapsamında değil.
 - **WebAuthn / Passkey** — iOS Safari + macOS Keychain'in varsayılan şifre kaydetme + Face/Touch ID autofill akışı 3 admin için yeterli. Ekstra ceremony eklemek (yeni tablo + 4 endpoint + frontend SDK) marjinal kazanç olarak değerlendirildi. İleride dış kullanıcı / phishing endişesi artarsa eklenir.
 - **MFA (şifre + TOTP / SMS)** — kapalı 3-admin sistemi için ek faktör gereği görülmedi. İhtiyaç doğarsa şifre login'i sonrası TOTP zorunlu hale getirilebilir.
@@ -1892,10 +1917,10 @@ V1 kapsamı dışında kalan özellikler:
    - `DiscountWouldExceedNetError` — discount uygulaması ödemeyi net tutarın üstüne çıkarırdı (§2.12, §5.8)
    - `CurrencyMismatchError` — currency uyuşmazlığı (trigger kaynaklı)
    - `StudentNotFoundError`, `LessonNotFoundError`, `ProductSaleNotFoundError`, `PrepaidPackageNotFoundError`, `PaymentNotFoundError` — not-found
-   - **Auth (v1.3):**
+   - **Auth (v1.3 → v1.4 kod realitesi):**
      - `UnauthorizedError` — geçersiz/expired session veya cookie yok (HTTP 401)
      - `InvalidCredentialsError` — yanlış username/şifre (HTTP 401, message generic — username enumeration koruması)
-     - `RateLimitError` — login rate limit aşıldı (HTTP 429)
+     - ~~`RateLimitError`~~ — v1.4'te kapsam dışı; rate limit middleware'i yok (§2.14, §9).
 9. **API disiplini — endpoint listesi:**
 
    **Lessons:**
@@ -1937,13 +1962,18 @@ V1 kapsamı dışında kalan özellikler:
    - `POST /lesson-types` → yeni tip oluşturma. Body: `{ name, default_duration_minutes (1–240), default_price (≥0) }`. Currency `TRY` zorla.
    - `PATCH /lesson-types/:id` → tip güncelleme. Body: yukarıdakiler + `is_active?`. `lesson_type_id` üzerindeki snapshot'lar değişmez (§2.3); değişiklik yalnızca yeni `createLesson` çağrılarını etkiler.
 
-   **Auth (v1.3, §2.14, §5.9–§5.12):**
-   - `POST /auth/login` → username + password ile login. Body: `{ username, password }`. Başarılı → `Set-Cookie: session=...` + `{ data: { user: { id, username, full_name } } }`. Hata: `INVALID_CREDENTIALS` (401) veya `RATE_LIMIT_EXCEEDED` (429). Rate limit: 5 deneme / 15 dk / IP.
-   - `POST /auth/logout` → mevcut session'ı sil. Body yok. Cookie temizlenir. 204 döner.
-   - `POST /auth/logout-everywhere?keepCurrent=true|false` → user'ın tüm session'larını sil; `keepCurrent=true` ise mevcut session korunur.
-   - `GET /auth/me` → mevcut user bilgisi (frontend hydration için). 401 = login gerekli.
-   - `PATCH /auth/password` → şifre değiştir. Body: `{ currentPassword, newPassword }`. Başarılı → diğer session'lar invalidate olur, mevcut korunur. Hata: `INVALID_CREDENTIALS` (401).
+   **Lessons (v1.4 ek):**
+   - `POST /lessons/:id/uncomplete` → `uncomplete_lesson()` (§5.7b). Body yok. 24 saat penceresi + ödemesiz olma + bağlı satış kontrolleri servis seviyesinde. Audit: `lesson_uncompleted`. Eski/ödemeli dersler için klasik soft-delete + yeniden oluştur akışı kullanılır.
+
+   **Auth (v1.3 → v1.4 kod realitesi, §2.14, §5.9–§5.12):**
+   - `POST /auth/login` → username + password ile login. Body: `{ username, password }`. Başarılı → `Set-Cookie: session=<token>` + `{ ok: true }`. Hata: 401 `INVALID_CREDENTIALS` (mesaj generic — username enumeration koruması). **Rate limit yok** (v1 dışı).
+   - `POST /auth/logout` → mevcut session'ı sil (`DELETE FROM sessions WHERE token = ?`). Body yok. Cookie temizlenir. `{ ok: true }` döner.
+   - `GET /auth/me` → mevcut user bilgisi (frontend hydration için). Yanıt: `{ data: { id, username, displayName } }`. 401 = login gerekli.
+   - `POST /auth/logout-everywhere`, `PATCH /auth/password` — **v1.4 dışı** (§9). Tüm cihazlardan çıkış ve self-service şifre değişimi v1 kapsamında değil; sysadmin DB üzerinden halleder.
+
    **Korumalı endpoint disiplini (v1.3):** `/auth/*` ve `/health` dışındaki **tüm** endpoint'ler `requireAuth` middleware'inden geçer. Cookie yok / session ölü / user pasif → 401 `UNAUTHORIZED`. Servis katmanı `actorUserId` parametresi alır ve audit log'a yazar.
+
+   **Lesson type yönetimi (v1.4 audit notu):** `POST /lesson-types` ve `PATCH /lesson-types/:id` artık `audit_logs`'a yazar (`lesson_type_created`, `lesson_type_updated`). `PATCH /settings` da `settings_updated` ile audit'a düşer.
 
 10. **Testler** en azından §7'deki senaryolar için yazılır. Integration test tercih edilir (gerçek PostgreSQL'e karşı, transaction rollback ile temizlik). Trigger'lar için "DB-level invariant" testleri de yazılır: servis katmanı bypass edilip doğrudan SQL ile ihlal denemesi → trigger tarafından reddedilmeli.
 
@@ -1951,27 +1981,30 @@ V1 kapsamı dışında kalan özellikler:
 
    **Migration'lar (git'te, public):** Sadece schema. `0210_instructors.sql` boş bir tablo yaratır; `0222_users_and_sessions.sql` boş `users` ve `sessions` yaratır. Hiçbir `INSERT` PII içermez. (`lesson_types` jenerik bir etiket "Yoga & Meditasyon" ile seed'lenir; bu PII sayılmaz.)
 
-   **`.env.example` (git'te, public, placeholder):**
+   **`.env.example` (git'te, public, placeholder, v1.4 kod realitesi):**
    ```
    DATABASE_URL=postgresql://...
+   PORT=4000
    TZ=Europe/Istanbul
-   AUTH_COOKIE_SECRET=<rastgele 32 byte>
+   NODE_ENV=development
 
    # Bootstrap — migration'dan SONRA bir kez çalıştırılır.
    # Bu satırlar PII'dir; bootstrap tamamlanınca ÖZGÜN .env'den silinmelidir.
-   BOOTSTRAP_INSTRUCTOR_NAME=
-   BOOTSTRAP_ADMINS=
-   # Format: username:full_name:password,username:full_name:password,...
-   # Username 3-32 char, [a-z0-9_-]; password min 6 char.
+   BOOTSTRAP_INSTRUCTOR_NAME=Instructor Name Here
+   BOOTSTRAP_ADMINS=username1:password1,username2:password2,username3:password3
+   # Format: username:password,...  (display_name = username; DB'den manuel düzeltilir)
+   # Password min 6 char (bootstrap script ve auth servisinde zorlanır).
    ```
 
    **`.env` (gitignore'lu, sadece operatörün local'inde / production env'inde):** Gerçek değerler. Bootstrap tamamlanınca `BOOTSTRAP_*` satırları operatör tarafından **silinir**.
 
-   **Bootstrap script (`backend/scripts/bootstrap.ts`, git'te):**
-   - `BOOTSTRAP_INSTRUCTOR_NAME` → `INSERT INTO instructors (full_name, is_active) VALUES ($1, true)` (idempotent: zaten varsa skip).
-   - `BOOTSTRAP_ADMINS` → her satır için `bcrypt.hash(password, 12)` + `INSERT INTO users (username, password_hash, full_name) VALUES ...`. UPSERT semantiği: aynı username varsa skip (re-run güvenli).
-   - Çalıştıktan sonra konsola "PII satırlarını .env'den silin" uyarısı yazar.
+   **Bootstrap script (`backend/scripts/bootstrap.ts`, git'te, v1.4 kod realitesi):**
+   - `BOOTSTRAP_INSTRUCTOR_NAME` → mevcut "Default Instructor" placeholder satırını gerçek isimle UPDATE eder. Migration 0210 tabloyu seed'siz açar; placeholder'ı 0210'dan sonraki başka bir geçiş veya elle ekleyebilir. (v1.4 kodu: `UPDATE instructors SET full_name = $1 WHERE full_name = 'Default Instructor'`.)
+   - `BOOTSTRAP_ADMINS` → her satır için `bcrypt.hash(password, 12)` + `INSERT INTO users (username, display_name, password_hash) VALUES ($1, $1, $2) ON CONFLICT (username) DO NOTHING`. **Display name = username**; operatör DB'den daha sonra manuel `UPDATE users SET display_name = '...'` yapabilir. Idempotent: aynı username yeniden bootstrap'lanırsa skip.
+   - Password length < 6 → bootstrap fail.
    - **Bcrypt hash repo'da hardcoded değildir**, runtime'da hesaplanır.
+
+   **v1.3 sapması:** v1.3 spec'i `BOOTSTRAP_ADMINS` formatını `username:full_name:password` öneriyordu; v1.4 kodu `username:password` kullanır (display_name = username). İleride 3'lü format'a geçilirse migration'a gerek yok, sadece script güncellenir.
 
    **Setup akışı:**
    ```
@@ -1993,7 +2026,62 @@ V1 kapsamı dışında kalan özellikler:
 
 ## 11. Spec ile kod tabanı arasındaki sürüm notları
 
-### v1.3 (mevcut)
+### v1.4 (mevcut) — kod realitesi ile spec'in hizalanması
+
+v1.4, v1.3 spec'inde söz verilen ama implementasyonda *kasıtlı olarak* sadeleştirilen auth katmanını yazıya döktü. Solo developer + kapalı admin sistemi gerçeği üzerine over-engineering riskini azalttı; ileride gerekirse genişletilecek yüzeyleri açıkça v1 dışı işaretledi. Aynı revizyonda kod tabanında v1.3 sonrası eklenmiş `lesson_uncompleted` akışı, `lesson_types` ve `settings` audit kanalları da spec'e dahil edildi.
+
+**Spec değişiklikleri (kod kapsama alındı):**
+- `lesson_uncompleted` akışı (§2.2 + §5.7b yeni bölüm) — completed → scheduled için 24 saat penceresi, ödemesiz olma kontrolü, bağlı satışların temizliği, `prepaid_package_id` NULL'a çekme. `lesson_uncompleted` audit action'ı (migration 0225).
+- `lesson_types` create/update artık audit'a yazılıyor (`lesson_type_created`, `lesson_type_updated`); v1.2'deki "sessizce yapılır" notu geçersiz.
+- `studio_settings` PATCH'leri `settings_updated` audit action'ı ile düşüyor.
+- Audit `entity_type` listesi `lesson_type` ve `settings` ile genişledi (migration 0225).
+
+**Spec değişiklikleri (v1.3'ten v1 dışına çekildi):**
+- **Auth audit logging.** Login/logout/password değişimi `audit_logs`'a yazılmaz. CHECK listesi `user_login`/`user_logout`/`password_changed` action'larını ve `entity_type='user'` değerini içermez. Mutating *iş* event'leri `actor_user_id` ile audit'a yazılmaya devam eder. Gerekçe: kapalı admin sistemi, blast radius küçük.
+- **Login rate limit.** `POST /auth/login`'da rate limit yok. 3 admin için brute force riski düşük.
+- **Self-service şifre değişimi.** `PATCH /auth/password` endpoint'i ve Settings → Hesap UI bölümü v1 kapsamına alınmadı. Sysadmin DB'den manuel halleder (bcrypt hash + UPDATE + DELETE FROM sessions).
+- **Tüm cihazlardan çıkış.** `POST /auth/logout-everywhere` endpoint'i ve UI'sı v1 dışı.
+- **`users.deleted_at` (soft delete).** Sadece `is_active = false` ile pasifleştirme. 3 admin için soft delete'in aktör atfı için katma değeri düşük.
+- **Username CHECK constraint.** `users.username` plain `UNIQUE`; v1.3 spec'inin lower-case + `[a-z0-9_-]` + 3–32 char CHECK kuralı zorlanmıyor. Bootstrap operatörü makul username üretmekle sorumlu.
+- **`sessions.user_agent` ve `sessions.ip` kolonları.** Rate limit + auth audit yok ise bu meta veri ölü kolonlardı; eklenmedi.
+- **`RateLimitError` hata sınıfı.** Karşılığı yok.
+
+**Spec değişiklikleri (kod realitesini yansıtmak için):**
+- `users` tablosunda alan adı **`display_name`** (v1.3 spec'inde `full_name`). API çıkışı `displayName`. Bootstrap script display_name = username atar; sysadmin DB'den manuel yükseltebilir.
+- `sessions` tablosu: `bigserial id` PK + ayrı `token text UNIQUE` kolonu (v1.3 spec'inde `id text PRIMARY KEY` opaque secret). JOIN'ler `id` üstünden, lookup `token` üstünden. Token şu an düz tutuluyor; ileride hash'lenebilir, cookie değişmez.
+- Cookie `SameSite`: prod'da **`none`**, dev'de `lax` (cross-origin Vercel + Railway için zorunlu).
+- Login min password length: **6 char** (v1.3 spec'inde §2.14 tablosu da 6 derken §5.9 pseudocode 8 diyordu; çelişki giderildi). Validation `auth.service.ts` ve bootstrap script'inde.
+- Sliding window güncellemesi her korumalı request'te `last_seen_at` + `expires_at` ikisini de günceller (kod düzeltildi: önceden sadece `last_seen_at` güncelleniyordu).
+- `requireAuth` invalid session'da 401 dönüyor; `res.clearCookie('session')` yapmıyor (frontend `auth:unauthorized` event'i ile yönlendirme yapar).
+- `req.currentUser = { id, username, displayName }` (v1.3 spec'inde `req.user = { id, username, full_name }`).
+- Bootstrap `BOOTSTRAP_ADMINS` formatı: `username:password,...` (v1.3 spec'inde `username:full_name:password`).
+
+**Migration sırası farkı:**
+- v1.3 spec'i tek `0223_audit_logs_actor_user_id.sql` öneriyordu (audit_logs.actor_user_id + 3 auth action + entity_type='user').
+- v1.4 kodu üç ayrı migration kullandı:
+  - `0223_audit_actor.sql` → `lessons.actor_user_id` + `payments.actor_user_id` ekledi (**ölü kolonlar** — kullanılmıyor; spec sapması)
+  - `0224_audit_actor_user.sql` → `audit_logs.actor_user_id` + `idx_audit_logs_actor`
+  - `0225_audit_extend_enums.sql` → `lesson_uncompleted` / `lesson_type_*` / `settings_updated` action'ları + `lesson_type` / `settings` entity_type'ları (auth action'ları ve entity_type='user' eklenmedi)
+
+**Bilinçli kabul edilmiş hijyen borçları (v1.5+ TODO):**
+- `lessons.actor_user_id` ve `payments.actor_user_id` ölü kolonları drop edilebilir (her zaman NULL, view'lar/sorgular kullanmıyor). Etkisi sadece disk/şema temizliği.
+- `audit_logs.entity_type` CHECK listesinde `'balance_transaction'` kalıntısı (0203 ile içerik silinmiş ama listede duruyor). Yeni satır eklenemiyor; pratik etki yok.
+- `studio_settings.default_lesson_duration` kalıntı kolonu (v1.2 notu — kullanılmıyor, settings UI'da görünüyor).
+- Spec §7 test senaryoları henüz büyük ölçüde implement edilmedi; mevcut smoke test'ler 01/04/05/06/08/10. Auth happy/sad path testi yok. Bilinçli olarak v1.5+'a ertelendi.
+- Login formunun iOS attribute'leri (`autoCapitalize="none"`, `autoCorrect="off"`, `inputMode="text"`) eklenmedi — §8.6 hâlâ niyet olarak yazılı, kod uyguladığında niyet kalır.
+- CORS production'da `ALLOWED_ORIGINS` whitelist'i set edilmedi; deploy zamanı kapatılacak (kod bugün her origin'i kabul ediyor → ⚠️ canlı öncesi düzeltilmeli).
+
+**Production deploy notları (Vercel + Railway):**
+- Frontend Vercel'de (Hobby plan teknik kapasite olarak yeterli; ToS "personal use" gri alanı için Pro yükseltmesi ileride değerlendirilebilir).
+- Backend + PostgreSQL Railway'de.
+- Cross-origin cookie için aynı eTLD+1 önerilir (`okaliptus.com` + `api.okaliptus.com`); değilse SameSite=None + Secure ile çalışır ama CSRF yüzeyi artar.
+- `VITE_API_BASE_URL` env var Vercel build'inde set edilir; `api.js` `buildApiBaseUrls` fallback davranışı üretim için zaten doğru.
+- `vercel.json` SPA rewrite + asset cache header'ları için eklenmeli (kapsam dışı, deploy hazırlığı).
+- PWA artefaktları (manifest, service worker, apple-touch-icon, theme-color) v1.4 kapsamı dışı; ayrı sprint'te eklenecek (mobile + iOS PWA hedefi).
+
+**Why (genel gerekçe):** Spec v1.3 auth tarafında "ideal" güvenlik modelini tarif ediyordu; v1.4 onu "yeterli + sade" modeline indirdi. Solo developer + kapalı admin sistemi + henüz canlıya çıkmamış proje → over-engineered güvenlik özellikleri taşımak hem geliştirme hızını hem yüzey alanını şişiriyordu. Auth event audit, rate limit, password change UI gibi her özellik *yokluğu kadar var olduğu güvenlikle de* ölçülmeli; bu sürümde kapsam, ileri revizyonda kanıtlanmış ihtiyaç sonrası genişler.
+
+### v1.3 (önceki)
 
 v1.3 revizyonu auth katmanını v1 kapsamına aldı. v1.2'nin "v1'de tek kullanıcı varsayımı" kuralı kaldırıldı; artık 3 admin user, username + password ile login oluyor. WebAuthn/passkey kasıtlı olarak kapsam dışı bırakıldı (§9) — iOS/macOS Keychain'in varsayılan autofill akışı zaten Face/Touch ID UX'ini ücretsiz veriyor.
 

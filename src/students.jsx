@@ -10,6 +10,7 @@ import {
   getStudentLessons,
   getStudentPackages,
   getStudentProductSales,
+  getStudentsKpi,
   createCashPayment,
   createStudent,
 } from './api';
@@ -128,6 +129,7 @@ export function buildOpenDebtItems(detail) {
 export function StudentsPage({ onOpenStudent }) {
   const [students, setStudents] = React.useState([]);
   const [studentsLoading, setStudentsLoading] = React.useState(true);
+  const [kpi, setKpi] = React.useState(null);
   const [query, setQuery] = React.useState('');
   const [paymentTarget, setPaymentTarget] = React.useState(null);
   const [paymentLoading, setPaymentLoading] = React.useState(false);
@@ -143,10 +145,19 @@ export function StudentsPage({ onOpenStudent }) {
     return () => { cancelled = true; };
   }, []);
 
+  React.useEffect(() => {
+    let cancelled = false;
+    getStudentsKpi()
+      .then(data => { if (!cancelled) setKpi(data); })
+      .catch(err => console.error('[Students] KPI yüklenemedi:', err));
+    return () => { cancelled = true; };
+  }, []);
+
   async function refreshStudents() {
     try {
-      const fresh = await getStudents();
+      const [fresh, freshKpi] = await Promise.all([getStudents(), getStudentsKpi()]);
       setStudents(fresh);
+      setKpi(freshKpi);
     } catch (err) {
       console.error('[Students] liste yenilenemedi:', err);
     }
@@ -217,6 +228,8 @@ export function StudentsPage({ onOpenStudent }) {
         </div>
       </div>
 
+      <StudentsKpiRow kpi={kpi} />
+
       <div className="card stu-list-card">
         {studentsLoading ? (
           <div className="stu-state-msg">Yükleniyor...</div>
@@ -271,6 +284,95 @@ export function StudentsPage({ onOpenStudent }) {
           onCreated={handleStudentCreated}
         />
       )}
+    </div>
+  );
+}
+
+// ─── KPI Row ──────────────────────────────────────────────────────────────────
+
+function StudentsKpiRow({ kpi }) {
+  const activeCount = kpi?.activeCount ?? null;
+  const newThisMonth = kpi?.newThisMonth ?? null;
+  const debtorCount = kpi?.debtorCount ?? null;
+  const totalDebt = kpi ? parseMoney(kpi.totalDebt) : 0;
+  const inactive14 = kpi?.inactiveOver14Days ?? null;
+  const monthlyCompleted = kpi?.monthlyCompletedLessons ?? null;
+  const prevMonthlyCompleted = kpi?.previousMonthCompletedLessons ?? null;
+
+  const monthlyDelta =
+    monthlyCompleted !== null && prevMonthlyCompleted !== null
+      ? monthlyCompleted - prevMonthlyCompleted
+      : null;
+
+  const monthlyDeltaTone =
+    monthlyDelta === null ? 'flat' : monthlyDelta > 0 ? 'up' : monthlyDelta < 0 ? 'down' : 'flat';
+
+  function fmtNum(v) {
+    return v === null ? '—' : String(v);
+  }
+
+  const debtorWarn = (debtorCount ?? 0) > 0;
+
+  return (
+    <div className="kpi-row">
+      <div className="kpi-card">
+        <div className="kpi-card-label">Aktif öğrenci</div>
+        <div className="kpi-card-main">
+          <span className="kpi-card-val">{fmtNum(activeCount)}</span>
+        </div>
+        <div className="kpi-card-sub">
+          {newThisMonth !== null
+            ? <><strong>{newThisMonth}</strong> bu ay yeni eklendi</>
+            : <>—</>
+          }
+        </div>
+      </div>
+
+      <div className={`kpi-card${debtorWarn ? ' kpi-card-warn' : ''}`}>
+        <div className="kpi-card-label">Borçlu öğrenci</div>
+        <div className="kpi-card-main">
+          <span className="kpi-card-val">{fmtNum(debtorCount)}</span>
+        </div>
+        <div className="kpi-card-sub">
+          {kpi
+            ? <>Toplam borç <strong>{fmtTL(totalDebt)}</strong></>
+            : <>—</>
+          }
+        </div>
+      </div>
+
+      <div className="kpi-card">
+        <div className="kpi-card-label">14+ gündür gelmeyen</div>
+        <div className="kpi-card-main">
+          <span className="kpi-card-val">{fmtNum(inactive14)}</span>
+        </div>
+        <div className="kpi-card-sub">
+          {inactive14 !== null
+            ? <>Aktif öğrenciler arasında</>
+            : <>—</>
+          }
+        </div>
+      </div>
+
+      <div className="kpi-card">
+        <div className="kpi-card-label">Bu ay tamamlanan ders</div>
+        <div className="kpi-card-main">
+          <span className="kpi-card-val">{fmtNum(monthlyCompleted)}</span>
+        </div>
+        <div className="kpi-card-sub">
+          {monthlyDelta === null ? (
+            <>—</>
+          ) : (
+            <>
+              Geçen ay <strong>{prevMonthlyCompleted}</strong>
+              {' · '}
+              <span className={`stu-kpi-delta stu-kpi-delta-${monthlyDeltaTone}`}>
+                {monthlyDelta > 0 ? `+${monthlyDelta}` : monthlyDelta}
+              </span>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

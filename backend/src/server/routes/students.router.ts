@@ -4,6 +4,7 @@ import { Router } from "express";
 import {
   createStudent,
   getStudentById,
+  getStudentsKpi,
   listDebtors,
   listStudents,
   listStudentMovements,
@@ -32,6 +33,16 @@ export async function listStudentMovementsHandler(
 studentsRouter.get("/debtors", async (_req, res) => {
   try {
     const data = await listDebtors();
+    res.json({ data });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+// GET /students/kpi
+studentsRouter.get("/kpi", async (_req, res) => {
+  try {
+    const data = await getStudentsKpi();
     res.json({ data });
   } catch (err) {
     sendError(res, err);

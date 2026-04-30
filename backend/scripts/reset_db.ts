@@ -2,6 +2,7 @@
 // postgres maintenance DB üzerinden DROP + CREATE yapar.
 //
 // SAFETY: sadece localhost/127.0.0.1/::1 ve NODE_ENV !== 'production' olduğunda çalışır.
+import 'dotenv/config';
 import { Client } from 'pg';
 
 const url = process.env.DATABASE_URL;

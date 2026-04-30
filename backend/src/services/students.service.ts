@@ -155,6 +155,120 @@ type DebtorRow = {
   oldest_debt_since: string | null;
 };
 
+export type StudentsKpiResult = {
+  activeCount: number;
+  newThisMonth: number;
+  debtorCount: number;
+  totalDebt: string;
+  inactiveOver14Days: number;
+  monthlyCompletedLessons: number;
+  previousMonthCompletedLessons: number;
+};
+
+export async function getStudentsKpi(): Promise<StudentsKpiResult> {
+  const result = await pool.query(`
+    WITH
+      month_window AS (
+        SELECT
+          (date_trunc('month', now() AT TIME ZONE 'Europe/Istanbul')
+            AT TIME ZONE 'Europe/Istanbul')                              AS month_start,
+          (date_trunc('month', now() AT TIME ZONE 'Europe/Istanbul')
+            AT TIME ZONE 'Europe/Istanbul' + INTERVAL '1 month')         AS month_end,
+          (date_trunc('month', now() AT TIME ZONE 'Europe/Istanbul')
+            AT TIME ZONE 'Europe/Istanbul' - INTERVAL '1 month')         AS prev_month_start
+      ),
+
+      active_students AS (
+        SELECT COUNT(*) AS cnt
+        FROM students
+        WHERE is_active = TRUE
+          AND deleted_at IS NULL
+      ),
+
+      new_students AS (
+        SELECT COUNT(*) AS cnt
+        FROM students s, month_window mw
+        WHERE s.deleted_at IS NULL
+          AND COALESCE(s.joined_at, (s.created_at AT TIME ZONE 'Europe/Istanbul')::date)
+              >= (mw.month_start AT TIME ZONE 'Europe/Istanbul')::date
+          AND COALESCE(s.joined_at, (s.created_at AT TIME ZONE 'Europe/Istanbul')::date)
+              <  (mw.month_end   AT TIME ZONE 'Europe/Istanbul')::date
+      ),
+
+      debtor_summary AS (
+        SELECT
+          COUNT(*) FILTER (WHERE (lesson_debt + product_debt) > 0.01)        AS cnt,
+          COALESCE(SUM(GREATEST(0, lesson_debt + product_debt)), 0)          AS total
+        FROM v_student_summary
+      ),
+
+      inactive_14d AS (
+        SELECT COUNT(*) AS cnt
+        FROM students s
+        LEFT JOIN LATERAL (
+          SELECT MAX(l.starts_at) AS last_lesson_at
+          FROM lessons l
+          WHERE l.student_id = s.id
+            AND l.status = 'completed'
+            AND l.deleted_at IS NULL
+        ) att ON TRUE
+        WHERE s.is_active = TRUE
+          AND s.deleted_at IS NULL
+          AND COALESCE(s.joined_at, (s.created_at AT TIME ZONE 'Europe/Istanbul')::date)
+              <= (now() AT TIME ZONE 'Europe/Istanbul')::date - INTERVAL '14 days'
+          AND (att.last_lesson_at IS NULL OR att.last_lesson_at < now() - INTERVAL '14 days')
+      ),
+
+      monthly_completed AS (
+        SELECT COUNT(*) AS cnt
+        FROM lessons l, month_window mw
+        WHERE l.status = 'completed'
+          AND l.starts_at >= mw.month_start
+          AND l.starts_at <  mw.month_end
+          AND l.deleted_at IS NULL
+      ),
+
+      prev_monthly_completed AS (
+        SELECT COUNT(*) AS cnt
+        FROM lessons l, month_window mw
+        WHERE l.status = 'completed'
+          AND l.starts_at >= mw.prev_month_start
+          AND l.starts_at <  mw.month_start
+          AND l.deleted_at IS NULL
+      )
+
+    SELECT
+      active_students.cnt::int                AS active_count,
+      new_students.cnt::int                   AS new_this_month,
+      debtor_summary.cnt::int                 AS debtor_count,
+      debtor_summary.total::text              AS total_debt,
+      inactive_14d.cnt::int                   AS inactive_over_14_days,
+      monthly_completed.cnt::int              AS monthly_completed_lessons,
+      prev_monthly_completed.cnt::int         AS previous_month_completed_lessons
+    FROM active_students,
+         new_students,
+         debtor_summary,
+         inactive_14d,
+         monthly_completed,
+         prev_monthly_completed
+  `);
+
+  const row = result.rows[0] as Record<string, unknown> | undefined;
+  if (!row) {
+    throw new Error("Öğrenci KPI sorgusu sonuç döndürmedi");
+  }
+
+  return {
+    activeCount: Number(row["active_count"] ?? 0),
+    newThisMonth: Number(row["new_this_month"] ?? 0),
+    debtorCount: Number(row["debtor_count"] ?? 0),
+    totalDebt: String(row["total_debt"] ?? "0"),
+    inactiveOver14Days: Number(row["inactive_over_14_days"] ?? 0),
+    monthlyCompletedLessons: Number(row["monthly_completed_lessons"] ?? 0),
+    previousMonthCompletedLessons: Number(row["previous_month_completed_lessons"] ?? 0),
+  };
+}
+
 export async function listDebtors(): Promise<DebtorRow[]> {
   const result = await pool.query<DebtorRow>(`
     SELECT

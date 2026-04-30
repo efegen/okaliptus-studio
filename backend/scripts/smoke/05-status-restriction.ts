@@ -26,7 +26,7 @@ import {
 } from "../../src/services/lessons.service.js";
 import {
   section, step, info, assert, assertEqual, assertRejects,
-  cleanupSmoke, closePool, daysAgo,
+  cleanupSmoke, closePool, nextSlotIso,
 } from "./_shared.js";
 
 async function run(): Promise<void> {
@@ -46,7 +46,7 @@ async function run(): Promise<void> {
     step("Completed lesson oluşturuluyor (bu lessondan geri dönülemez)...");
     const lessonA = await createLesson({
       studentId: student.id,
-      startsAt: daysAgo(5),
+      startsAt: nextSlotIso(),
       mode: "onsite",
     });
     await completeLesson(lessonA.id);
@@ -80,7 +80,7 @@ async function run(): Promise<void> {
     console.log("  BEKLENED: InvalidStatusTransitionError (generic route completed'ı kabul etmez)");
     const lessonA2 = await createLesson({
       studentId: student.id,
-      startsAt: daysAgo(4),
+      startsAt: nextSlotIso(),
       mode: "online",
     });
     await assertRejects(
@@ -94,7 +94,7 @@ async function run(): Promise<void> {
     console.log("  BEKLENED: status = 'no_show', completed_at = null");
     const lessonB = await createLesson({
       studentId: student.id,
-      startsAt: daysAgo(3),
+      startsAt: nextSlotIso(),
       mode: "onsite",
     });
     const noShow = await changeLessonStatus(lessonB.id, "no_show");
@@ -107,7 +107,7 @@ async function run(): Promise<void> {
     console.log("  BEKLENED: status = 'cancelled'");
     const lessonC = await createLesson({
       studentId: student.id,
-      startsAt: daysAgo(2),
+      startsAt: nextSlotIso(),
       mode: "online",
     });
     const cancelled = await changeLessonStatus(lessonC.id, "cancelled");
@@ -117,7 +117,7 @@ async function run(): Promise<void> {
     // ── cancelled → completed: completeLesson ile SERBEST ─────────────────────
     step("cancelled → completed (completeLesson ile serbest olmalı)...");
     console.log("  BEKLENED: status = 'completed', completed_at set");
-    const doneC = await completeLesson(lessonC.id);
+    const { lesson: doneC } = await completeLesson(lessonC.id);
     assertEqual(doneC.status, "completed", "lesson.status = 'completed'");
     assert(doneC.completed_at !== null, "completed_at set (geç işaretleme)");
     info("lessonC tamamlandı (geç işaretleme)", doneC.completed_at);
@@ -125,7 +125,7 @@ async function run(): Promise<void> {
     // ── no_show → completed: completeLesson ile SERBEST ──────────────────────
     step("no_show → completed (completeLesson ile serbest olmalı)...");
     console.log("  BEKLENED: status = 'completed', completed_at set");
-    const doneB = await completeLesson(lessonB.id);
+    const { lesson: doneB } = await completeLesson(lessonB.id);
     assertEqual(doneB.status, "completed", "lesson.status = 'completed'");
     assert(doneB.completed_at !== null, "completed_at set");
     info("lessonB tamamlandı (no_show'dan döndü)", doneB.completed_at);

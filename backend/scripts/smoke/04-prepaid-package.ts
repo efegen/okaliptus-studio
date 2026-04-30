@@ -32,7 +32,7 @@ import { deletePayment } from "../../src/services/payments.service.js";
 import { pool } from "../../src/db/connection.js";
 import {
   section, step, info, assert, assertMoney, assertEqual, assertRejects,
-  cleanupSmoke, closePool, daysAgo, overrideDefaultLessonTypePrice,
+  cleanupSmoke, closePool, daysAgo, nextSlotIso, overrideDefaultLessonTypePrice,
 } from "./_shared.js";
 
 async function run(): Promise<void> {
@@ -100,10 +100,10 @@ async function run(): Promise<void> {
 
     const lesson1 = await createLesson({
       studentId: student.id,
-      startsAt: daysAgo(7),
+      startsAt: nextSlotIso(),
       mode: "onsite",
     });
-    const done1 = await completeLesson(lesson1.id);
+    const { lesson: done1 } = await completeLesson(lesson1.id);
 
     assertEqual(done1.prepaid_package_id, pkg.id, "lesson1.prepaid_package_id = pkg.id");
     assertMoney(done1.price_snapshot, "500", "lesson1.price_snapshot = 500 (paket unit_price override)");
@@ -116,12 +116,12 @@ async function run(): Promise<void> {
     // ── 6. Lesson 2 + 3 complete → paket tükendi ─────────────────────────────
     step("Lesson 2 + Lesson 3 tamamlanıyor (paket kredi tükenecek)...");
 
-    const lesson2 = await createLesson({ studentId: student.id, startsAt: daysAgo(6), mode: "onsite" });
-    const done2 = await completeLesson(lesson2.id);
+    const lesson2 = await createLesson({ studentId: student.id, startsAt: nextSlotIso(), mode: "onsite" });
+    const { lesson: done2 } = await completeLesson(lesson2.id);
     assertEqual(done2.prepaid_package_id, pkg.id, "lesson2.prepaid_package_id = pkg.id");
 
-    const lesson3 = await createLesson({ studentId: student.id, startsAt: daysAgo(5), mode: "online" });
-    const done3 = await completeLesson(lesson3.id);
+    const lesson3 = await createLesson({ studentId: student.id, startsAt: nextSlotIso(), mode: "online" });
+    const { lesson: done3 } = await completeLesson(lesson3.id);
     assertEqual(done3.prepaid_package_id, pkg.id, "lesson3.prepaid_package_id = pkg.id");
 
     const s3 = await getPrepaidPackageStatus(pkg.id);
@@ -134,8 +134,8 @@ async function run(): Promise<void> {
     step("Lesson 4 tamamlanıyor (paket kredi yok → normal fiyat bekleniyor)...");
     console.log("  BEKLENED: prepaid_package_id NULL, price_snapshot = 600 (lesson_type.default_price)");
 
-    const lesson4 = await createLesson({ studentId: student.id, startsAt: daysAgo(4), mode: "onsite" });
-    const done4 = await completeLesson(lesson4.id);
+    const lesson4 = await createLesson({ studentId: student.id, startsAt: nextSlotIso(), mode: "onsite" });
+    const { lesson: done4 } = await completeLesson(lesson4.id);
 
     assert(done4.prepaid_package_id === null, "lesson4.prepaid_package_id = NULL");
     assertMoney(done4.price_snapshot, "600", "lesson4.price_snapshot = 600 (lesson_type.default_price)");

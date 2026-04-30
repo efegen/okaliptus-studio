@@ -14,6 +14,8 @@ export type AuthUser = {
 };
 
 export async function login(username: string, password: string): Promise<string | null> {
+  if (typeof password !== 'string' || password.length < 6) return null;
+
   const result = await pool.query(
     `SELECT id, password_hash FROM users WHERE username = $1 AND is_active = true`,
     [username],
@@ -46,7 +48,15 @@ export async function validateSession(token: string): Promise<AuthUser | null> {
   const row = result.rows[0];
   if (!row) return null;
 
-  pool.query(`UPDATE sessions SET last_seen_at = now() WHERE token = $1`, [token]).catch(() => {});
+  // Sliding window — await edilir ki testler güncellemeyi anında görsün; hata
+  // session'u invalidate etmesin diye .catch ile yutulur.
+  await pool.query(
+    `UPDATE sessions
+       SET last_seen_at = now(),
+           expires_at   = now() + interval '30 days'
+     WHERE token = $1`,
+    [token],
+  ).catch(() => {});
 
   return {
     id: String(row.id),

@@ -23,7 +23,7 @@ import { createCashPayment } from "../../src/services/payments.service.js";
 import { pool } from "../../src/db/connection.js";
 import {
   section, step, info, assert, assertMoney, assertEqual, ok,
-  cleanupSmoke, closePool, daysAgo, overrideDefaultLessonTypePrice,
+  cleanupSmoke, closePool, daysAgo, nextSlotIso, overrideDefaultLessonTypePrice,
 } from "./_shared.js";
 
 async function run(): Promise<void> {
@@ -54,7 +54,7 @@ async function run(): Promise<void> {
 
     const lesson = await createLesson({
       studentId: student.id,
-      startsAt: daysAgo(2),
+      startsAt: nextSlotIso(),
       mode: "onsite",
     });
 
@@ -68,7 +68,7 @@ async function run(): Promise<void> {
     step("completeLesson() çağrılıyor...");
     console.log("  BEKLENEN: status='completed', completed_at set, prepaid_package_id NULL (paket yok)");
 
-    const completed = await completeLesson(lesson.id);
+    const { lesson: completed } = await completeLesson(lesson.id);
 
     assertEqual(completed.status, "completed", "lesson.status");
     assert(completed.completed_at !== null, "completed_at set olmuş");
