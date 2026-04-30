@@ -8,7 +8,7 @@
  */
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 vi.mock("../api", () => ({
@@ -25,8 +25,8 @@ describe("LoginPage", () => {
 
   it("renders form fields with iOS Keychain-friendly autocomplete attributes", () => {
     render(<LoginPage onLogin={() => {}} />);
-    const username = screen.getByLabelText(/kullanıcı adı/i);
-    const password = screen.getByLabelText(/şifre/i);
+    const username = screen.getByLabelText("Kullanıcı adı");
+    const password = screen.getByLabelText("Şifre");
     expect(username).toHaveAttribute("autocomplete", "username");
     expect(password).toHaveAttribute("autocomplete", "current-password");
     expect(screen.getByRole("button", { name: /giriş yap/i })).toBeInTheDocument();
@@ -39,8 +39,8 @@ describe("LoginPage", () => {
     const onLogin = vi.fn();
     render(<LoginPage onLogin={onLogin} />);
 
-    await userEvent.type(screen.getByLabelText(/kullanıcı adı/i), "admin");
-    await userEvent.type(screen.getByLabelText(/şifre/i), "secret123");
+    await userEvent.type(screen.getByLabelText("Kullanıcı adı"), "admin");
+    await userEvent.type(screen.getByLabelText("Şifre"), "secret123");
     await userEvent.click(screen.getByRole("button", { name: /giriş yap/i }));
 
     expect(loginApi).toHaveBeenCalledWith("admin", "secret123");
@@ -53,8 +53,8 @@ describe("LoginPage", () => {
     const onLogin = vi.fn();
     render(<LoginPage onLogin={onLogin} />);
 
-    await userEvent.type(screen.getByLabelText(/kullanıcı adı/i), "admin");
-    await userEvent.type(screen.getByLabelText(/şifre/i), "wrong");
+    await userEvent.type(screen.getByLabelText("Kullanıcı adı"), "admin");
+    await userEvent.type(screen.getByLabelText("Şifre"), "wrong");
     await userEvent.click(screen.getByRole("button", { name: /giriş yap/i }));
 
     expect(await screen.findByText(/kullanıcı adı veya şifre hatalı/i)).toBeInTheDocument();
@@ -66,13 +66,18 @@ describe("LoginPage", () => {
     loginApi.mockReturnValueOnce(new Promise(r => { resolveFn = r; }));
 
     render(<LoginPage onLogin={() => {}} />);
-    await userEvent.type(screen.getByLabelText(/kullanıcı adı/i), "admin");
-    await userEvent.type(screen.getByLabelText(/şifre/i), "secret");
+    await userEvent.type(screen.getByLabelText("Kullanıcı adı"), "admin");
+    await userEvent.type(screen.getByLabelText("Şifre"), "secret");
     await userEvent.click(screen.getByRole("button", { name: /giriş yap/i }));
 
     const button = screen.getByRole("button", { name: /giriş yapılıyor/i });
     expect(button).toBeDisabled();
 
     resolveFn({ id: "1" });
+    // Pending Promise resolved → setLoading(false) → "Giriş yap"a döner.
+    // act() warning'ini önlemek için update'i bekle.
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /giriş yap/i })).not.toBeDisabled();
+    });
   });
 });

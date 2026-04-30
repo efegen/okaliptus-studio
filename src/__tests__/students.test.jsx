@@ -76,7 +76,7 @@ describe("StudentsPage", () => {
     getStudents.mockResolvedValue([
       {
         id: "1",
-        full_name: "Borçlu Test",
+        full_name: "Test Müşteri",
         is_active: true,
         lesson_debt: "500",
         product_debt: "0",
@@ -89,9 +89,11 @@ describe("StudentsPage", () => {
 
     render(<StudentsPage onOpenStudent={() => {}} />);
 
-    await screen.findByText(/Borçlu Test/i);
-    // Borç göstergesi tek bir spesifik string'e bağlı kalmasın diye geniş regex
-    expect(screen.getByText(/borç/i)).toBeInTheDocument();
+    await screen.findByText(/Test Müşteri/i);
+    // Asıl borç badge'i: "500 ₺ borç" — KPI label "Borçlu öğrenci" /
+    // sub "Toplam borç" gibi diğer "borç" geçen düğümlerden ayrıştırmak için
+    // money + word kombinasyonu.
+    expect(screen.getByText(/500.*₺.*borç/i)).toBeInTheDocument();
   });
 
   it("renders empty state when student list is empty", async () => {
