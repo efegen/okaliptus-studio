@@ -17,6 +17,7 @@ import { settingsRouter } from "./routes/settings.router.js";
 import { instructorsRouter } from "./routes/instructors.router.js";
 import { lessonTypesRouter } from "./routes/lesson-types.router.js";
 import { authRouter } from "./routes/auth.router.js";
+import { auditRouter } from "./routes/audit.router.js";
 import { requireAuth } from "./middleware/requireAuth.js";
 
 export function createApp() {
@@ -58,6 +59,7 @@ export function createApp() {
   app.use("/settings", settingsRouter);
   app.use("/instructors", instructorsRouter);
   app.use("/lesson-types", lessonTypesRouter);
+  app.use("/audit-logs", auditRouter);
   app.use("/students", studentsRouter);
 
   // ── Student sub-resources (nested under /students/:studentId) ─────────────

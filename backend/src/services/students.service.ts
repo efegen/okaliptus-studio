@@ -65,6 +65,7 @@ export type CreateStudentInput = {
   note?: string | null;
   currency?: string;
   isActive?: boolean;
+  actorUserId?: number | string | null;
 };
 
 export type UpdateStudentInput = {
@@ -237,6 +238,7 @@ export async function createStudent(input: CreateStudentInput): Promise<StudentR
       entityType: "student",
       entityId: student.id,
       after: student,
+      actorUserId: input.actorUserId ?? null,
     });
 
     await client.query("COMMIT");
@@ -252,6 +254,7 @@ export async function createStudent(input: CreateStudentInput): Promise<StudentR
 export async function updateStudent(
   studentId: EntityId,
   input: UpdateStudentInput,
+  actorUserId?: number | string | null,
 ): Promise<StudentRow> {
   const client = await pool.connect();
 
@@ -358,6 +361,7 @@ export async function updateStudent(
       entityId: updated.id,
       before,
       after: updated,
+      actorUserId: actorUserId ?? null,
     });
 
     await client.query("COMMIT");
@@ -370,7 +374,7 @@ export async function updateStudent(
   }
 }
 
-export async function softDeleteStudent(studentId: EntityId): Promise<StudentRow> {
+export async function softDeleteStudent(studentId: EntityId, actorUserId?: number | string | null): Promise<StudentRow> {
   const client = await pool.connect();
 
   try {
@@ -442,6 +446,7 @@ export async function softDeleteStudent(studentId: EntityId): Promise<StudentRow
       entityType: "student",
       entityId: deletedStudent.id,
       before: student,
+      actorUserId: actorUserId ?? null,
     });
 
     await client.query("COMMIT");

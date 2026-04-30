@@ -386,3 +386,35 @@ export async function updateLessonType(id, patch) {
   return ensureMutationResult(payload, "Ders türü güncellenemedi.");
 }
 
+// ─── Audit Logs ──────────────────────────────────────────────────────────────
+
+export async function getAuditLogs({ from, to, actions, actorUserId, entityType, entityId, q, page = 1, limit = 50 } = {}) {
+  const params = new URLSearchParams();
+  if (from) params.set("from", from);
+  if (to) params.set("to", to);
+  if (actions && actions.length > 0) params.set("actions", actions.join(","));
+  if (actorUserId != null) params.set("actor_user_id", String(actorUserId));
+  if (entityType) params.set("entity_type", entityType);
+  if (entityId != null) params.set("entity_id", String(entityId));
+  if (q) params.set("q", q);
+  params.set("page", String(page));
+  params.set("limit", String(limit));
+
+  const payload = await apiGet(`/audit-logs?${params.toString()}`);
+  if (!Array.isArray(payload?.data)) throw new Error("Aktivite listesi alınamadı.");
+  return { data: payload.data, page: payload.page, limit: payload.limit, hasMore: payload.hasMore };
+}
+
+export async function getAuditUsers() {
+  const payload = await apiGet("/audit-logs/users");
+  if (!Array.isArray(payload?.data)) throw new Error("Kullanıcı listesi alınamadı.");
+  return payload.data;
+}
+
+export async function uncompleteLesson(lessonId) {
+  const payload = await apiRequest(`/lessons/${encodeURIComponent(lessonId)}/uncomplete`, {
+    method: "POST",
+  });
+  return ensureMutationResult(payload, "Ders geri alınamadı.");
+}
+

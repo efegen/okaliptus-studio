@@ -69,7 +69,7 @@ settingsRouter.patch("/", async (req, res) => {
       patch.lessonColorSaturation = v;
     }
 
-    const data = await updateSettings(patch);
+    const data = await updateSettings(patch, req.currentUser.id);
     res.json({ data });
   } catch (err) {
     sendError(res, err);

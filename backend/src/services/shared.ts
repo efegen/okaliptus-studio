@@ -21,6 +21,7 @@ type AuditLogInsert = {
   before?: unknown;
   after?: unknown;
   note?: string | null;
+  actorUserId?: number | string | null;
 };
 
 export function normalizeRequiredText(value: string, fieldName: string): string {
@@ -101,8 +102,8 @@ export async function rollbackQuietly(client: PoolClient): Promise<void> {
 export async function insertAuditLog(client: PoolClient, entry: AuditLogInsert): Promise<void> {
   await client.query(
     `
-      INSERT INTO audit_logs (action, entity_type, entity_id, before, after, note)
-      VALUES ($1, $2, $3, $4, $5, $6)
+      INSERT INTO audit_logs (action, entity_type, entity_id, before, after, note, actor_user_id)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
     `,
     [
       entry.action,
@@ -111,6 +112,7 @@ export async function insertAuditLog(client: PoolClient, entry: AuditLogInsert):
       entry.before ?? null,
       entry.after ?? null,
       entry.note ?? null,
+      entry.actorUserId ?? null,
     ],
   );
 }

@@ -47,7 +47,7 @@ lessonTypesRouter.post("/", async (req, res) => {
       name: name.trim(),
       default_duration_minutes: durationMin,
       default_price: price,
-    });
+    }, req.currentUser.id);
     res.status(201).json({ data });
   } catch (err) {
     sendError(res, err);
@@ -98,7 +98,7 @@ lessonTypesRouter.patch("/:id", async (req, res) => {
       patch.is_active = body.is_active;
     }
 
-    const data = await updateLessonType(id, patch);
+    const data = await updateLessonType(id, patch, req.currentUser.id);
     if (!data) {
       res.status(404).json({ error: { message: "Ders türü bulunamadı." } });
       return;

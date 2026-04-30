@@ -69,6 +69,7 @@ export type CreateLessonInput = {
   note?: string | null;
   instructorId?: EntityId | null;
   lessonTypeId?: EntityId | null;
+  actorUserId?: number | string | null;
 };
 
 export async function getLessonById(lessonId: EntityId): Promise<LessonRow> {
@@ -390,6 +391,7 @@ export async function createLesson(input: CreateLessonInput): Promise<LessonRow>
       entityType: "lesson",
       entityId: lesson.id,
       after: lesson,
+      actorUserId: input.actorUserId ?? null,
     });
 
     await client.query("COMMIT");
@@ -425,6 +427,7 @@ export type CompleteLessonResult = {
 export async function completeLesson(
   lessonId: EntityId,
   input: CompleteLessonInput = {},
+  actorUserId?: number | string | null,
 ): Promise<CompleteLessonResult> {
   const client = await pool.connect();
 
@@ -508,6 +511,7 @@ export async function completeLesson(
       entityId: completedLesson.id,
       before,
       after: completedLesson,
+      actorUserId: actorUserId ?? null,
     });
 
     let productSaleId: string | null = null;
@@ -519,6 +523,7 @@ export async function completeLesson(
         totalAmount: input.productSale.totalAmount,
         note: input.productSale.note ?? null,
         lessonId: completedLesson.id,
+        actorUserId: actorUserId ?? null,
       });
       productSaleId = sale.id;
     }
@@ -533,9 +538,134 @@ export async function completeLesson(
   }
 }
 
+export async function uncompleteLesson(
+  lessonId: EntityId,
+  actorUserId?: number | string | null,
+): Promise<LessonRow> {
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    const lessonResult = await client.query<LessonRow>(
+      `
+        SELECT *
+        FROM lessons
+        WHERE id = $1
+        FOR UPDATE
+      `,
+      [lessonId],
+    );
+
+    const lesson = lessonResult.rows[0];
+
+    if (!lesson || lesson.deleted_at !== null) {
+      throw new LessonNotFoundError();
+    }
+
+    if (lesson.status !== "completed") {
+      throw new InvalidStatusTransitionError("Sadece 'tamamlandı' durumundaki dersler geri alınabilir.");
+    }
+
+    if (!lesson.completed_at) {
+      throw new InvalidStatusTransitionError("Tamamlanma tarihi bulunamadı.");
+    }
+
+    const completedAt = new Date(lesson.completed_at);
+    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    if (completedAt < cutoff) {
+      throw new InvalidStatusTransitionError(
+        "Bu kadar eski bir dersi geri alamazsınız. 24 saatten eski tamamlamalar için ödemeyi silin ve dersi yeniden oluşturun.",
+      );
+    }
+
+    // Derse ait aktif ödeme varsa reddet — önce ödemelerin silinmesi gerekir
+    const paymentResult = await client.query<{ id: string }>(
+      `
+        SELECT id FROM payments
+        WHERE lesson_id = $1 AND deleted_at IS NULL
+        LIMIT 1
+      `,
+      [lessonId],
+    );
+
+    if (paymentResult.rows[0]) {
+      throw new InvalidStatusTransitionError(
+        "Dersin aktif ödemeleri var. Geri almadan önce ödemeleri silin.",
+      );
+    }
+
+    // Derse bağlı aktif ürün satışları: varsa ödeme var mı kontrol et, yoksa sil
+    const linkedSalesResult = await client.query<{ id: string }>(
+      `
+        SELECT id FROM product_sales
+        WHERE lesson_id = $1 AND deleted_at IS NULL
+      `,
+      [lessonId],
+    );
+
+    for (const sale of linkedSalesResult.rows) {
+      const salePaymentResult = await client.query<{ id: string }>(
+        `
+          SELECT id FROM payments
+          WHERE product_sale_id = $1 AND deleted_at IS NULL
+          LIMIT 1
+        `,
+        [sale.id],
+      );
+
+      if (salePaymentResult.rows[0]) {
+        throw new InvalidStatusTransitionError(
+          "Derse bağlı ürün satışının ödemesi var. Geri almadan önce ilgili ödemeleri silin.",
+        );
+      }
+
+      await client.query(
+        `UPDATE product_sales SET deleted_at = now() WHERE id = $1`,
+        [sale.id],
+      );
+    }
+
+    const before = { ...lesson };
+
+    const updateResult = await client.query<LessonRow>(
+      `
+        UPDATE lessons
+        SET status = 'scheduled',
+            completed_at = NULL,
+            prepaid_package_id = NULL
+        WHERE id = $1
+        RETURNING *
+      `,
+      [lessonId],
+    );
+
+    const revertedLesson = updateResult.rows[0];
+
+    await insertAuditLog(client, {
+      action: "lesson_uncompleted",
+      entityType: "lesson",
+      entityId: revertedLesson.id,
+      before,
+      after: revertedLesson,
+      note: "Ders geri alındı",
+      actorUserId: actorUserId ?? null,
+    });
+
+    await client.query("COMMIT");
+    return revertedLesson;
+  } catch (error) {
+    await rollbackQuietly(client);
+    throw toServiceError(error);
+  } finally {
+    client.release();
+  }
+}
+
 export async function changeLessonStatus(
   lessonId: EntityId,
   newStatus: LessonStatus,
+  actorUserId?: number | string | null,
 ): Promise<LessonRow> {
   const client = await pool.connect();
 
@@ -598,6 +728,7 @@ export async function changeLessonStatus(
       entityId: updatedLesson.id,
       before,
       after: updatedLesson,
+      actorUserId: actorUserId ?? null,
     });
 
     await client.query("COMMIT");
@@ -614,6 +745,7 @@ export type SetDiscountInput = {
   lessonId: EntityId;
   discountAmount: MoneyInput;
   note?: string | null;
+  actorUserId?: number | string | null;
 };
 
 export type SetDiscountResult = {
@@ -719,6 +851,7 @@ export async function setLessonDiscount(
       before: { discount_amount: oldDiscount },
       after: { discount_amount: newDiscount },
       note: normalizeOptionalText(input.note),
+      actorUserId: input.actorUserId ?? null,
     });
 
     await client.query("COMMIT");
@@ -731,7 +864,10 @@ export async function setLessonDiscount(
   }
 }
 
-export async function softDeleteLesson(lessonId: EntityId): Promise<LessonRow> {
+export async function softDeleteLesson(
+  lessonId: EntityId,
+  actorUserId?: number | string | null,
+): Promise<LessonRow> {
   const client = await pool.connect();
 
   try {
@@ -807,6 +943,7 @@ export async function softDeleteLesson(lessonId: EntityId): Promise<LessonRow> {
       entityType: "lesson",
       entityId: deletedLesson.id,
       before: lesson,
+      actorUserId: actorUserId ?? null,
     });
 
     await client.query("COMMIT");

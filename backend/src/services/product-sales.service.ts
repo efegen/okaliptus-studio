@@ -64,6 +64,7 @@ export type CreateProductSaleInput = {
   // Opsiyonel: ders tamamlama akışında verilen sale'i o derse bağlar.
   // NULL bırakılırsa standalone (ders dışı) satıştır.
   lessonId?: EntityId | null;
+  actorUserId?: number | string | null;
 };
 
 export type UpdateProductSaleInput = {
@@ -153,6 +154,7 @@ export async function createProductSaleWithClient(
     entityType: "product_sale",
     entityId: sale.id,
     after: sale,
+    actorUserId: input.actorUserId ?? null,
   });
 
   return sale;
@@ -179,6 +181,7 @@ export async function createProductSale(
 export async function updateProductSale(
   productSaleId: EntityId,
   input: UpdateProductSaleInput,
+  actorUserId?: number | string | null,
 ): Promise<ProductSaleRow> {
   const client = await pool.connect();
 
@@ -231,6 +234,7 @@ export async function updateProductSale(
       entityId: updated.id,
       before,
       after: updated,
+      actorUserId: actorUserId ?? null,
     });
 
     await client.query("COMMIT");
@@ -243,7 +247,7 @@ export async function updateProductSale(
   }
 }
 
-export async function softDeleteProductSale(productSaleId: EntityId): Promise<void> {
+export async function softDeleteProductSale(productSaleId: EntityId, actorUserId?: number | string | null): Promise<void> {
   const client = await pool.connect();
 
   try {
@@ -268,6 +272,7 @@ export async function softDeleteProductSale(productSaleId: EntityId): Promise<vo
       entityType: "product_sale",
       entityId: String(productSaleId),
       before,
+      actorUserId: actorUserId ?? null,
     });
 
     await client.query("COMMIT");

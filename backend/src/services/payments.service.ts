@@ -69,6 +69,7 @@ export type CreateCashPaymentInput = {
   source: Extract<PaymentSource, "cash" | "iban">;
   paidAt: string;
   note?: string | null;
+  actorUserId?: number | string | null;
 };
 
 type CreatePaymentResult = {
@@ -137,6 +138,7 @@ export async function createCashPaymentWithClient(
     entityType: "payment",
     entityId: payment.id,
     after: payment,
+    actorUserId: input.actorUserId ?? null,
   });
 
   return { payment };
@@ -160,7 +162,7 @@ export async function createCashPayment(
   }
 }
 
-export async function deletePayment(paymentId: EntityId): Promise<{
+export async function deletePayment(paymentId: EntityId, actorUserId?: number | string | null): Promise<{
   payment: PaymentRow;
 }> {
   const client = await pool.connect();
@@ -213,6 +215,7 @@ export async function deletePayment(paymentId: EntityId): Promise<{
       entityType: "payment",
       entityId: deletedPayment.id,
       before,
+      actorUserId: actorUserId ?? null,
     });
 
     await client.query("COMMIT");

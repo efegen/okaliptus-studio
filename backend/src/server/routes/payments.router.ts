@@ -24,6 +24,7 @@ paymentsRouter.post("/cash", async (req, res) => {
       source: String(source ?? "") as "cash" | "iban",
       paidAt: String(paidAt ?? ""),
       note: note != null ? String(note) : null,
+      actorUserId: req.currentUser.id,
     });
     res.status(201).json({ data });
   } catch (err) {
@@ -46,7 +47,7 @@ paymentsRouter.get("/:id", async (req, res) => {
 paymentsRouter.delete("/:id", async (req, res) => {
   try {
     const id = parseId(req.params.id);
-    const data = await deletePayment(id);
+    const data = await deletePayment(id, req.currentUser.id);
     res.json({ data });
   } catch (err) {
     sendError(res, err);

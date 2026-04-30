@@ -1,5 +1,6 @@
 import React from 'react';
 import { getSettings, updateSettings } from './api';
+import { ActivityPanel } from './settings-activity';
 
 const HOUR_OPTIONS = Array.from({ length: 25 }, (_, i) => i);
 
@@ -144,6 +145,7 @@ function SatSlider({ value, onChange, onReset }) {
 }
 
 export function SettingsPage() {
+  const [tab, setTab] = React.useState('general');
   const [loading, setLoading] = React.useState(true);
   const [loadError, setLoadError] = React.useState(null);
   const [saved, setSaved] = React.useState(null); // baseline from server
@@ -262,7 +264,26 @@ export function SettingsPage() {
         </div>
       </div>
 
-      <form onSubmit={handleSave} className="stg-form">
+      <div className="stg-tabs">
+        <button
+          type="button"
+          className={'stg-tab' + (tab === 'general' ? ' is-active' : '')}
+          onClick={() => setTab('general')}
+        >
+          Genel
+        </button>
+        <button
+          type="button"
+          className={'stg-tab' + (tab === 'activity' ? ' is-active' : '')}
+          onClick={() => setTab('activity')}
+        >
+          Aktivite
+        </button>
+      </div>
+
+      {tab === 'activity' && <ActivityPanel />}
+
+      {tab === 'general' && <form onSubmit={handleSave} className="stg-form">
 
         <Section title="Takvim">
           <SettingRow label="Haftalık kapasite">
@@ -367,7 +388,8 @@ export function SettingsPage() {
           </button>
         </div>
 
-      </form>
+      </form>}
+
     </div>
   );
 }

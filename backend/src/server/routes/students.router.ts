@@ -97,6 +97,7 @@ studentsRouter.post("/", async (req, res) => {
       note: note != null ? String(note) : null,
       currency: currency != null ? String(currency) : undefined,
       isActive: isActive != null ? Boolean(isActive) : undefined,
+      actorUserId: req.currentUser.id,
     });
     res.status(201).json({ data });
   } catch (err) {
@@ -144,7 +145,7 @@ studentsRouter.patch("/:id", async (req, res) => {
       ...(note !== undefined && { note: note != null ? String(note) : null }),
       ...(currency !== undefined && { currency: String(currency) }),
       ...(isActive !== undefined && { isActive: Boolean(isActive) }),
-    });
+    }, req.currentUser.id);
     res.json({ data });
   } catch (err) {
     sendError(res, err);
@@ -155,7 +156,7 @@ studentsRouter.patch("/:id", async (req, res) => {
 studentsRouter.delete("/:id", async (req, res) => {
   try {
     const id = parseId(req.params.id);
-    const data = await softDeleteStudent(id);
+    const data = await softDeleteStudent(id, req.currentUser.id);
     res.json({ data });
   } catch (err) {
     sendError(res, err);

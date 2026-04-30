@@ -75,6 +75,7 @@ export type CreatePrepaidPackageInput = {
   source: Extract<PaymentSource, "cash" | "iban">;
   note?: string | null;
   paymentNote?: string | null;
+  actorUserId?: number | string | null;
 };
 
 export async function getPrepaidPackageById(packageId: EntityId): Promise<PrepaidPackageRow> {
@@ -233,6 +234,7 @@ export async function createPrepaidPackage(
       entityType: "prepaid_package",
       entityId: prepaidPackage.id,
       after: prepaidPackage,
+      actorUserId: input.actorUserId ?? null,
     });
 
     await insertAuditLog(client, {
@@ -240,6 +242,7 @@ export async function createPrepaidPackage(
       entityType: "payment",
       entityId: payment.id,
       after: payment,
+      actorUserId: input.actorUserId ?? null,
     });
 
     await client.query("COMMIT");
@@ -252,7 +255,7 @@ export async function createPrepaidPackage(
   }
 }
 
-export async function deletePrepaidPackage(packageId: EntityId): Promise<{
+export async function deletePrepaidPackage(packageId: EntityId, actorUserId?: number | string | null): Promise<{
   prepaidPackage: PrepaidPackageRow;
   payment: PaymentRow;
 }> {
@@ -345,6 +348,7 @@ export async function deletePrepaidPackage(packageId: EntityId): Promise<{
       entityType: "prepaid_package",
       entityId: deletedPackage.id,
       before: beforePackage,
+      actorUserId: actorUserId ?? null,
     });
 
     await insertAuditLog(client, {
@@ -353,6 +357,7 @@ export async function deletePrepaidPackage(packageId: EntityId): Promise<{
       entityId: deletedPayment.id,
       before: beforePayment,
       note: `Deleted atomically with package #${packageId}`,
+      actorUserId: actorUserId ?? null,
     });
 
     await client.query("COMMIT");

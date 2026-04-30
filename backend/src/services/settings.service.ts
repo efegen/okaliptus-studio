@@ -1,5 +1,6 @@
 import { pool } from "../db/connection.js";
-import { ValidationError } from "./errors.js";
+import { ValidationError, toServiceError } from "./errors.js";
+import { insertAuditLog, rollbackQuietly } from "./shared.js";
 
 export type StudioSettings = {
   weeklyCapacity: number;
@@ -58,7 +59,7 @@ type SettingsPatch = {
   lessonColorSaturation?: number;
 };
 
-export async function updateSettings(patch: SettingsPatch): Promise<StudioSettings> {
+export async function updateSettings(patch: SettingsPatch, actorUserId?: number | string | null): Promise<StudioSettings> {
   if (
     patch.weeklyCapacity !== undefined &&
     (!Number.isInteger(patch.weeklyCapacity) || patch.weeklyCapacity <= 0)
@@ -181,10 +182,30 @@ export async function updateSettings(patch: SettingsPatch): Promise<StudioSettin
 
   sets.push(`updated_at = now()`);
 
-  const result = await pool.query(
-    `UPDATE studio_settings SET ${sets.join(", ")} WHERE id = 1 RETURNING *`,
-    values
-  );
+  const before = await getSettings();
 
-  return rowToSettings(result.rows[0]);
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const result = await client.query(
+      `UPDATE studio_settings SET ${sets.join(", ")} WHERE id = 1 RETURNING *`,
+      values,
+    );
+    const updated = rowToSettings(result.rows[0]);
+    await insertAuditLog(client, {
+      action: "settings_updated",
+      entityType: "settings",
+      entityId: 1,
+      before,
+      after: updated,
+      actorUserId: actorUserId ?? null,
+    });
+    await client.query("COMMIT");
+    return updated;
+  } catch (error) {
+    await rollbackQuietly(client);
+    throw toServiceError(error);
+  } finally {
+    client.release();
+  }
 }

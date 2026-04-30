@@ -29,6 +29,7 @@ productSalesRouter.post("/", async (req, res) => {
         lessonId != null && lessonId !== ""
           ? (lessonId as string | number)
           : null,
+      actorUserId: req.currentUser.id,
     });
     res.status(201).json({ data });
   } catch (err) {
@@ -57,7 +58,7 @@ productSalesRouter.patch("/:id", async (req, res) => {
       ...(soldAt !== undefined && { soldAt: String(soldAt) }),
       ...(totalAmount !== undefined && { totalAmount: totalAmount as string | number }),
       ...(note !== undefined && { note: note != null ? String(note) : null }),
-    });
+    }, req.currentUser.id);
     res.json({ data });
   } catch (err) {
     sendError(res, err);
@@ -68,7 +69,7 @@ productSalesRouter.patch("/:id", async (req, res) => {
 productSalesRouter.delete("/:id", async (req, res) => {
   try {
     const id = parseId(req.params.id);
-    await softDeleteProductSale(id);
+    await softDeleteProductSale(id, req.currentUser.id);
     res.json({ data: null });
   } catch (err) {
     sendError(res, err);

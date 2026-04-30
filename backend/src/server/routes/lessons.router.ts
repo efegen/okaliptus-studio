@@ -10,6 +10,7 @@ import {
   listLessonsInRange,
   setLessonDiscount,
   softDeleteLesson,
+  uncompleteLesson,
 } from "../../services/lessons.service.js";
 import type { LessonStatus } from "../../services/shared.js";
 import { InvalidStatusTransitionError, ValidationError } from "../../services/errors.js";
@@ -49,6 +50,7 @@ lessonsRouter.post("/", async (req, res) => {
         lessonTypeId != null && lessonTypeId !== ""
           ? (lessonTypeId as string | number)
           : null,
+      actorUserId: req.currentUser.id,
     });
     res.status(201).json({ data });
   } catch (err) {
@@ -97,7 +99,23 @@ lessonsRouter.post("/:id/complete", async (req, res) => {
       };
     }
 
-    const data = await completeLesson(id, productSaleInput ? { productSale: productSaleInput } : {});
+    const data = await completeLesson(
+      id,
+      productSaleInput ? { productSale: productSaleInput } : {},
+      req.currentUser.id,
+    );
+    res.json({ data });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+// POST /lessons/:id/uncomplete
+// Tamamlanmış bir dersi 24 saat içinde geri alır. Bağlı productSale varsa siler.
+lessonsRouter.post("/:id/uncomplete", async (req, res) => {
+  try {
+    const id = parseId(req.params.id);
+    const data = await uncompleteLesson(id, req.currentUser.id);
     res.json({ data });
   } catch (err) {
     sendError(res, err);
@@ -120,7 +138,7 @@ lessonsRouter.patch("/:id/status", async (req, res) => {
       );
     }
 
-    const data = await changeLessonStatus(id, newStatus);
+    const data = await changeLessonStatus(id, newStatus, req.currentUser.id);
     res.json({ data });
   } catch (err) {
     sendError(res, err);
@@ -145,6 +163,7 @@ lessonsRouter.patch("/:id/discount", async (req, res) => {
       lessonId: id,
       discountAmount: discountAmount as number | string,
       note: note != null ? String(note) : null,
+      actorUserId: req.currentUser.id,
     });
     res.json({ data });
   } catch (err) {
@@ -159,7 +178,7 @@ lessonsRouter.patch("/:id/discount", async (req, res) => {
 lessonsRouter.delete("/:id", async (req, res) => {
   try {
     const id = parseId(req.params.id);
-    const data = await softDeleteLesson(id);
+    const data = await softDeleteLesson(id, req.currentUser.id);
     res.json({ data });
   } catch (err) {
     sendError(res, err);

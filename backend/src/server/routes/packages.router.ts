@@ -27,6 +27,7 @@ packagesRouter.post("/", async (req, res) => {
       source: String(source ?? "") as Extract<PaymentSource, "cash" | "iban">,
       note: note != null ? String(note) : null,
       paymentNote: paymentNote != null ? String(paymentNote) : null,
+      actorUserId: req.currentUser.id,
     });
     res.status(201).json({ data });
   } catch (err) {
@@ -49,7 +50,7 @@ packagesRouter.get("/:id", async (req, res) => {
 packagesRouter.delete("/:id", async (req, res) => {
   try {
     const id = parseId(req.params.id);
-    const data = await deletePrepaidPackage(id);
+    const data = await deletePrepaidPackage(id, req.currentUser.id);
     res.json({ data });
   } catch (err) {
     sendError(res, err);
