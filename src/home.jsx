@@ -15,6 +15,7 @@ import {
   getDebtors, getStudentLessons, getStudentProductSales,
 } from './api';
 import { ReceivePaymentModal } from './students';
+import { useLessonActions } from './mobile/shared/useLessonActions';
 
 function parseNumericValue(value, fallback = null) {
   if (value === null || value === undefined || value === '') {
@@ -1551,6 +1552,7 @@ function DebtCard({ label, icon, total, paid, remaining, paymentMethod, onCollec
 }
 
 function LessonModal({ session, onClose, onUpdated, activePaymentMethods = { cash: true, iban: true } }) {
+  const { complete, cancel, addPayment, updateSale, deleteSale } = useLessonActions();
   // phase: 'detail' | 'complete' | 'cancel' | 'pay' | 'edit-sale'
   const [phase, setPhase] = React.useState('detail');
   // saleChoice: null (henüz seçilmedi) | 'no' (ürün satışı yok) | 'yes' (var, form açık)
@@ -1663,7 +1665,7 @@ function LessonModal({ session, onClose, onUpdated, activePaymentMethods = { cas
               note: saleNote || null,
             }
           : null;
-      await completeLessonApi(session.id, productSale ? { productSale } : {});
+      await complete(session.id, productSale ? { productSale } : {});
       onUpdated();
     } catch (err) {
       setError(err.message || 'Bir hata oluştu.');
@@ -1676,11 +1678,7 @@ function LessonModal({ session, onClose, onUpdated, activePaymentMethods = { cas
     setSubmitting(true);
     setError(null);
     try {
-      if (cancelReason === 'mistake') {
-        await deleteLessonApi(session.id);
-      } else {
-        await changeLessonStatusApi(session.id, 'cancelled');
-      }
+      await cancel(session.id, cancelReason);
       onUpdated();
     } catch (err) {
       setError(err.message || 'Ders iptal edilemedi.');
@@ -1694,7 +1692,7 @@ function LessonModal({ session, onClose, onUpdated, activePaymentMethods = { cas
     setSubmitting(true);
     setError(null);
     try {
-      await createCashPayment({
+      await addPayment({
         targetType: payTarget.type,
         targetId: payTarget.id,
         amount: parseFloat(payAmount),
@@ -1734,7 +1732,7 @@ function LessonModal({ session, onClose, onUpdated, activePaymentMethods = { cas
     setSubmitting(true);
     setError(null);
     try {
-      await updateProductSaleApi(editSaleTarget.id, fields);
+      await updateSale(editSaleTarget.id, fields);
       onUpdated();
     } catch (err) {
       setError(err.message || 'Ürün satışı güncellenemedi.');
@@ -1747,7 +1745,7 @@ function LessonModal({ session, onClose, onUpdated, activePaymentMethods = { cas
     setSubmitting(true);
     setError(null);
     try {
-      await deleteProductSaleApi(editSaleTarget.id);
+      await deleteSale(editSaleTarget.id);
       onUpdated();
     } catch (err) {
       setError(err.message || 'Ürün satışı silinemedi.');
