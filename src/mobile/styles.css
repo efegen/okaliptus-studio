@@ -211,4 +211,16 @@
      have leaked through (defense in depth — main.jsx swaps the tree, but if a
      stray .sidebar ever shows up on a mobile breakpoint we don't want it). */
   .sidebar { display: none; }
+
+  /* ---------- Login overrides ----------
+     Source order: styles.css (line ~4228 .login-*) is imported BEFORE this
+     file in main.jsx, so these rules override the desktop defaults via
+     equal-specificity, source-order cascade. No !important needed.
+     Input font-size 16px is already enforced globally above. */
+
+  .login-root  { padding: 16px; }
+  .login-card  { max-width: none; padding: 24px; }
+  .login-logo  { width: 192px; height: 192px; margin-bottom: 16px; }
+  .login-title { font-size: 1.4rem; margin-bottom: 28px; }
+  .login-btn   { min-height: 48px; padding: 12px 16px; font-size: 16px; }
 }

@@ -28,6 +28,19 @@ export function LoginPage({ onLogin }) {
     }
   }
 
+  // iOS klavyesi açılınca input'u görünür alanın merkezine kaydır.
+  // Çift guard: jsdom'da scrollIntoView undefined; ayrıca 300ms içinde
+  // komponent unmount olabilir.
+  function handleFocus(e) {
+    const target = e.target;
+    if (typeof target.scrollIntoView !== 'function') return;
+    setTimeout(() => {
+      if (typeof target.scrollIntoView === 'function') {
+        target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }
+    }, 300);
+  }
+
   return (
     <div className="login-root">
       <div className="login-card">
@@ -46,6 +59,7 @@ export function LoginPage({ onLogin }) {
                 autoComplete="username"
                 value={username}
                 onChange={e => setUsername(e.target.value)}
+                onFocus={handleFocus}
                 disabled={loading}
                 required
                 autoFocus
@@ -62,6 +76,7 @@ export function LoginPage({ onLogin }) {
                 className="has-toggle"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
+                onFocus={handleFocus}
                 disabled={loading}
                 required
               />
