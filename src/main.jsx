@@ -70,11 +70,14 @@ function App({ currentUser, onLogout }) {
   ].join(" ");
 
   if (isMobile) {
-    // Mobile shell: keep the same outer palette/density classes (so CSS
-    // variables resolve identically), but render the mobile layout instead
-    // of the desktop sidebar/header/main and hide the Tweaks panel.
+    // Mobile shell: keep palette/density classes (CSS variables resolve
+    // identically), but DROP the `.app` class — `.app` is a 68px-sidebar +
+    // 1fr grid, and dragging it onto the mobile tree squashes the entire
+    // shell into the 68px sidebar column. The Tweaks panel is also hidden
+    // on mobile.
+    const mobileCls = ["palette-" + tweaks.palette, "density-" + tweaks.density].join(" ");
     return (
-      <div className={cls}>
+      <div className={mobileCls}>
         <MobileApp
           page={page}
           setPage={setPage}

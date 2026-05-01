@@ -1,15 +1,20 @@
 /*
  * Mobile-only stylesheet.
  *
- * All rules are scoped to @media (max-width: 768px) so that the desktop
- * layout (which is the only thing this app shipped with for v1) is bit-for-bit
- * unchanged. Layout classes (mobile-shell, mobile-header, mobile-bottom-tab,
- * etc.) are also gated by the media query as belt-and-suspenders: even if a
- * mobile component were accidentally mounted on desktop, the styles would not
- * apply.
+ * Scoping must mirror useIsMobile.js: the hook flips to mobile when the
+ * device has a coarse pointer (touch) OR the viewport is <= 900px. The
+ * media query OR's the same two signals so that, e.g., an iPhone in
+ * landscape (852px, coarse pointer) gets mobile styles even though it is
+ * over the 768px "phone-portrait" breakpoint, while a desktop browser
+ * stays bit-for-bit unchanged in normal-width windows.
+ *
+ * Layout classes (mobile-shell, mobile-header, mobile-bottom-tab, etc.)
+ * are also gated by this media query as belt-and-suspenders: even if a
+ * mobile component were accidentally mounted in a desktop viewport, the
+ * styles would not apply.
  */
 
-@media (max-width: 768px) {
+@media (max-width: 900px), (pointer: coarse) {
   /* iOS Safari auto-zooms inputs whose font-size < 16px. Lock baseline. */
   input, select, textarea {
     font-size: 16px !important;
