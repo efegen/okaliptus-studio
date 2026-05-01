@@ -189,7 +189,6 @@ export function SettingsPage() {
       form.weeklyCapacity !== saved.weeklyCapacity ||
       form.calendarStartHour !== saved.calendarStartHour ||
       form.calendarEndHour !== saved.calendarEndHour ||
-      form.defaultLessonDuration !== saved.defaultLessonDuration ||
       form.defaultLessonMode !== saved.defaultLessonMode ||
       form.paymentMethodCash !== saved.paymentMethodCash ||
       form.paymentMethodIban !== saved.paymentMethodIban ||
@@ -217,7 +216,6 @@ export function SettingsPage() {
         weeklyCapacity: form.weeklyCapacity,
         calendarStartHour: form.calendarStartHour,
         calendarEndHour: form.calendarEndHour,
-        defaultLessonDuration: form.defaultLessonDuration,
         defaultLessonMode: form.defaultLessonMode,
         paymentMethodCash: form.paymentMethodCash,
         paymentMethodIban: form.paymentMethodIban,
@@ -319,16 +317,6 @@ export function SettingsPage() {
         </Section>
 
         <Section title="Dersler">
-          <SettingRow label="Varsayılan ders süresi">
-            <NumInput
-              value={form.defaultLessonDuration}
-              onChange={v => set('defaultLessonDuration', v)}
-              min={15}
-              max={240}
-              unit="dakika"
-            />
-          </SettingRow>
-
           <SettingRow label="Varsayılan ders modu">
             <ModeToggle
               value={form.defaultLessonMode}

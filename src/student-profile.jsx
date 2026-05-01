@@ -241,6 +241,7 @@ function buildActivity({ lessons, packages, productSales }) {
       title:      `${total} kredi · ${fmtTL(money(p.unit_price))}/ders`,
       sub:        remaining > 0 ? `${used}/${total} kullanıldı` : 'Tükendi',
       status:     remaining > 0 ? { label: 'Aktif', tone: 'paid' } : { label: 'Tükendi', tone: 'neutral' },
+      packageStatus: remaining > 0 ? 'active' : 'used_up',
       amount:     money(p.total_amount),
       amountTone: 'quiet',
       _search: ['paket', String(total), 'kredi', remaining > 0 ? 'aktif' : 'tükendi'].join(' ').toLowerCase(),
@@ -335,6 +336,7 @@ export function StudentProfilePage({ studentId, onBack }) {
     all:       activity.length,
     lessons:   activity.filter(i => i.kind === 'lesson').length,
     products:  activity.filter(i => i.kind === 'sale').length,
+    packages:  activity.filter(i => i.kind === 'package').length,
     movements: movements.length,
   };
 
@@ -510,6 +512,7 @@ function Tabs({ tab, setTab, counts }) {
     { id: 'all',       label: 'Kayıtlar',    n: counts.all },
     { id: 'lessons',   label: 'Dersler',     n: counts.lessons },
     { id: 'products',  label: 'Ürün Satışı', n: counts.products },
+    { id: 'packages',  label: 'Paket',       n: counts.packages },
     { id: 'movements', label: 'Hareketler',  n: counts.movements },
   ];
   return (
@@ -529,17 +532,10 @@ function Tabs({ tab, setTab, counts }) {
   );
 }
 
-// ─── Activity view (shared across all three tabs) ─────────────────────────────
-// Each tab is a filter over the same merged timeline. The lessons tab gets an
-// extra sub-filter row (upcoming / completed / cancelled) since that's the
-// operationally useful split — other tabs don't need one.
-
-const KAYITLAR_FILTERS = [
-  { id: 'all',     label: 'Tümü',    match: () => true },
-  { id: 'lesson',  label: 'Ders',    match: i => i.kind === 'lesson' },
-  { id: 'sale',    label: 'Ürün',    match: i => i.kind === 'sale' },
-  { id: 'package', label: 'Paket',   match: i => i.kind === 'package' },
-];
+// ─── Activity view (shared across Kayıtlar/Dersler/Ürün/Paket) ────────────────
+// Each typed tab is a filter over the same merged timeline. The Kayıtlar tab is
+// the unified everything-view (no sub-filter); the typed tabs each get a status
+// sub-filter that's specific to that record kind.
 
 const LESSON_SUBFILTERS = [
   { id: 'all',       label: 'Tümü',            match: () => true },
@@ -555,6 +551,12 @@ const PRODUCT_FILTERS = [
   { id: 'paid',    label: 'Ödendi', match: i => i.paymentTone === 'paid' },
 ];
 
+const PACKAGE_FILTERS = [
+  { id: 'all',     label: 'Tümü',    match: () => true },
+  { id: 'active',  label: 'Aktif',   match: i => i.packageStatus === 'active' },
+  { id: 'used_up', label: 'Tükendi', match: i => i.packageStatus === 'used_up' },
+];
+
 const PAGE_SIZE = 20;
 
 const KIND_ICON = {
@@ -565,9 +567,9 @@ const KIND_ICON = {
 
 function ActivityView({ items, tab }) {
   const filterDef =
-    tab === 'all'      ? KAYITLAR_FILTERS  :
     tab === 'lessons'  ? LESSON_SUBFILTERS :
     tab === 'products' ? PRODUCT_FILTERS   :
+    tab === 'packages' ? PACKAGE_FILTERS   :
     null;
 
   const [filterId, setFilterId] = React.useState('all');
@@ -581,6 +583,7 @@ function ActivityView({ items, tab }) {
   let scoped = items;
   if (tab === 'lessons')  scoped = items.filter(i => i.kind === 'lesson');
   if (tab === 'products') scoped = items.filter(i => i.kind === 'sale');
+  if (tab === 'packages') scoped = items.filter(i => i.kind === 'package');
 
   if (scoped.length === 0) {
     const empty = emptyCopy(tab);
@@ -707,6 +710,7 @@ function ActivityToolbar({ filterDef, filterId, setFilterId, scoped, search, set
 function emptyCopy(tab) {
   if (tab === 'lessons')  return { title: 'Henüz ders yok',  sub: 'Bu öğrenciye yeni bir ders planlayın.' };
   if (tab === 'products') return { title: 'Ürün satışı yok', sub: 'Bu öğrenciye henüz ürün satışı kaydı girilmedi.' };
+  if (tab === 'packages') return { title: 'Paket yok',       sub: 'Bu öğrenci adına henüz paket alımı yapılmadı.' };
   return                       { title: 'Hareket yok',       sub: 'Bu öğrenci için kayıtlı bir hareket bulunmuyor.' };
 }
 

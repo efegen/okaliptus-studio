@@ -79,4 +79,14 @@ describe("StudentProfilePage", () => {
     await screen.findByText(/Test Student/i);
     expect(screen.queryByText(/bakiye hareketleri/i)).not.toBeInTheDocument();
   });
+
+  it("renders Paket as a top-level tab next to Kayıtlar/Dersler/Ürün Satışı/Hareketler", async () => {
+    setupMocks();
+    render(<StudentProfilePage studentId="1" onBack={() => {}} />);
+    await screen.findByText(/Test Student/i);
+    const tablist = document.querySelector('.sp-tabs');
+    expect(tablist).not.toBeNull();
+    const labels = Array.from(tablist.querySelectorAll('.sp-tab > span:first-child')).map(el => el.textContent);
+    expect(labels).toEqual(['Kayıtlar', 'Dersler', 'Ürün Satışı', 'Paket', 'Hareketler']);
+  });
 });

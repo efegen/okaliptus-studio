@@ -202,7 +202,7 @@ function LessonTypeCard({ lt, onEdit }) {
   );
 }
 
-export function LessonTypesPage() {
+export function LessonTypesSection() {
   const [items, setItems] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState(null);
@@ -259,12 +259,9 @@ export function LessonTypesPage() {
   };
 
   return (
-    <div className="page lesson-types-page">
-      <div className="page-head">
-        <div>
-          <div className="eyebrow">{activeCount} aktif · {items.length} toplam</div>
-          <h1 className="page-title">Ders türleri</h1>
-        </div>
+    <section className="catalog-section">
+      <div className="catalog-section-head">
+        <div className="eyebrow">{activeCount} aktif · {items.length} toplam</div>
         <div className="head-actions">
           <label className="lt-search">
             <Icon.Search width="15" height="15" />
@@ -339,6 +336,6 @@ export function LessonTypesPage() {
           onClose={() => setModal(null)}
         />
       )}
-    </div>
+    </section>
   );
 }

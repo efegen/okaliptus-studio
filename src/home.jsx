@@ -1030,6 +1030,11 @@ function StandaloneCreateLessonModal({ onClose, onCreated, defaultMode = 'onsite
 
 // ─── Quick Sale Modal ────────────────────────────────────────────────────────
 
+function toLocalDatetimeValue(date) {
+  const pad = n => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 function QuickSaleModal({ onClose, onCreated }) {
   const [students, setStudents] = React.useState([]);
   const [selectedStudent, setSelectedStudent] = React.useState(null);
@@ -1038,6 +1043,7 @@ function QuickSaleModal({ onClose, onCreated }) {
   const [comboHighlight, setComboHighlight] = React.useState(0);
   const [amount, setAmount] = React.useState('');
   const [saleNote, setSaleNote] = React.useState('');
+  const [soldAt, setSoldAt] = React.useState(() => toLocalDatetimeValue(new Date()));
   const [submitting, setSubmitting] = React.useState(false);
   const [fetchError, setFetchError] = React.useState(null);
   const [submitError, setSubmitError] = React.useState(null);
@@ -1110,7 +1116,7 @@ function QuickSaleModal({ onClose, onCreated }) {
     try {
       await createProductSaleApi({
         studentId: Number(selectedStudent.id),
-        soldAt: new Date().toISOString(),
+        soldAt: new Date(soldAt).toISOString(),
         totalAmount: parseFloat(amount),
         note: saleNote.trim() || null,
       });
@@ -1202,6 +1208,16 @@ function QuickSaleModal({ onClose, onCreated }) {
               value={amount}
               onChange={e => setAmount(e.target.value)}
               placeholder="0"
+              required
+            />
+          </div>
+
+          <div className="form-row">
+            <label>Satış tarihi ve saati</label>
+            <input
+              type="datetime-local"
+              value={soldAt}
+              onChange={e => setSoldAt(e.target.value)}
               required
             />
           </div>
@@ -2396,7 +2412,7 @@ export function WeekCalendar({ weekStart, variant = "detailed", onSessionClick, 
                     <div
                       key={s.id}
                       className={"wk-sess wk-sess-" + s.lessonState}
-                      style={{ top, height: hourH - 3 }}
+                      style={{ top, minHeight: hourH - 3, height: 'auto', maxHeight: hourH }}
                       onClick={e => { e.stopPropagation(); handleSessionClick(s); }}
                     >
                       <div className="wk-sess-top">
@@ -2410,11 +2426,13 @@ export function WeekCalendar({ weekStart, variant = "detailed", onSessionClick, 
                           </span>
                         )}
                         {s.mode === "online" && <span className="wk-sess-mode">ONLINE</span>}
+                      </div>
+                      <div className="wk-sess-name-row">
+                        <span className="wk-sess-name">{s.studentNickname || s.studentName}</span>
                         {s.lessonState === 'partial' && Number(s.price) > Number(s.paid) && (
                           <span className="wk-sess-remain">-{fmtTL(Number(s.price) - Number(s.paid))}</span>
                         )}
                       </div>
-                      <div className="wk-sess-name">{s.studentNickname || s.studentName}</div>
                     </div>
                   );
                 })}

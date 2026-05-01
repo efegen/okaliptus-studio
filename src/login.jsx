@@ -31,7 +31,10 @@ export function LoginPage({ onLogin }) {
   return (
     <div className="login-root">
       <div className="login-card">
-        <img src="/logo.png" className="login-logo" alt="Okaliptus" />
+        <picture>
+          <source srcSet="/logo.webp" type="image/webp" />
+          <img src="/logo.png" className="login-logo" alt="Okaliptus" />
+        </picture>
         <h1 className="login-title">Okaliptus Yoga</h1>
         <form className="login-form" onSubmit={handleSubmit}>
           <div className="login-field">

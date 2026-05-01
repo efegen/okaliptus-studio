@@ -1,4 +1,4 @@
-// Instructor adını ve admin kullanıcıları .env'den okuyarak DB'ye yazar.
+// Admin kullanıcıları .env'den okuyarak DB'ye yazar.
 // Idempotent: mevcut kayıtlara dokunmaz. Gerçek kimlik bilgileri kaynak
 // koduna asla girmez — yalnızca .env (gitignored) üzerinden gelir.
 import bcrypt from 'bcryptjs';
@@ -7,7 +7,6 @@ import { pool, closeDatabaseConnection } from '../src/db/connection.js';
 const BCRYPT_COST = 12;
 
 async function main() {
-  const instructorName = process.env.BOOTSTRAP_INSTRUCTOR_NAME?.trim();
   const adminsRaw = process.env.BOOTSTRAP_ADMINS?.trim();
 
   if (!adminsRaw) {
@@ -27,21 +26,6 @@ async function main() {
     }
     return { username, password };
   });
-
-  // Instructor
-  if (instructorName) {
-    const r = await pool.query(
-      `UPDATE instructors SET full_name = $1 WHERE full_name = 'Default Instructor' RETURNING id`,
-      [instructorName],
-    );
-    console.log(
-      r.rowCount
-        ? `Instructor updated: "${instructorName}"`
-        : 'Instructor: placeholder not found (already set or no rows)',
-    );
-  } else {
-    console.log('BOOTSTRAP_INSTRUCTOR_NAME not set — skipping instructor update');
-  }
 
   // Admin users
   for (const { username, password } of admins) {

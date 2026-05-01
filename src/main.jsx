@@ -6,8 +6,7 @@ import { HomePage } from './home';
 import { StudentsPage } from './students';
 import { StudentProfilePage } from './student-profile';
 import { SettingsPage } from './settings';
-import { LessonTypesPage } from './lesson-types';
-import { InstructorsPage } from './instructors';
+import { CatalogPage } from './catalog';
 import { LoginPage } from './login';
 import { getSettings, getMe, logout as apiLogout } from './api';
 
@@ -18,7 +17,11 @@ const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
 }/*EDITMODE-END*/;
 
 function App({ currentUser, onLogout }) {
-  const [page, setPage] = React.useState(() => localStorage.getItem("okaliptus-page") || "home");
+  const [page, setPage] = React.useState(() => {
+    const stored = localStorage.getItem("okaliptus-page");
+    if (stored === "instructors" || stored === "lesson-types") return "catalog";
+    return stored || "home";
+  });
   const [studentDetailId, setStudentDetailId] = React.useState(null);
   const [tweaks, setTweaks] = React.useState(TWEAK_DEFAULTS);
   const [tweaksOpen, setTweaksOpen] = React.useState(false);
@@ -77,8 +80,7 @@ function App({ currentUser, onLogout }) {
                 />
               : <StudentsPage onOpenStudent={setStudentDetailId} />
           )}
-          {page === "instructors" && <InstructorsPage />}
-          {page === "lesson-types" && <LessonTypesPage />}
+          {page === "catalog" && <CatalogPage />}
           {page === "settings" && <SettingsPage />}
         </main>
       </div>
@@ -145,6 +147,17 @@ function Root() {
     }
     window.addEventListener('auth:unauthorized', handler);
     return () => window.removeEventListener('auth:unauthorized', handler);
+  }, []);
+
+  React.useEffect(() => {
+    if (!('serviceWorker' in navigator)) return;
+    function onSwMessage(e) {
+      if (e.data?.type === 'auth:unauthorized') {
+        window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+      }
+    }
+    navigator.serviceWorker.addEventListener('message', onSwMessage);
+    return () => navigator.serviceWorker.removeEventListener('message', onSwMessage);
   }, []);
 
   function handleLogin(user) {

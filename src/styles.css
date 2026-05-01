@@ -753,7 +753,6 @@ input, select { font-family: inherit; }
   font-weight: 600;
 }
 .wk-sess-mode { font-size: 9px; text-transform: uppercase; letter-spacing: 0.04em; }
-.wk-sess-remain { margin-left: auto; font-size: 9px; opacity: 0.75; font-variant-numeric: tabular-nums; }
 /* Saatin sağında ders bloğunda ürün satışı işareti — minimum görsel yük. */
 .wk-sess-sale {
   display: inline-flex;
@@ -762,7 +761,12 @@ input, select { font-family: inherit; }
   line-height: 0;
 }
 .wk-sess-sale .ic-bag { display: block; }
-.wk-sess-name { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; letter-spacing: -0.01em; }
+.wk-sess-name-row {
+  display: flex; align-items: baseline; gap: 4px;
+  margin-top: 2px; min-width: 0;
+}
+.wk-sess-name { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: -0.01em; flex: 1; min-width: 0; }
+.wk-sess-remain { flex-shrink: 0; white-space: nowrap; font-size: 9px; opacity: 0.75; font-variant-numeric: tabular-nums; margin-left: auto; }
 
 .cal-legend {
   display: flex; gap: 18px; padding: 14px 4px 0;
@@ -1312,8 +1316,29 @@ input, select { font-family: inherit; }
   border-color: var(--accent);
   background: var(--accent-2);
 }
+.rpm-item-lead {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+.rpm-item-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px; height: 28px;
+  border-radius: 8px;
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+.rpm-item-icon-lesson { background: var(--accent-2); color: var(--accent-ink); }
+.rpm-item-icon-sale   { background: var(--bg-2);     color: var(--ink-2); }
+.rpm-item.is-selected .rpm-item-icon { background: var(--surface); }
+
 .rpm-item-main {
   min-width: 0;
+  flex: 1;
 }
 .rpm-item-title {
   font-size: 13px;
@@ -3035,7 +3060,6 @@ input, select { font-family: inherit; }
 
 .modal-create-lesson {
   padding: 0;
-  overflow: hidden;
   width: 440px;
 }
 
@@ -3052,6 +3076,8 @@ input, select { font-family: inherit; }
   padding: 18px 20px 14px;
   background: var(--bg);
   border-bottom: 1px solid var(--line);
+  border-top-left-radius: var(--radius-lg);
+  border-top-right-radius: var(--radius-lg);
 }
 
 .mcl-title-row {
@@ -3806,9 +3832,48 @@ input, select { font-family: inherit; }
   gap: 3px;
 }
 
-/* ─── Ders Türleri page ───────────────────────────────────────────────────── */
-.lesson-types-page {
+/* ─── Catalog page (Dersler ve Eğitmenler) ───────────────────────────────── */
+.catalog-page {
   max-width: 1180px;
+}
+
+/* Tab bar between page-head and active section */
+.catalog-tabs {
+  display: flex;
+  gap: 2px;
+  border-bottom: 1px solid var(--line-2);
+  margin-top: -8px;
+}
+.catalog-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  color: var(--ink-3);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s;
+}
+.catalog-tab:hover { color: var(--ink); }
+.catalog-tab.is-active {
+  color: var(--ink);
+  border-bottom-color: var(--accent);
+}
+
+.catalog-section { display: flex; flex-direction: column; gap: 14px; }
+.catalog-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
 }
 
 /* Search box (lives inside page head .head-actions) */
@@ -4138,11 +4203,15 @@ input, select { font-family: inherit; }
 .lt-status-btn.is-passive { background: var(--bg-2); color: var(--ink-2); }
 
 @media (max-width: 760px) {
-  .lesson-types-page .page-head {
+  .catalog-page .page-head {
     flex-direction: column;
     align-items: stretch;
   }
-  .lesson-types-page .head-actions {
+  .catalog-section-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .catalog-section-head .head-actions {
     flex-wrap: wrap;
   }
   .lt-search {

@@ -34,9 +34,9 @@ export const Icon = {
 
 export function Sidebar({ page, setPage }) {
   const topItems = [
-    { id: "home",         label: "Ana Sayfa",  icon: Icon.Home },
-    { id: "students",     label: "Öğrenciler", icon: Icon.Users },
-    { id: "lesson-types", label: "Ders Türleri", icon: Icon.Layers },
+    { id: "home",     label: "Ana Sayfa",            icon: Icon.Home },
+    { id: "students", label: "Öğrenciler",           icon: Icon.Users },
+    { id: "catalog",  label: "Dersler ve Eğitmenler", icon: Icon.Layers },
   ];
   return (
     <aside className="sidebar">
@@ -74,8 +74,7 @@ export function Sidebar({ page, setPage }) {
 export const PAGE_LABELS = {
   home: "Ana Sayfa",
   students: "Öğrenciler",
-  instructors: "Eğitmenler",
-  "lesson-types": "Ders Türleri",
+  catalog: "Dersler ve Eğitmenler",
   settings: "Ayarlar",
 };
 

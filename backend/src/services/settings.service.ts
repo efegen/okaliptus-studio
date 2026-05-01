@@ -7,7 +7,6 @@ export type StudioSettings = {
   weekStart: string;
   calendarStartHour: number;
   calendarEndHour: number;
-  defaultLessonDuration: number;
   defaultLessonMode: "online" | "onsite";
   defaultCurrency: string;
   paymentMethodCash: boolean;
@@ -21,7 +20,6 @@ function rowToSettings(row: Record<string, unknown>): StudioSettings {
     weekStart: row.week_start as string,
     calendarStartHour: Number(row.calendar_start_hour),
     calendarEndHour: Number(row.calendar_end_hour),
-    defaultLessonDuration: Number(row.default_lesson_duration),
     defaultLessonMode: row.default_lesson_mode as "online" | "onsite",
     defaultCurrency: row.default_currency as string,
     paymentMethodCash: Boolean(row.payment_method_cash),
@@ -35,7 +33,7 @@ export async function getSettings(): Promise<StudioSettings> {
     SELECT
       weekly_capacity, week_start,
       calendar_start_hour, calendar_end_hour,
-      default_lesson_duration, default_lesson_mode,
+      default_lesson_mode,
       default_currency, payment_method_cash, payment_method_iban,
       lesson_color_saturation
     FROM studio_settings WHERE id = 1
@@ -52,7 +50,6 @@ type SettingsPatch = {
   weeklyCapacity?: number;
   calendarStartHour?: number;
   calendarEndHour?: number;
-  defaultLessonDuration?: number;
   defaultLessonMode?: "online" | "onsite";
   paymentMethodCash?: boolean;
   paymentMethodIban?: boolean;
@@ -94,15 +91,6 @@ export async function updateSettings(patch: SettingsPatch, actorUserId?: number 
         "Takvim başlangıç saati bitiş saatinden küçük olmalı."
       );
     }
-  }
-
-  if (
-    patch.defaultLessonDuration !== undefined &&
-    (!Number.isInteger(patch.defaultLessonDuration) ||
-      patch.defaultLessonDuration <= 0 ||
-      patch.defaultLessonDuration > 240)
-  ) {
-    throw new ValidationError("Ders süresi 1–240 dakika arasında tam sayı olmalı.");
   }
 
   if (
@@ -154,10 +142,6 @@ export async function updateSettings(patch: SettingsPatch, actorUserId?: number 
   if (patch.calendarEndHour !== undefined) {
     sets.push(`calendar_end_hour = $${i++}`);
     values.push(patch.calendarEndHour);
-  }
-  if (patch.defaultLessonDuration !== undefined) {
-    sets.push(`default_lesson_duration = $${i++}`);
-    values.push(patch.defaultLessonDuration);
   }
   if (patch.defaultLessonMode !== undefined) {
     sets.push(`default_lesson_mode = $${i++}`);

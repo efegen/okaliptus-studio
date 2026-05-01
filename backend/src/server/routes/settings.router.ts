@@ -41,12 +41,6 @@ settingsRouter.patch("/", async (req, res) => {
       patch.calendarEndHour = v;
     }
 
-    if ("defaultLessonDuration" in body) {
-      const v = Number(body.defaultLessonDuration);
-      if (!Number.isFinite(v)) throw new ValidationError("defaultLessonDuration geçersiz.");
-      patch.defaultLessonDuration = v;
-    }
-
     if ("defaultLessonMode" in body) {
       const v = String(body.defaultLessonMode);
       if (v !== "online" && v !== "onsite") {

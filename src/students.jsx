@@ -600,24 +600,33 @@ export function ReceivePaymentModal({ student, detail, onClose, onSuccess }) {
                 <span className="eyebrow">Açık borç kalemleri</span>
               </div>
               <div className="rpm-list" role="list">
-                {debtItems.map(item => (
-                  <button
-                    key={item.key}
-                    type="button"
-                    className={`rpm-item${selectedKey === item.key ? ' is-selected' : ''}`}
-                    onClick={() => handleSelectItem(item)}
-                  >
-                    <div className="rpm-item-main">
-                      <div className="rpm-item-title">{fmtDate(item.dateIso)} · {item.typeLabel}</div>
-                      <div className="rpm-item-desc">{item.description}</div>
-                    </div>
-                    <div className="rpm-item-meta">
-                      <span>Toplam: {fmtTL(item.totalAmount)}</span>
-                      <span>Ödenen: {fmtTL(item.paidAmount)}</span>
-                      <span className="rpm-item-remaining">Kalan: {fmtTL(item.remainingAmount)}</span>
-                    </div>
-                  </button>
-                ))}
+                {debtItems.map(item => {
+                  const iconKind = item.targetType === 'lesson' ? 'lesson' : 'sale';
+                  const Icn = iconKind === 'lesson' ? Icon.Calendar : Icon.Tag;
+                  return (
+                    <button
+                      key={item.key}
+                      type="button"
+                      className={`rpm-item${selectedKey === item.key ? ' is-selected' : ''}`}
+                      onClick={() => handleSelectItem(item)}
+                    >
+                      <div className="rpm-item-lead">
+                        <span className={'rpm-item-icon rpm-item-icon-' + iconKind} aria-hidden="true">
+                          <Icn width="14" height="14" />
+                        </span>
+                        <div className="rpm-item-main">
+                          <div className="rpm-item-title">{fmtDate(item.dateIso)} · {item.typeLabel}</div>
+                          <div className="rpm-item-desc">{item.description}</div>
+                        </div>
+                      </div>
+                      <div className="rpm-item-meta">
+                        <span>Toplam: {fmtTL(item.totalAmount)}</span>
+                        <span>Ödenen: {fmtTL(item.paidAmount)}</span>
+                        <span className="rpm-item-remaining">Kalan: {fmtTL(item.remainingAmount)}</span>
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
