@@ -1,0 +1,209 @@
+/*
+ * Mobile-only stylesheet.
+ *
+ * All rules are scoped to @media (max-width: 768px) so that the desktop
+ * layout (which is the only thing this app shipped with for v1) is bit-for-bit
+ * unchanged. Layout classes (mobile-shell, mobile-header, mobile-bottom-tab,
+ * etc.) are also gated by the media query as belt-and-suspenders: even if a
+ * mobile component were accidentally mounted on desktop, the styles would not
+ * apply.
+ */
+
+@media (max-width: 768px) {
+  /* iOS Safari auto-zooms inputs whose font-size < 16px. Lock baseline. */
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+
+  /* Apple HIG minimum tap target. */
+  button, [role="button"] {
+    min-height: 44px;
+  }
+
+  /* Kill native gray flash on tap. */
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Smooth momentum scrolling on legacy iOS. */
+  html, body {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Block pull-to-refresh / chain-scroll on document level. */
+  body {
+    overscroll-behavior-y: none;
+  }
+
+  /* Safe-area helpers (notch + home indicator). */
+  .mobile-safe-top    { padding-top:    env(safe-area-inset-top); }
+  .mobile-safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+
+  /* iOS address-bar-aware full height. */
+  .mobile-fullscreen { height: 100dvh; }
+
+  /* ---------- Shell layout ---------- */
+
+  .mobile-shell {
+    display: flex;
+    flex-direction: column;
+    min-height: 100dvh;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--f-sans);
+  }
+
+  .mobile-header {
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    height: calc(56px + env(safe-area-inset-top));
+    padding: env(safe-area-inset-top) 16px 0;
+    background: color-mix(in oklch, var(--surface) 88%, transparent);
+    backdrop-filter: saturate(180%) blur(12px);
+    -webkit-backdrop-filter: saturate(180%) blur(12px);
+    border-bottom: 1px solid var(--ink-4);
+  }
+
+  .mobile-header-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--ink);
+    min-width: 0;
+  }
+
+  .mobile-header-title-text {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .mobile-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .mobile-iconbtn {
+    width: 44px;
+    height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: 0;
+    border-radius: 999px;
+    color: var(--ink-2);
+    cursor: pointer;
+  }
+  .mobile-iconbtn:active { background: var(--surface-2); }
+
+  /* ---------- Main scroll region ---------- */
+
+  .mobile-main {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding-bottom: calc(64px + env(safe-area-inset-bottom) + 8px);
+  }
+
+  .mobile-page-placeholder {
+    padding: 24px 16px;
+    color: var(--ink-3);
+    font-size: 15px;
+    line-height: 1.5;
+  }
+
+  .mobile-page-placeholder h2 {
+    font-family: var(--f-sans);
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--ink);
+    margin: 0 0 8px;
+  }
+
+  /* ---------- Bottom tab bar ---------- */
+
+  .mobile-bottom-tab {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 50;
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    align-items: stretch;
+    height: calc(64px + env(safe-area-inset-bottom));
+    padding-bottom: env(safe-area-inset-bottom);
+    background: color-mix(in oklch, var(--surface) 92%, transparent);
+    backdrop-filter: saturate(180%) blur(14px);
+    -webkit-backdrop-filter: saturate(180%) blur(14px);
+    border-top: 1px solid var(--ink-4);
+  }
+
+  .mobile-tab-btn {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    background: transparent;
+    border: 0;
+    padding: 6px 4px 4px;
+    color: var(--ink-3);
+    font-family: var(--f-sans);
+    font-size: 11px;
+    line-height: 1.1;
+    cursor: pointer;
+  }
+
+  .mobile-tab-btn .mobile-tab-label {
+    white-space: nowrap;
+  }
+
+  .mobile-tab-btn.active {
+    color: var(--accent);
+  }
+
+  .mobile-tab-btn.active::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 28px;
+    height: 2px;
+    border-radius: 0 0 2px 2px;
+    background: var(--accent);
+  }
+
+  .mobile-tab-fab {
+    /* Center-slot plus button, lifted slightly. */
+    align-self: center;
+    width: 52px;
+    height: 52px;
+    border-radius: 16px;
+    background: var(--accent);
+    color: var(--surface);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    box-shadow: 0 6px 14px rgba(0, 0, 0, 0.18);
+    cursor: pointer;
+    margin: 0 auto;
+  }
+  .mobile-tab-fab:active { background: var(--accent-hover); }
+
+  /* When the bottom tab bar is visible, hide any desktop sidebar that may
+     have leaked through (defense in depth — main.jsx swaps the tree, but if a
+     stray .sidebar ever shows up on a mobile breakpoint we don't want it). */
+  .sidebar { display: none; }
+}

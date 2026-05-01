@@ -14,6 +14,21 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+// jsdom does not implement matchMedia. Mobile hooks/components rely on it,
+// so polyfill before any module under test reads window.matchMedia.
+if (typeof window !== "undefined" && !window.matchMedia) {
+  window.matchMedia = (query) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    addListener: () => {},
+    removeListener: () => {},
+    dispatchEvent: () => false,
+  });
+}
+
 // Default: any unstubbed fetch returns a 500 so tests that forget to mock fail loudly.
 globalThis.fetch = vi.fn(() =>
   Promise.resolve(

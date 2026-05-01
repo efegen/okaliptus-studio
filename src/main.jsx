@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './styles.css';
+import './mobile/styles.css';
 import { Sidebar, Header } from './layout';
 import { HomePage } from './home';
 import { StudentsPage } from './students';
@@ -9,6 +10,8 @@ import { SettingsPage } from './settings';
 import { CatalogPage } from './catalog';
 import { LoginPage } from './login';
 import { getSettings, getMe, logout as apiLogout } from './api';
+import { useIsMobile } from './mobile/useIsMobile';
+import { MobileApp } from './mobile/MobileApp';
 
 const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
   "homeLayout": "detayli",
@@ -25,6 +28,7 @@ function App({ currentUser, onLogout }) {
   const [studentDetailId, setStudentDetailId] = React.useState(null);
   const [tweaks, setTweaks] = React.useState(TWEAK_DEFAULTS);
   const [tweaksOpen, setTweaksOpen] = React.useState(false);
+  const isMobile = useIsMobile();
 
   React.useEffect(() => {
     localStorage.setItem("okaliptus-page", page);
@@ -64,6 +68,22 @@ function App({ currentUser, onLogout }) {
     "palette-" + tweaks.palette,
     "density-" + tweaks.density,
   ].join(" ");
+
+  if (isMobile) {
+    // Mobile shell: keep the same outer palette/density classes (so CSS
+    // variables resolve identically), but render the mobile layout instead
+    // of the desktop sidebar/header/main and hide the Tweaks panel.
+    return (
+      <div className={cls}>
+        <MobileApp
+          page={page}
+          setPage={setPage}
+          studentDetailId={studentDetailId}
+          setStudentDetailId={setStudentDetailId}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className={cls}>
