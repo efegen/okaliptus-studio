@@ -83,6 +83,7 @@ function App({ currentUser, onLogout }) {
           setPage={setPage}
           studentDetailId={studentDetailId}
           setStudentDetailId={setStudentDetailId}
+          currentUser={currentUser}
         />
       </div>
     );

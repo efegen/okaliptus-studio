@@ -219,8 +219,176 @@
      Input font-size 16px is already enforced globally above. */
 
   .login-root  { padding: 16px; }
-  .login-card  { max-width: none; padding: 24px; }
-  .login-logo  { width: 192px; height: 192px; margin-bottom: 16px; }
-  .login-title { font-size: 1.4rem; margin-bottom: 28px; }
+  .login-card  { max-width: 360px; padding: 28px 24px; }
+  .login-logo  { width: 88px; height: 88px; margin-bottom: 12px; }
+  .login-title { font-size: 1.25rem; margin-bottom: 22px; }
   .login-btn   { min-height: 48px; padding: 12px 16px; font-size: 16px; }
+
+  /* ---------- Home ---------- */
+
+  .mobile-home {
+    padding: env(safe-area-inset-top) 0 0;
+  }
+
+  .mobile-greeting-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 14px;
+  }
+
+  .mobile-greeting-text {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .mobile-greeting-line1 {
+    font-family: var(--f-sans);
+    font-size: 19px;
+    font-weight: 600;
+    color: var(--ink);
+    margin: 0 0 4px 0;
+    line-height: 1.2;
+  }
+
+  .mobile-greeting-line2 {
+    font-size: 13px;
+    color: var(--ink-2);
+    margin: 0;
+    line-height: 1.4;
+  }
+
+  .mobile-greeting-avatar {
+    flex-shrink: 0;
+  }
+
+  /* ---------- Home (Faz C.1: KPI band) ---------- */
+
+  .mobile-home-eyebrow {
+    font-size: 11px;
+    color: var(--ink-3);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-family: var(--f-mono, var(--f-sans));
+    font-weight: 500;
+    margin-bottom: 14px;
+  }
+
+  /* 4 cards in a row, 2 visible per viewport, snap-aligned. */
+  .mobile-kpi-scroll {
+    display: flex;
+    gap: 12px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    /* Bleed past the page gutter; cards still align to it via this padding. */
+    padding: 4px 16px 8px;
+    margin: 0 -16px;
+    scrollbar-width: none;
+  }
+  .mobile-kpi-scroll::-webkit-scrollbar { display: none; }
+
+  /* Card width math: 2 cards + 1 gap + 2x gutter must fill the viewport.
+     2*W + 12 + 32 = 100vw  →  W = 50vw - 22px. */
+  .mobile-kpi-card {
+    flex: 0 0 calc(50vw - 22px);
+    scroll-snap-align: start;
+    background: var(--surface);
+    border: 1px solid var(--line-2);
+    border-radius: 10px;
+    padding: 14px 14px 12px;
+    box-shadow: var(--shadow-sm);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    position: relative;
+    overflow: hidden;
+    min-width: 0;
+  }
+
+  .mobile-kpi-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: var(--accent);
+  }
+  .mobile-kpi-card-warn::before { background: var(--warn); }
+
+  .mobile-kpi-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ink-3);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .mobile-kpi-label-sub {
+    opacity: 0.55;
+    font-weight: 500;
+  }
+
+  .mobile-kpi-main {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    flex-wrap: wrap;
+    line-height: 1;
+    min-width: 0;
+  }
+
+  .mobile-kpi-val {
+    font-family: var(--f-serif);
+    font-size: 22px;
+    font-weight: 500;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+  }
+  .mobile-kpi-card-warn .mobile-kpi-val { color: var(--warn); }
+
+  .mobile-kpi-sep {
+    font-size: 16px;
+    color: var(--ink-3);
+    font-weight: 300;
+    line-height: 1;
+  }
+
+  .mobile-kpi-val2 {
+    font-size: 12px;
+    color: var(--ink-2);
+    font-variant-numeric: tabular-nums;
+    font-weight: 400;
+  }
+
+  .mobile-kpi-bar {
+    height: 4px;
+    background: var(--line-2);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .mobile-kpi-bar-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 2px;
+  }
+  .mobile-kpi-bar-warn .mobile-kpi-bar-fill {
+    background: var(--warn);
+    opacity: 0.35;
+  }
+
+  .mobile-kpi-sub {
+    font-size: 11px;
+    color: var(--ink-3);
+    letter-spacing: 0.01em;
+  }
+  .mobile-kpi-sub strong {
+    color: var(--ink-2);
+    font-weight: 600;
+  }
 }

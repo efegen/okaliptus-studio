@@ -12,7 +12,7 @@ export default defineConfig({
         name: 'Okaliptus Yoga Studio',
         short_name: 'Okaliptus',
         description: 'Okaliptus Yoga stüdyo yönetim paneli',
-        theme_color: '#a64b2a',
+        theme_color: '#f5efe6',
         background_color: '#f5efe6',
         display: 'standalone',
         orientation: 'portrait',

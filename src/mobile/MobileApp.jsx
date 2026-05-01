@@ -1,6 +1,7 @@
 import React from 'react';
 import { MobileHeader } from './MobileHeader';
 import { BottomTabBar } from './BottomTabBar';
+import { MobileHome } from './MobileHome';
 
 /*
  * Mobile shell.
@@ -38,9 +39,11 @@ export function MobileApp({
   setPage,
   studentDetailId,
   setStudentDetailId,
+  currentUser,
 }) {
   const onStudentsPage = page === 'students';
   const showBack = onStudentsPage && !!studentDetailId;
+  const hideHeader = page === 'home';
 
   function handleBack() {
     setStudentDetailId(null);
@@ -57,12 +60,7 @@ export function MobileApp({
 
   let body;
   if (page === 'home') {
-    body = (
-      <PagePlaceholder title="Ana Sayfa">
-        Bu sayfa Faz C.2'de doldurulacak (bugün/yarın dersleri, mini KPI şeridi,
-        bekleyen tahsilat özeti).
-      </PagePlaceholder>
-    );
+    body = <MobileHome user={currentUser} />;
   } else if (page === 'students') {
     body = studentDetailId ? (
       <PagePlaceholder title="Öğrenci profili">
@@ -92,11 +90,13 @@ export function MobileApp({
 
   return (
     <div className="mobile-shell">
-      <MobileHeader
-        page={page}
-        showBack={showBack}
-        onBack={handleBack}
-      />
+      {!hideHeader && (
+        <MobileHeader
+          page={page}
+          showBack={showBack}
+          onBack={handleBack}
+        />
+      )}
       <main className="mobile-main" data-screen-label={page}>
         {body}
       </main>
