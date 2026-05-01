@@ -4,6 +4,7 @@ import type { PoolClient } from "pg";
 
 import { pool } from "../db/connection.js";
 import {
+  DeleteConflictError,
   LessonNotFoundError,
   PaymentTargetMismatchError,
   ProductSaleNotFoundError,
@@ -259,6 +260,18 @@ export async function softDeleteProductSale(productSaleId: EntityId, actorUserId
     );
     const current = currentResult.rows[0];
     if (!current) throw new ProductSaleNotFoundError();
+
+    // Tahsil edilmiş bir satış silinemez — önce ödeme(ler) iade edilmeli.
+    // Aksi halde ledger ile satış kaydı arasında sessiz tutarsızlık oluşur.
+    const paymentResult = await client.query<{ id: string }>(
+      `SELECT id FROM payments WHERE product_sale_id = $1 AND deleted_at IS NULL LIMIT 1`,
+      [productSaleId],
+    );
+    if (paymentResult.rows[0]) {
+      throw new DeleteConflictError(
+        "Bu satışa bağlı ödeme var. Önce ödemeyi iade et / sil, sonra satışı kaldırabilirsin.",
+      );
+    }
 
     const before = { ...current };
 

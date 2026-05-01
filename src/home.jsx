@@ -10,7 +10,7 @@ import { Icon, Avatar } from './layout';
 import {
   getWeeklyKpi, getWeekLessons, getStudents, getSettings,
   createLesson, completeLessonApi, changeLessonStatusApi, deleteLessonApi,
-  createProductSaleApi, createCashPayment,
+  createProductSaleApi, updateProductSaleApi, deleteProductSaleApi, createCashPayment,
   getInstructors, getLessonTypes,
   getDebtors, getStudentLessons, getStudentProductSales,
 } from './api';
@@ -1469,7 +1469,7 @@ function debtStateFor(paid, total) {
 // Borç kartı — açık borç durumunda kalan rakamı baskın (BÜYÜK + renkli),
 // gross küçük ve sakin durur. Tahsil edildikten sonra sade görünüme döner.
 // Sol kenar şeridi durumu tek bakışta okunur kılar.
-function DebtCard({ label, icon, total, paid, remaining, paymentMethod, onCollect, disabled }) {
+function DebtCard({ label, icon, total, paid, remaining, paymentMethod, onCollect, onEdit, disabled }) {
   const state = debtStateFor(paid, total);
   const headline = state === 'partial' ? 'kalan' : 'borç';
   return (
@@ -1478,6 +1478,21 @@ function DebtCard({ label, icon, total, paid, remaining, paymentMethod, onCollec
         <span className="lm-debt-label">
           {icon}
           <span className="lm-debt-label-text">{label}</span>
+          {onEdit && (
+            <button
+              type="button"
+              className="lm-debt-edit"
+              onClick={onEdit}
+              disabled={disabled}
+              aria-label="Düzenle"
+              title="Düzenle"
+            >
+              <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path d="M11.5 2.5l2 2-8 8H3.5v-2l8-8z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/>
+                <path d="M10 4l2 2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+              </svg>
+            </button>
+          )}
         </span>
         {(state === 'paid' || state === 'empty') && (
           <span className="lm-debt-gross">{state === 'empty' ? '—' : fmtTL(total)}</span>
@@ -1520,7 +1535,7 @@ function DebtCard({ label, icon, total, paid, remaining, paymentMethod, onCollec
 }
 
 function LessonModal({ session, onClose, onUpdated, activePaymentMethods = { cash: true, iban: true } }) {
-  // phase: 'detail' | 'complete' | 'cancel' | 'pay'
+  // phase: 'detail' | 'complete' | 'cancel' | 'pay' | 'edit-sale'
   const [phase, setPhase] = React.useState('detail');
   // saleChoice: null (henüz seçilmedi) | 'no' (ürün satışı yok) | 'yes' (var, form açık)
   const [saleChoice, setSaleChoice] = React.useState(null);
@@ -1533,6 +1548,13 @@ function LessonModal({ session, onClose, onUpdated, activePaymentMethods = { cas
   // payTarget pay fazının hangi borç kalemine yöneldiğini taşır.
   // { type: 'lesson' | 'product_sale', id, label, total, paid, remaining }
   const [payTarget, setPayTarget] = React.useState(null);
+  // edit-sale fazı: hangi ürün satışının düzenlendiği + form değerleri.
+  // { id, paid, originalTotal, originalNote }
+  const [editSaleTarget, setEditSaleTarget] = React.useState(null);
+  const [editSaleAmount, setEditSaleAmount] = React.useState('');
+  const [editSaleNote, setEditSaleNote] = React.useState('');
+  // Düzenleme penceresinde "Bu satışı sil" basıldıktan sonraki onay alt-adımı.
+  const [confirmingDeleteSale, setConfirmingDeleteSale] = React.useState(false);
   const [error, setError] = React.useState(null);
   const [submitting, setSubmitting] = React.useState(false);
 
@@ -1573,7 +1595,28 @@ function LessonModal({ session, onClose, onUpdated, activePaymentMethods = { cas
     setPayNote('');
     setPaySource(activePaymentMethods.cash ? 'cash' : 'iban');
     setPayTarget(null);
+    setEditSaleTarget(null);
+    setEditSaleAmount('');
+    setEditSaleNote('');
+    setConfirmingDeleteSale(false);
     setError(null);
+  }
+
+  // Ürün satışını düzenleme fazını açar. Yanlış girilen tutar ya da nota
+  // düzeltme imkanı sağlar; tahsil edilmiş kısım varsa yeni tutar ondan
+  // küçük olamaz (aşağı doğru düzenlemede submit'te validate edilir).
+  function openEditSalePhase(sale) {
+    setEditSaleTarget({
+      id: sale.id,
+      paid: Number(sale.paidAmount) || 0,
+      originalTotal: Number(sale.totalAmount) || 0,
+      originalNote: sale.note || '',
+    });
+    setEditSaleAmount(String(Number(sale.totalAmount) || 0));
+    setEditSaleNote(sale.note || '');
+    setConfirmingDeleteSale(false);
+    setError(null);
+    setPhase('edit-sale');
   }
 
   // Bir borç kaleminin "Tahsil" butonuna basıldığında çağrılır. Pay fazını
@@ -1646,6 +1689,52 @@ function LessonModal({ session, onClose, onUpdated, activePaymentMethods = { cas
       onUpdated();
     } catch (err) {
       setError(err.message || 'Ödeme kaydedilemedi.');
+      setSubmitting(false);
+    }
+  }
+
+  async function handleEditSaleSubmit(e) {
+    e.preventDefault();
+    if (!editSaleTarget) return;
+    const newAmount = parseFloat(editSaleAmount);
+    if (!Number.isFinite(newAmount) || newAmount <= 0) {
+      setError('Geçerli bir tutar gir.');
+      return;
+    }
+    if (newAmount < editSaleTarget.paid) {
+      setError(`Yeni tutar ödenmiş ${fmtTL(editSaleTarget.paid)} miktarından düşük olamaz.`);
+      return;
+    }
+    const trimmedNote = editSaleNote.trim();
+    const fields = {};
+    if (newAmount !== editSaleTarget.originalTotal) fields.totalAmount = newAmount;
+    if (trimmedNote !== (editSaleTarget.originalNote || '')) {
+      fields.note = trimmedNote === '' ? null : trimmedNote;
+    }
+    if (Object.keys(fields).length === 0) {
+      resetToDetail();
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    try {
+      await updateProductSaleApi(editSaleTarget.id, fields);
+      onUpdated();
+    } catch (err) {
+      setError(err.message || 'Ürün satışı güncellenemedi.');
+      setSubmitting(false);
+    }
+  }
+
+  async function handleDeleteSale() {
+    if (!editSaleTarget) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await deleteProductSaleApi(editSaleTarget.id);
+      onUpdated();
+    } catch (err) {
+      setError(err.message || 'Ürün satışı silinemedi.');
       setSubmitting(false);
     }
   }
@@ -1753,6 +1842,7 @@ function LessonModal({ session, onClose, onUpdated, activePaymentMethods = { cas
                       paid: sale.paidAmount,
                       remaining: sale.remaining,
                     })}
+                    onEdit={() => openEditSalePhase(sale)}
                   />
                 );
               })}
@@ -1951,6 +2041,67 @@ function LessonModal({ session, onClose, onUpdated, activePaymentMethods = { cas
             </form>
           )}
 
+          {/* EDIT SALE — yanlış girilen ürün satışını düzeltmek için. Kısmi
+              tahsilat yapılmışsa yeni tutar ödenenden küçük olamaz. Aynı
+              ekrandan satışı tamamen iptal edip silebilirsin (tahsilat varsa
+              backend reddeder). */}
+          {phase === 'edit-sale' && editSaleTarget && !confirmingDeleteSale && (
+            <form id="lm-edit-sale-form" onSubmit={handleEditSaleSubmit}>
+              <div className="lm-step-intro">
+                <div className="lm-step-title">Ürün satışını düzenle</div>
+                <div className="lm-step-sub">
+                  Yanlış girdiğin tutarı veya notu düzeltebilir, ya da satışı tamamen iptal edebilirsin.
+                  {editSaleTarget.paid > 0 && ` Bu satıştan ${fmtTL(editSaleTarget.paid)} tahsil edilmiş; yeni tutar bundan düşük olamaz ve tahsilat geri alınmadan silinemez.`}
+                </div>
+              </div>
+              <div className="lm-pay-fields">
+                <div className="form-row">
+                  <label>Satış tutarı (₺)</label>
+                  <input
+                    type="number" min="0" step="1"
+                    value={editSaleAmount}
+                    onChange={e => setEditSaleAmount(e.target.value)}
+                    placeholder="0"
+                    required
+                    autoFocus
+                  />
+                </div>
+                <div className="form-row lm-last-field">
+                  <label>Not <span className="lm-opt">(opsiyonel)</span></label>
+                  <input
+                    type="text"
+                    value={editSaleNote}
+                    onChange={e => setEditSaleNote(e.target.value)}
+                    placeholder="Ürün adı veya açıklama…"
+                  />
+                </div>
+              </div>
+              {error && <div className="lm-error">{error}</div>}
+              <div className="lm-edit-sale-danger">
+                <button
+                  type="button"
+                  className="lm-edit-sale-delete"
+                  onClick={() => { setError(null); setConfirmingDeleteSale(true); }}
+                  disabled={submitting || editSaleTarget.paid > 0}
+                  title={editSaleTarget.paid > 0
+                    ? 'Bu satıştan tahsilat yapılmış, silinemez.'
+                    : 'Bu satışı sil'}
+                >Bu satışı sil</button>
+              </div>
+            </form>
+          )}
+
+          {phase === 'edit-sale' && editSaleTarget && confirmingDeleteSale && (
+            <div className="lm-step-intro">
+              <div className="lm-step-title">Bu satışı silmek istediğine emin misin?</div>
+              <div className="lm-step-sub">
+                {fmtTL(editSaleTarget.originalTotal)} tutarındaki ürün satışı kaldırılacak.
+                Bu işlem geri alınamaz; sadece geçmiş hareketler arasında iz olarak görünür.
+              </div>
+              {error && <div className="lm-error">{error}</div>}
+            </div>
+          )}
+
         </div>
 
         {/* ── Footer ── */}
@@ -2001,6 +2152,33 @@ function LessonModal({ session, onClose, onUpdated, activePaymentMethods = { cas
                 className="btn btn-primary"
                 disabled={!payAmount || submitting}
               >{submitting ? 'Kaydediliyor…' : 'Ödemeyi kaydet'}</button>
+            </>
+          )}
+          {phase === 'edit-sale' && !confirmingDeleteSale && (
+            <>
+              <button type="button" className="btn btn-ghost" onClick={resetToDetail} disabled={submitting}>Geri</button>
+              <button
+                type="submit"
+                form="lm-edit-sale-form"
+                className="btn btn-primary"
+                disabled={!editSaleAmount || submitting}
+              >{submitting ? 'Kaydediliyor…' : 'Kaydet'}</button>
+            </>
+          )}
+          {phase === 'edit-sale' && confirmingDeleteSale && (
+            <>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => { setError(null); setConfirmingDeleteSale(false); }}
+                disabled={submitting}
+              >Vazgeç</button>
+              <button
+                type="button"
+                className="btn btn-primary lm-btn-danger"
+                onClick={handleDeleteSale}
+                disabled={submitting}
+              >{submitting ? 'Siliniyor…' : 'Evet, sil'}</button>
             </>
           )}
         </div>

@@ -1883,6 +1883,61 @@ input, select { font-family: inherit; }
   text-overflow: ellipsis;
   letter-spacing: 0.04em;
 }
+.lm-debt-edit {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  margin-left: 2px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--ink-3);
+  border-radius: 4px;
+  cursor: pointer;
+  flex-shrink: 0;
+  opacity: 0.7;
+  transition: opacity 120ms ease, color 120ms ease, background 120ms ease;
+}
+.lm-debt-edit:hover {
+  opacity: 1;
+  color: var(--ink-1);
+  background: rgba(0, 0, 0, 0.04);
+}
+.lm-debt-edit:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* Düzenleme penceresinin altında, ana CTA'lardan ayrı duran sessiz
+   "Bu satışı sil" satırı. Yıkıcı aksiyon olduğu için kırmızı tonda ama
+   küçük puntoda — kazaen tıklanmaya teşvik etmesin. */
+.lm-edit-sale-danger {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--line);
+  display: flex;
+  justify-content: center;
+}
+.lm-edit-sale-delete {
+  background: transparent;
+  border: none;
+  padding: 4px 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: oklch(0.50 0.16 25);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: background 120ms ease, color 120ms ease;
+}
+.lm-edit-sale-delete:hover:not(:disabled) {
+  background: oklch(0.97 0.02 25);
+  color: oklch(0.42 0.18 25);
+}
+.lm-edit-sale-delete:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
 .lm-debt-gross {
   font-size: 13px;
   font-weight: 600;

@@ -299,6 +299,24 @@ export async function createProductSaleApi({ studentId, soldAt, totalAmount, not
   return ensureMutationResult(payload, "Ürün satışı oluşturulamadı.");
 }
 
+export async function updateProductSaleApi(saleId, fields = {}) {
+  const body = {};
+  if (fields.totalAmount !== undefined) body.totalAmount = fields.totalAmount;
+  if (fields.note !== undefined) body.note = fields.note;
+  if (fields.soldAt !== undefined) body.soldAt = fields.soldAt;
+  const payload = await apiRequest(`/product-sales/${encodeURIComponent(saleId)}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+  return ensureMutationResult(payload, "Ürün satışı güncellenemedi.");
+}
+
+export async function deleteProductSaleApi(saleId) {
+  await apiRequest(`/product-sales/${encodeURIComponent(saleId)}`, {
+    method: "DELETE",
+  });
+}
+
 // productSale opsiyoneldir: { totalAmount, note? }. Verildiğinde ders tamamlanırken
 // aynı transaction içinde derse bağlı bir satış oluşturulur. Tahsilat ayrı bir
 // adım — kısmi/çoklu kaynaklı ödemelerin tek noktada zorlanmaması için.
@@ -362,10 +380,37 @@ export async function updateSettings(data) {
 
 // ─── Instructors & Lesson Types ─────────────────────────────────────────────
 
-export async function getInstructors() {
-  const payload = await apiGet("/instructors");
+export async function getInstructors({ includeAll = false } = {}) {
+  const qs = includeAll ? "?include=all" : "";
+  const payload = await apiGet(`/instructors${qs}`);
   if (!payload || !Array.isArray(payload.data)) {
     throw new Error("Eğitmen listesi alınamadı.");
+  }
+  return payload.data;
+}
+
+export async function createInstructor({ full_name }) {
+  const payload = await apiRequest("/instructors", {
+    method: "POST",
+    body: JSON.stringify({ full_name }),
+  });
+  return ensureMutationResult(payload, "Eğitmen oluşturulamadı.");
+}
+
+export async function updateInstructor(id, patch) {
+  const payload = await apiRequest(`/instructors/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+  return ensureMutationResult(payload, "Eğitmen güncellenemedi.");
+}
+
+export async function deleteInstructor(id) {
+  const payload = await apiRequest(`/instructors/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+  if (!payload || typeof payload.data !== "object" || payload.data === null) {
+    throw new Error("Eğitmen silinemedi.");
   }
   return payload.data;
 }

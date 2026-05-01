@@ -29,6 +29,8 @@ vi.mock("../api", () => ({
   createCashPayment: vi.fn(),
   uncompleteLesson: vi.fn(),
   createProductSaleApi: vi.fn(),
+  updateProductSaleApi: vi.fn(),
+  deleteProductSaleApi: vi.fn(),
   getAuditLogs: vi.fn(),
   getAuditUsers: vi.fn(),
 }));
@@ -67,7 +69,6 @@ describe("HomePage", () => {
       weekStart: "monday",
       calendarStartHour: 17,
       calendarEndHour: 23,
-      defaultLessonDuration: 60,
       defaultLessonMode: "onsite",
       defaultCurrency: "TRY",
       paymentMethodCash: true,
