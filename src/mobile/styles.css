@@ -116,6 +116,7 @@
     flex: 1 1 auto;
     overflow-y: auto;
     padding-bottom: calc(64px + env(safe-area-inset-bottom) + 8px);
+    position: relative;
   }
 
   .mobile-page-placeholder {
@@ -263,132 +264,702 @@
     flex-shrink: 0;
   }
 
-  /* ---------- Home (Faz C.1: KPI band) ---------- */
+  /* ---------- KPI section ---------- */
 
-  .mobile-home-eyebrow {
-    font-size: 11px;
-    color: var(--ink-3);
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    font-family: var(--f-mono, var(--f-sans));
-    font-weight: 500;
-    margin-bottom: 14px;
-  }
-
-  /* 4 cards in a row, 2 visible per viewport, snap-aligned. */
-  .mobile-kpi-scroll {
-    display: flex;
-    gap: 12px;
-    overflow-x: auto;
-    overflow-y: hidden;
-    scroll-snap-type: x mandatory;
-    -webkit-overflow-scrolling: touch;
-    /* Bleed past the page gutter; cards still align to it via this padding. */
-    padding: 4px 16px 8px;
-    margin: 0 -16px;
-    scrollbar-width: none;
-  }
-  .mobile-kpi-scroll::-webkit-scrollbar { display: none; }
-
-  /* Card width math: 2 cards + 1 gap + 2x gutter must fill the viewport.
-     2*W + 12 + 32 = 100vw  →  W = 50vw - 22px. */
-  .mobile-kpi-card {
-    flex: 0 0 calc(50vw - 22px);
-    scroll-snap-align: start;
-    background: var(--surface);
-    border: 1px solid var(--line-2);
-    border-radius: 10px;
-    padding: 14px 14px 12px;
-    box-shadow: var(--shadow-sm);
+  .mobile-kpi-section {
+    padding: 4px 16px 16px;
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 12px;
+  }
+
+  .mobile-kpi-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  .mobile-kpi-card {
     position: relative;
     overflow: hidden;
-    min-width: 0;
+    background: var(--surface);
+    border: 1px solid var(--line-2);
+    border-radius: 12px;
+    padding: 16px;
+    transition: opacity 200ms ease;
   }
 
   .mobile-kpi-card::before {
     content: '';
     position: absolute;
-    top: 0; left: 0; right: 0;
+    top: 0;
+    left: 0;
+    right: 0;
     height: 3px;
     background: var(--accent);
   }
-  .mobile-kpi-card-warn::before { background: var(--warn); }
+
+  .mobile-kpi-card.warn::before {
+    background: var(--warn);
+  }
+
+  .mobile-kpi-card.is-loading {
+    opacity: 0.5;
+  }
 
   .mobile-kpi-label {
-    font-size: 10px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--ink-3);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .mobile-kpi-label-sub {
-    opacity: 0.55;
+    font-family: var(--f-sans);
+    font-size: 11px;
     font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--ink-3);
+    margin: 0 0 12px 0;
   }
 
   .mobile-kpi-main {
     display: flex;
     align-items: baseline;
-    gap: 6px;
+    gap: 8px;
     flex-wrap: wrap;
     line-height: 1;
-    min-width: 0;
   }
 
-  .mobile-kpi-val {
-    font-family: var(--f-serif);
-    font-size: 22px;
+  .mobile-kpi-value-large {
+    font-family: var(--f-sans);
+    font-size: 32px;
     font-weight: 500;
-    letter-spacing: -0.02em;
     color: var(--ink);
     font-variant-numeric: tabular-nums;
     line-height: 1;
-  }
-  .mobile-kpi-card-warn .mobile-kpi-val { color: var(--warn); }
-
-  .mobile-kpi-sep {
-    font-size: 16px;
-    color: var(--ink-3);
-    font-weight: 300;
-    line-height: 1;
+    transition: opacity 200ms ease;
   }
 
-  .mobile-kpi-val2 {
-    font-size: 12px;
-    color: var(--ink-2);
+  .mobile-kpi-value-medium {
+    font-family: var(--f-sans);
+    font-size: 24px;
+    font-weight: 500;
+    color: var(--ink);
     font-variant-numeric: tabular-nums;
-    font-weight: 400;
+    line-height: 1;
+    transition: opacity 200ms ease;
   }
 
-  .mobile-kpi-bar {
+  .mobile-kpi-card.warn .mobile-kpi-value-medium {
+    color: var(--warn);
+  }
+
+  .mobile-kpi-secondary {
+    font-family: var(--f-sans);
+    font-size: 18px;
+    color: var(--ink-3);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .mobile-kpi-context {
+    font-size: 13px;
+    color: var(--ink-2);
+    margin: 6px 0 0 0;
+  }
+
+  .mobile-kpi-progress {
     height: 4px;
     background: var(--line-2);
     border-radius: 2px;
     overflow: hidden;
+    margin-top: 8px;
   }
-  .mobile-kpi-bar-fill {
+
+  .mobile-kpi-progress-fill {
     height: 100%;
     background: var(--accent);
     border-radius: 2px;
-  }
-  .mobile-kpi-bar-warn .mobile-kpi-bar-fill {
-    background: var(--warn);
-    opacity: 0.35;
+    transition: width 300ms ease;
   }
 
-  .mobile-kpi-sub {
+  /* ---------- Weekly calendar ---------- */
+
+  .mobile-week-calendar {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 4px;
+    padding: 4px 12px 16px;
+  }
+
+  .mobile-week-day {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 0;
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+    min-height: 0;
+  }
+
+  .mobile-week-day-label {
+    font-family: var(--f-sans);
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--ink-3);
+    line-height: 1;
+  }
+
+  .mobile-week-day-num {
+    width: 36px;
+    height: 36px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    font-family: var(--f-sans);
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+    transition: background 160ms ease, color 160ms ease;
+  }
+
+  .mobile-week-day.today .mobile-week-day-num {
+    color: var(--accent);
+  }
+
+  .mobile-week-day.selected .mobile-week-day-num {
+    background: var(--ink);
+    color: var(--surface);
+  }
+
+  .mobile-week-day.selected .mobile-week-day-label {
+    color: var(--ink);
+  }
+
+  /* ---------- Calendar page (mobile-cal-*) ---------- */
+
+  .mobile-calendar-page {
+    --day-w: calc((100vw - 56px) / 3);
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: calc(64px + env(safe-area-inset-bottom) + 8px);
+    display: flex;
+    flex-direction: column;
+    background: var(--bg);
+  }
+
+  .mobile-cal-weeknav {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    height: calc(48px + env(safe-area-inset-top));
+    padding: env(safe-area-inset-top) 8px 0;
+    border-bottom: 1px solid var(--ink-4);
+    background: var(--surface);
+  }
+
+  .mobile-cal-weeknav-btn {
+    flex: 0 0 auto;
+    width: 36px;
+    height: 36px;
+    min-height: 36px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--ink);
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .mobile-cal-weeknav-btn:active { background: var(--surface-2); }
+
+  .mobile-cal-weeknav-label {
+    flex: 1 1 auto;
+    text-align: center;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .mobile-cal-weeknav-today {
+    flex: 0 0 auto;
+    height: 32px;
+    min-height: 32px;
+    padding: 0 12px;
+    border: 1px solid var(--ink-4);
+    border-radius: 8px;
+    background: transparent;
+    color: var(--ink);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .mobile-cal-weeknav-today:active { background: var(--surface-2); }
+
+  .mobile-cal-scroll {
+    flex: 1 1 0;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    position: relative;
+  }
+
+  .mobile-cal-hscroll {
+    overflow-x: auto;
+    overflow-y: visible;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x proximity;
+    scroll-padding-left: 56px;
+    scroll-snap-stop: always;
+  }
+
+  .mobile-cal-frame {
+    display: grid;
+    grid-template-columns: 56px max-content;
+    width: max-content;
+  }
+
+  .mobile-cal-time-col {
+    position: sticky;
+    left: 0;
+    z-index: 3;
+    background: var(--bg);
+    border-right: 1px solid var(--ink-4);
+  }
+
+  .mobile-cal-time-col-head {
+    position: sticky;
+    top: 0;
+    z-index: 4;
+    height: 36px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--ink-4);
+  }
+
+  .mobile-cal-hour-label {
+    height: 48px;
+    padding: 2px 6px 0 0;
+    text-align: right;
     font-size: 11px;
     color: var(--ink-3);
-    letter-spacing: 0.01em;
+    font-variant-numeric: tabular-nums;
+    box-sizing: border-box;
   }
-  .mobile-kpi-sub strong {
+
+  .mobile-cal-grid {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: var(--day-w);
+  }
+
+  .mobile-cal-day-col {
+    scroll-snap-align: start;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid var(--ink-4);
+    min-width: 0;
+  }
+  .mobile-cal-day-col.today {
+    background: oklch(0.97 0.01 45);
+  }
+
+  .mobile-cal-day-head {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--ink-4);
+    font-size: 12px;
     color: var(--ink-2);
+  }
+  .mobile-cal-day-head.today {
+    background: var(--ink);
+    color: var(--surface);
+  }
+
+  .mobile-cal-day-name {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--ink-3);
     font-weight: 600;
+  }
+  .mobile-cal-day-head.today .mobile-cal-day-name {
+    color: oklch(0.85 0.01 60);
+  }
+
+  .mobile-cal-day-num {
+    font-size: 14px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .mobile-cal-day-body {
+    position: relative;
+    height: 768px;
+  }
+
+  .mobile-cal-hour-cell {
+    height: 48px;
+    border-top: 1px solid var(--ink-4);
+    pointer-events: none;
+    box-sizing: border-box;
+  }
+
+  .mobile-cal-block {
+    position: absolute;
+    left: 2px;
+    right: 2px;
+    border-radius: 6px;
+    padding: 3px 5px;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-left-width: 3px;
+    background: var(--bg);
+    color: var(--ink-2);
+    pointer-events: auto;
+    cursor: pointer;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    transition: transform 60ms ease;
+    box-sizing: border-box;
+  }
+  .mobile-cal-block:active { transform: scale(0.98); }
+
+  .mobile-cal-block-planned {
+    background: oklch(0.88 calc(0.13 * var(--ls-sat)) 245);
+    color: oklch(0.22 calc(0.16 * var(--ls-sat)) 245);
+    border-color: oklch(0.74 calc(0.16 * var(--ls-sat)) 245);
+    border-left-color: oklch(0.48 calc(0.22 * var(--ls-sat)) 245);
+  }
+  .mobile-cal-block-unpaid {
+    background: oklch(0.90 calc(0.11 * var(--ls-sat)) 20);
+    color: oklch(0.28 calc(0.18 * var(--ls-sat)) 20);
+    border-color: oklch(0.76 calc(0.15 * var(--ls-sat)) 20);
+    border-left-color: oklch(0.48 calc(0.24 * var(--ls-sat)) 20);
+  }
+  .mobile-cal-block-partial {
+    background: oklch(0.90 calc(0.13 * var(--ls-sat)) 65);
+    color: oklch(0.30 calc(0.18 * var(--ls-sat)) 55);
+    border-color: oklch(0.76 calc(0.17 * var(--ls-sat)) 65);
+    border-left-color: oklch(0.52 calc(0.24 * var(--ls-sat)) 60);
+  }
+  .mobile-cal-block-paid {
+    background: oklch(0.88 calc(0.12 * var(--ls-sat)) 145);
+    color: oklch(0.24 calc(0.16 * var(--ls-sat)) 145);
+    border-color: oklch(0.72 calc(0.17 * var(--ls-sat)) 145);
+    border-left-color: oklch(0.38 calc(0.22 * var(--ls-sat)) 145);
+  }
+
+  .mobile-cal-block-top {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 9px;
+    font-family: var(--f-mono);
+    font-weight: 600;
+    opacity: 0.85;
+    line-height: 1.1;
+  }
+
+  .mobile-cal-block-time { font-variant-numeric: tabular-nums; }
+
+  .mobile-cal-block-sale {
+    display: inline-flex;
+    align-items: center;
+    opacity: 0.75;
+    line-height: 0;
+  }
+
+  .mobile-cal-block-mode {
+    font-size: 10px;
+    line-height: 1;
+  }
+
+  .mobile-cal-block-name-row {
+    display: flex;
+    align-items: baseline;
+    gap: 3px;
+    margin-top: 1px;
+    min-width: 0;
+  }
+
+  .mobile-cal-block-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    letter-spacing: -0.01em;
+  }
+
+  .mobile-cal-block-remain {
+    flex: 0 0 auto;
+    font-size: 9px;
+    opacity: 0.8;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  .mobile-cal-skeleton {
+    position: absolute;
+    inset: 36px 0 0 56px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: color-mix(in oklch, var(--bg) 70%, transparent);
+    color: var(--ink-3);
+    font-size: 13px;
+    pointer-events: none;
+  }
+
+  .mobile-cal-error {
+    position: absolute;
+    top: 44px;
+    left: 64px;
+    right: 8px;
+    padding: 10px 12px;
+    border: 1px solid var(--warn, #c44);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--warn, #c44);
+    font-size: 13px;
+    z-index: 5;
+  }
+
+  /* ---------- Lesson detail bottom sheet (mobile-lsheet-*) ---------- */
+
+  .mobile-lsheet-overlay {
+    position: fixed;
+    inset: 0;
+    background: oklch(0 0 0 / 0.45);
+    z-index: 60;
+  }
+
+  .mobile-lsheet-content {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 61;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg);
+    border-top-left-radius: 16px;
+    border-top-right-radius: 16px;
+    padding: 0 16px calc(env(safe-area-inset-bottom, 0px) + 20px);
+    max-height: 85dvh;
+    overflow-y: auto;
+    outline: none;
+  }
+
+  .mobile-lsheet-handle {
+    width: 40px;
+    height: 4px;
+    background: var(--ink-4);
+    border-radius: 999px;
+    margin: 8px auto 12px;
+    flex: 0 0 auto;
+  }
+
+  .mobile-lsheet-header {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--ink-4);
+  }
+
+  .mobile-lsheet-pill {
+    align-self: flex-start;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.2;
+  }
+  .mobile-lsheet-pill-planned {
+    background: oklch(0.93 calc(0.08 * var(--ls-sat)) 245);
+    color: oklch(0.30 calc(0.16 * var(--ls-sat)) 245);
+  }
+  .mobile-lsheet-pill-paid {
+    background: oklch(0.93 calc(0.08 * var(--ls-sat)) 145);
+    color: oklch(0.30 calc(0.16 * var(--ls-sat)) 145);
+  }
+  .mobile-lsheet-pill-partial {
+    background: oklch(0.93 calc(0.10 * var(--ls-sat)) 65);
+    color: oklch(0.34 calc(0.16 * var(--ls-sat)) 55);
+  }
+  .mobile-lsheet-pill-unpaid {
+    background: oklch(0.93 calc(0.08 * var(--ls-sat)) 20);
+    color: oklch(0.34 calc(0.18 * var(--ls-sat)) 20);
+  }
+
+  .mobile-lsheet-name {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--ink);
+    line-height: 1.25;
+  }
+  .mobile-lsheet-nick {
+    font-weight: 400;
+    color: var(--ink-3);
+  }
+
+  .mobile-lsheet-meta {
+    font-size: 13px;
+    color: var(--ink-2);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .mobile-lsheet-body {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding-top: 14px;
+  }
+
+  .mobile-lsheet-summary-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 12px 14px;
+    border-radius: 10px;
+    background: var(--surface);
+    font-size: 14px;
+    color: var(--ink);
+  }
+  .mobile-lsheet-summary-row > span:last-child {
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .mobile-lsheet-debt-card {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 12px 14px;
+    border-radius: 10px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-left-width: 3px;
+  }
+  .mobile-lsheet-debt-card.is-paid {
+    border-left-color: oklch(0.55 calc(0.20 * var(--ls-sat)) 145);
+  }
+  .mobile-lsheet-debt-card.is-partial {
+    border-left-color: oklch(0.60 calc(0.22 * var(--ls-sat)) 60);
+  }
+  .mobile-lsheet-debt-card.is-unpaid {
+    border-left-color: oklch(0.55 calc(0.22 * var(--ls-sat)) 20);
+  }
+  .mobile-lsheet-debt-card.is-empty {
+    border-left-color: var(--ink-4);
+  }
+
+  .mobile-lsheet-debt-headline {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+  }
+  .mobile-lsheet-debt-label {
+    font-size: 13px;
+    color: var(--ink-2);
+    font-weight: 500;
+  }
+  .mobile-lsheet-debt-total {
+    font-size: 12px;
+    color: var(--ink-3);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .mobile-lsheet-debt-amt-big {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+    margin-top: 2px;
+  }
+  .mobile-lsheet-debt-amt-sub {
+    font-size: 12px;
+    color: var(--ink-3);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .mobile-lsheet-debt-cleared {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: oklch(0.45 calc(0.18 * var(--ls-sat)) 145);
+    font-weight: 600;
+  }
+  .mobile-lsheet-debt-tick {
+    font-size: 14px;
+    line-height: 1;
+  }
+
+  .mobile-lsheet-totalremaining {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 10px 14px;
+    background: var(--surface-2);
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+    margin-top: 4px;
+  }
+
+  .mobile-lsheet-cleared {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 14px;
+    background: var(--surface-2);
+    border-radius: 8px;
+    font-size: 13px;
+    color: oklch(0.45 calc(0.18 * var(--ls-sat)) 145);
+    font-weight: 600;
+    margin-top: 4px;
+  }
+
+  .mobile-lsheet-note {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding-top: 12px;
+    margin-top: 4px;
+    border-top: 1px solid var(--ink-4);
+  }
+  .mobile-lsheet-note-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--ink-3);
+    font-weight: 600;
+  }
+  .mobile-lsheet-note-text {
+    font-size: 14px;
+    color: var(--ink-2);
+    font-style: italic;
+    line-height: 1.4;
   }
 }

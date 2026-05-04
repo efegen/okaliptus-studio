@@ -2,6 +2,7 @@ import React from 'react';
 import { MobileHeader } from './MobileHeader';
 import { BottomTabBar } from './BottomTabBar';
 import { MobileHome } from './MobileHome';
+import { MobileCalendar } from './MobileCalendar';
 
 /*
  * Mobile shell.
@@ -43,7 +44,7 @@ export function MobileApp({
 }) {
   const onStudentsPage = page === 'students';
   const showBack = onStudentsPage && !!studentDetailId;
-  const hideHeader = page === 'home';
+  const hideHeader = page === 'home' || page === 'calendar';
 
   function handleBack() {
     setStudentDetailId(null);
@@ -72,12 +73,8 @@ export function MobileApp({
         Faz D.1'de doldurulacak (kart listesi, sticky arama, FAB → yeni öğrenci).
       </PagePlaceholder>
     );
-  } else if (page === 'catalog') {
-    body = (
-      <PagePlaceholder title="Katalog">
-        Faz F.1'de doldurulacak (Ders Türleri / Eğitmenler chip tab'leri).
-      </PagePlaceholder>
-    );
+  } else if (page === 'calendar') {
+    body = <MobileCalendar />;
   } else if (page === 'settings') {
     body = (
       <PagePlaceholder title="Ayarlar">

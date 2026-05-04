@@ -4,7 +4,7 @@ import { Icon } from '../layout';
 const PAGE_TITLES = {
   home: 'Ana Sayfa',
   students: 'Öğrenciler',
-  catalog: 'Katalog',
+  calendar: 'Takvim',
   settings: 'Ayarlar',
 };
 

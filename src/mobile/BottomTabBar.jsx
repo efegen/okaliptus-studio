@@ -3,7 +3,7 @@ import { Icon } from '../layout';
 
 /*
  * 5-slot bottom tab bar (iOS native pattern).
- *   Ana Sayfa · Öğrenciler · [+] · Katalog · Ayarlar
+ *   Ana Sayfa · Takvim · [+] · Öğrenciler · Ayarlar
  *
  * The center "+" slot is a FAB that will open the Quick-Add bottom sheet in
  * Faz E.1. For Faz B it's wired to onQuickAdd which is currently a no-op stub
@@ -13,7 +13,7 @@ import { Icon } from '../layout';
 const TABS = [
   { id: 'home',     label: 'Ana',        icon: Icon.Home },
   { id: 'students', label: 'Öğrenciler', icon: Icon.Users },
-  { id: 'catalog',  label: 'Katalog',    icon: Icon.Layers },
+  { id: 'calendar', label: 'Takvim',     icon: Icon.Calendar },
   { id: 'settings', label: 'Ayarlar',    icon: Icon.Settings },
 ];
 
@@ -41,7 +41,7 @@ export function BottomTabBar({ page, onNavigate, onQuickAdd }) {
   return (
     <nav className="mobile-bottom-tab" aria-label="Ana navigasyon">
       {tab('home')}
-      {tab('students')}
+      {tab('calendar')}
       <button
         type="button"
         className="mobile-tab-fab"
@@ -50,7 +50,7 @@ export function BottomTabBar({ page, onNavigate, onQuickAdd }) {
       >
         <Icon.Plus width="26" height="26" />
       </button>
-      {tab('catalog')}
+      {tab('students')}
       {tab('settings')}
     </nav>
   );
