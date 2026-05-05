@@ -1,6 +1,8 @@
 import React from 'react';
 import { useWeekLessons } from './shared/useWeekLessons';
 import { MobileLessonSheet } from './MobileLessonSheet';
+import { MobileCreateLessonSheet } from './MobileCreateLessonSheet';
+import { MobileToast } from './MobileToast';
 import { fmtTL } from '../data';
 
 const HOURS = Array.from({ length: 16 }, (_, i) => i + 8); // 08..23
@@ -168,24 +170,68 @@ function LessonBlock({ session, onSelect }) {
 export function MobileCalendar() {
   const [weekStart, setWeekStart] = React.useState(() => getCurrentMonday());
   const [selectedSession, setSelectedSession] = React.useState(null);
-  const { sessions, error, isLoading } = useWeekLessons(weekStart);
+  const [slotInfo, setSlotInfo] = React.useState(null);
+  const [refreshKey, setRefreshKey] = React.useState(0);
+  const [toast, setToast] = React.useState(null);
+  const { sessions, error, isLoading } = useWeekLessons(weekStart, refreshKey);
 
   const dayNumbers = getWeekDayNumbers(weekStart);
   const todayIndex = getTodayColumnIndex(weekStart);
-  const vScrollRef = React.useRef(null);
-  const hScrollRef = React.useRef(null);
+  const scrollRef = React.useRef(null);
+
+  // JS axis-lock for vertical-dominant gestures only: when a vertical drag is
+  // detected, suppress horizontal snap+scroll so the gesture commits to y.
+  // We deliberately DO NOT lock during horizontal-dominant gestures: toggling
+  // `overflow-y: hidden` mid-gesture causes iOS Safari to reset scrollTop to 0
+  // and snap back, producing a visible vertical flash on every horizontal swipe.
+  React.useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    let startX = 0, startY = 0, lockedAxis = null;
+
+    const onTouchStart = (e) => {
+      if (e.touches.length !== 1) return;
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+      lockedAxis = null;
+      el.classList.remove('lock-y');
+    };
+    const onTouchMove = (e) => {
+      if (lockedAxis || e.touches.length !== 1) return;
+      const dx = Math.abs(e.touches[0].clientX - startX);
+      const dy = Math.abs(e.touches[0].clientY - startY);
+      if (dx < 10 && dy < 10) return;
+      lockedAxis = dx > dy ? 'x' : 'y';
+      if (lockedAxis === 'y') el.classList.add('lock-y');
+    };
+    const onTouchEnd = () => {
+      lockedAxis = null;
+      el.classList.remove('lock-y');
+    };
+
+    el.addEventListener('touchstart', onTouchStart, { passive: true });
+    el.addEventListener('touchmove', onTouchMove, { passive: true });
+    el.addEventListener('touchend', onTouchEnd, { passive: true });
+    el.addEventListener('touchcancel', onTouchEnd, { passive: true });
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchmove', onTouchMove);
+      el.removeEventListener('touchend', onTouchEnd);
+      el.removeEventListener('touchcancel', onTouchEnd);
+    };
+  }, []);
 
   React.useLayoutEffect(() => {
-    if (vScrollRef.current) vScrollRef.current.scrollTop = 0;
-    const hEl = hScrollRef.current;
-    if (!hEl) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
     if (todayIndex >= 0) {
-      const styles = getComputedStyle(hEl);
+      const styles = getComputedStyle(el);
       const dayWStr = styles.getPropertyValue('--day-w').trim();
-      const dayW = parseFloat(dayWStr) || (hEl.clientWidth - 56) / 3;
-      hEl.scrollLeft = Math.max(0, (todayIndex - 1)) * dayW;
+      const dayW = parseFloat(dayWStr) || (el.clientWidth - 56) / 3;
+      el.scrollLeft = Math.max(0, (todayIndex - 1)) * dayW;
     } else {
-      hEl.scrollLeft = 0;
+      el.scrollLeft = 0;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [weekStart.getTime()]);
@@ -193,6 +239,11 @@ export function MobileCalendar() {
   function handlePrev() { setWeekStart(addWeeks(weekStart, -1)); }
   function handleNext() { setWeekStart(addWeeks(weekStart, 1)); }
   function handleToday() { setWeekStart(getCurrentMonday()); }
+  function handleSlotClick(d, h) { setSlotInfo({ dayIndex: d, hour: h }); }
+  function handleCreated() {
+    setSlotInfo(null);
+    setRefreshKey(k => k + 1);
+  }
 
   const sessionsByDay = React.useMemo(() => {
     const map = Array.from({ length: 7 }, () => []);
@@ -213,8 +264,7 @@ export function MobileCalendar() {
         onToday={handleToday}
       />
 
-      <div className="mobile-cal-scroll" ref={vScrollRef}>
-        <div className="mobile-cal-hscroll" ref={hScrollRef}>
+      <div className="mobile-cal-scroll" ref={scrollRef}>
         <div className="mobile-cal-frame">
           <aside className="mobile-cal-time-col">
             <div className="mobile-cal-time-col-head" />
@@ -239,7 +289,13 @@ export function MobileCalendar() {
                   </header>
                   <div className="mobile-cal-day-body">
                     {HOURS.map(h => (
-                      <div key={h} className="mobile-cal-hour-cell" />
+                      <div
+                        key={h}
+                        className="mobile-cal-hour-cell"
+                        role="button"
+                        aria-label={`${DAYS_TR_SHORT[d]} ${String(h).padStart(2, '0')}:00 boş slot`}
+                        onClick={() => handleSlotClick(d, h)}
+                      />
                     ))}
                     {sessionsByDay[d].map(s => (
                       <LessonBlock key={s.id} session={s} onSelect={setSelectedSession} />
@@ -249,7 +305,6 @@ export function MobileCalendar() {
               );
             })}
           </div>
-        </div>
         </div>
 
         {error && (
@@ -264,10 +319,31 @@ export function MobileCalendar() {
         )}
       </div>
 
-      <MobileLessonSheet
-        session={selectedSession}
-        onClose={() => setSelectedSession(null)}
-      />
+      {selectedSession && (
+        <MobileLessonSheet
+          session={selectedSession}
+          onClose={() => setSelectedSession(null)}
+          onUpdated={(message) => {
+            setSelectedSession(null);
+            setRefreshKey(k => k + 1);
+            if (message) setToast(message);
+          }}
+        />
+      )}
+
+      {slotInfo && (
+        <MobileCreateLessonSheet
+          slotInfo={slotInfo}
+          weekStart={weekStart}
+          onClose={() => setSlotInfo(null)}
+          onCreated={() => {
+            handleCreated();
+            setToast('Ders eklendi');
+          }}
+        />
+      )}
+
+      <MobileToast message={toast} onDismiss={() => setToast(null)} />
     </div>
   );
 }

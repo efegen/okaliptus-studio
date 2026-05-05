@@ -77,7 +77,7 @@ function App({ currentUser, onLogout }) {
     // on mobile.
     const mobileCls = ["palette-" + tweaks.palette, "density-" + tweaks.density].join(" ");
     return (
-      <div className={mobileCls}>
+      <div id="mobile-palette-root" className={mobileCls}>
         <MobileApp
           page={page}
           setPage={setPage}

@@ -52,6 +52,7 @@ type StudentSummaryRow = {
   remaining_credits: string;
   last_lesson_at: string | null;
   lessons_last_30_days: string;
+  lessons_this_week: string;
 };
 
 export type CreateStudentInput = {
@@ -86,18 +87,24 @@ export async function listStudents(): Promise<StudentSummaryRow[]> {
     `
       SELECT v.*, s.phone,
         att.last_lesson_at,
-        att.lessons_last_30_days
+        att.lessons_last_30_days,
+        att.lessons_this_week
       FROM v_student_summary v
       JOIN students s ON s.id = v.id
       CROSS JOIN LATERAL (
         SELECT
-          MAX(l.starts_at) AS last_lesson_at,
+          MAX(l.starts_at) FILTER (WHERE l.status = 'completed') AS last_lesson_at,
           COUNT(*) FILTER (
-            WHERE l.starts_at >= now() - interval '30 days'
-          ) AS lessons_last_30_days
+            WHERE l.status = 'completed'
+              AND l.starts_at >= now() - interval '30 days'
+          ) AS lessons_last_30_days,
+          COUNT(*) FILTER (
+            WHERE l.status IN ('scheduled', 'completed')
+              AND l.starts_at >= (date_trunc('week', now() AT TIME ZONE 'Europe/Istanbul') AT TIME ZONE 'Europe/Istanbul')
+              AND l.starts_at <  (date_trunc('week', now() AT TIME ZONE 'Europe/Istanbul') AT TIME ZONE 'Europe/Istanbul') + interval '7 days'
+          ) AS lessons_this_week
         FROM lessons l
         WHERE l.student_id = s.id
-          AND l.status = 'completed'
           AND l.deleted_at IS NULL
       ) att
       ORDER BY lower(v.full_name), v.id

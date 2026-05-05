@@ -7,6 +7,13 @@ export const PAYMENT_METHOD_LABELS = {
   mixed: 'Karışık',
 };
 
+export function debtStateFor(paid, total) {
+  if (total <= 0) return 'empty';
+  if (paid >= total) return 'paid';
+  if (paid > 0) return 'partial';
+  return 'unpaid';
+}
+
 export const LESSON_STATE_META = {
   planned: { label: 'Planlandı',             cls: 'mobile-lsheet-pill-planned' },
   unpaid:  { label: 'Tamamlandı · Ödenmedi', cls: 'mobile-lsheet-pill-unpaid' },

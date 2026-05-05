@@ -16,17 +16,17 @@ import {
 } from './api';
 import { DiscountInline } from './student-profile';
 
-function fmtDate(iso) {
+export function fmtDate(iso) {
   if (!iso) return '—';
   return new Date(iso).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-function fmtShortDate(iso) {
+export function fmtShortDate(iso) {
   if (!iso) return '—';
   return new Date(iso).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' });
 }
 
-function parseMoney(v) {
+export function parseMoney(v) {
   return parseFloat(v ?? '0') || 0;
 }
 
@@ -41,7 +41,7 @@ function toDateTimeLocalValue(value = new Date()) {
 }
 
 // tone: 'high' | 'medium' | 'low' | 'absent' | 'inactive' | 'new'
-function getAttendanceStatus(student) {
+export function getAttendanceStatus(student) {
   const count30 = parseInt(student.lessons_last_30_days ?? '0', 10);
   const lastAt  = student.last_lesson_at;
 
@@ -69,7 +69,7 @@ function getAttendanceStatus(student) {
   return { tone: 'high', main: 'Yüksek', sub: `Bu ay ${count30} derse katıldı` };
 }
 
-function getStudentFinancialState({ lessonDebt, productDebt }) {
+export function getStudentFinancialState({ lessonDebt, productDebt }) {
   const total = lessonDebt + productDebt;
   if (total > 0.01) return { tone: 'debt', headline: `${fmtTL(total)} borç` };
   return { tone: 'clear', headline: 'Borç yok' };
@@ -713,13 +713,13 @@ export function ReceivePaymentModal({ student, detail, onClose, onSuccess }) {
 
 // ─── Create Student Modal ─────────────────────────────────────────────────────
 
-function todayIso() {
+export function todayIso() {
   const d = new Date();
   const pad = p => String(p).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-function formatPhoneTr(raw) {
+export function formatPhoneTr(raw) {
   const digits = raw.replace(/\D/g, '').slice(0, 11);
   if (digits.length === 0) return '';
   if (digits.length <= 4) return digits;
@@ -728,7 +728,7 @@ function formatPhoneTr(raw) {
   return `${digits.slice(0, 4)} ${digits.slice(4, 7)} ${digits.slice(7, 9)} ${digits.slice(9)}`;
 }
 
-function previewInitials(name) {
+export function previewInitials(name) {
   const src = (name || '').trim();
   if (!src) return '';
   return src.split(/\s+/).map(s => s[0]).slice(0, 2).join('').toUpperCase();

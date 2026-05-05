@@ -71,7 +71,7 @@ function normalizeLesson(l) {
   };
 }
 
-export function useWeekLessons(weekStart) {
+export function useWeekLessons(weekStart, refreshKey = 0) {
   const [state, setState] = React.useState({
     sessions: null,
     error: null,
@@ -106,7 +106,7 @@ export function useWeekLessons(weekStart) {
     void load();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [weekStartKey]);
+  }, [weekStartKey, refreshKey]);
 
   return state;
 }
