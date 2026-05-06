@@ -6,7 +6,7 @@ Internal management dashboard for a yoga studio. Handles students, lessons, paym
 
 | Layer | Technology |
 |-------|------------|
-| Frontend | React 18, Vite, vite-plugin-pwa (Workbox) |
+| Frontend | React 18, Vite, TanStack Query, vite-plugin-pwa (Workbox) |
 | Backend | Express 4, TypeScript, Node.js 20+ |
 | Database | PostgreSQL 17 |
 | Hosting | Cloudflare Pages (frontend), Railway (backend + Postgres) |
