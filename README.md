@@ -140,7 +140,10 @@ Pre-deploy checklist:
 - [ ] Frontend `npm run test` green
 - [ ] Health check endpoint (`/health`) wired to Railway probe
 
-> Live demo: _coming soon_
+> Live demo: <https://okaliptus-studio.pages.dev>
+> (If the page doesn't load on your network, try a different ISP or
+> Cloudflare WARP — some Turkish ISPs filter `*.pages.dev`. A custom
+> domain is on the roadmap.)
 
 ## PWA Installation
 
