@@ -6,17 +6,22 @@ Internal management dashboard for a yoga studio. Handles students, lessons, paym
 
 | Layer | Technology |
 |-------|------------|
-| Frontend | React 18, Vite |
-| Backend | Express, TypeScript, Node.js |
-| Database | PostgreSQL |
-| Hosting | Railway (backend + DB), Railway static (frontend) |
+| Frontend | React 18, Vite, vite-plugin-pwa (Workbox) |
+| Backend | Express 4, TypeScript, Node.js 20+ |
+| Database | PostgreSQL 17 |
+| Hosting | Cloudflare Pages (frontend), Railway (backend + Postgres) |
 
 ## Features (v1)
 
 - **Students** — profiles, contact info, lesson records, activity timeline
 - **Lesson types** — configurable types with pricing, duration, and instructor assignment
-- **Payments** — per-lesson payment tracking with partial payment support
-- **Home dashboard** — daily calendar view, upcoming lessons, recent activity
+- **Payments** — per-lesson tracking with partial payment support; overpayment is rejected
+- **Prepaid packages** — N-credit packages with FIFO credit consumption
+- **Discounts** — per-lesson discount applied on top of brut price (net = price − discount)
+- **Auth** — username/password login, 3 admin users, 30-day sliding sessions
+- **Audit log** — every mutating event (lessons, payments, packages, discounts, settings, lesson-types) tracked with actor user
+- **Home dashboard** — weekly calendar view, lesson modal with complete/cancel/pay/discount flows
+- **Mobile PWA** — installable to home screen, offline-cached, mobile-first shell with bottom tab nav
 - **Settings** — studio-wide configuration stored in the database
 
 ## Local Setup
@@ -36,7 +41,7 @@ cp backend/.env.example backend/.env
 cd backend && npm run migrate
 
 # 4. Bootstrap (creates instructor and admin accounts from .env)
-npm run bootstrap
+cd backend && npm run db:bootstrap && cd ..
 
 # 5. Start dev servers (two terminals)
 npm run dev          # Vite frontend on :5173
@@ -92,7 +97,8 @@ does not invalidate it; for a fully clean run, use `npm run smoke:reset`.
 **Frontend smoke** (`src/__tests__/`) — Vitest + React Testing Library
 component-level tests with mocked `fetch`. Covers login form, API client
 behavior (401 dispatch, credential cookies), students list, student
-profile, home dashboard, auth gating. 6 files, runs in <5s.
+profile, home dashboard, auth gating, mobile viewport switching. 7 files,
+runs in <5s.
 
 Pre-deploy verification:
 
@@ -107,9 +113,34 @@ cd .. && npm run test
 npm run dev   # backend in another terminal
 ```
 
-If all three are green, v1.4 is production-ready (modulo Vercel/Railway
-deploy hygiene — CORS whitelist, env vars, custom domain — handled
-separately).
+If all three are green, v1 is production-ready modulo deploy hygiene —
+CORS whitelist, env vars, custom domain — covered in the Deployment
+section.
+
+## Deployment
+
+Production setup:
+
+- **Frontend:** Cloudflare Pages (free tier). Build command `npm run build`,
+  output directory `dist/`. SPA fallback via `public/_redirects`
+  (`/*  /index.html  200`). Build-time env: `VITE_API_BASE_URL`
+  (production API origin).
+- **Backend + DB:** Railway (~$5/mo, Express + Postgres in one project).
+  Custom domain `api.<your-domain>` to share eTLD+1 with the frontend
+  (allows `SameSite=None` session cookies).
+
+Pre-deploy checklist:
+
+- [ ] `ALLOWED_ORIGINS` set on backend (currently mirrors any origin —
+      MUST be locked down before public traffic)
+- [ ] Login rate limit enabled (5 attempts / 15 min)
+- [ ] `VITE_API_BASE_URL` set in Pages build env
+- [ ] Cookie `SameSite=None` + `Secure` verified in prod env
+- [ ] Backend `npm run smoke:reset` green against staging DB
+- [ ] Frontend `npm run test` green
+- [ ] Health check endpoint (`/health`) wired to Railway probe
+
+> Live demo: _coming soon_
 
 ## PWA Installation
 

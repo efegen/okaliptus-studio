@@ -57,6 +57,9 @@ export function LoginPage({ onLogin }) {
                 id="login-username"
                 type="text"
                 autoComplete="username"
+                autoCapitalize="none"
+                autoCorrect="off"
+                inputMode="text"
                 value={username}
                 onChange={e => setUsername(e.target.value)}
                 onFocus={handleFocus}

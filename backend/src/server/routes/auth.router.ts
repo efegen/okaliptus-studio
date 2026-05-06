@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
 import { login, logout } from '../../services/auth.service.js';
 import { requireAuth } from '../middleware/requireAuth.js';
 import { env } from '../../config/env.js';
@@ -19,8 +20,24 @@ function cookieOptions() {
   };
 }
 
+// 5 failed attempts per 15 min per IP. Successful logins don't count, so a
+// legitimate operator who mistypes a few times then succeeds isn't penalised.
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 5,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  message: {
+    error: {
+      code: 'RATE_LIMITED',
+      message: 'Too many login attempts. Try again in 15 minutes.',
+    },
+  },
+});
+
 // POST /auth/login
-authRouter.post('/login', async (req, res) => {
+authRouter.post('/login', loginLimiter, async (req, res) => {
   const { username, password } = req.body as Record<string, unknown>;
   if (typeof username !== 'string' || typeof password !== 'string' || !username || !password) {
     res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'username and password required.' } });

@@ -1,5 +1,6 @@
 import express from "express";
 
+import { env } from "../config/env.js";
 import { healthRouter } from "./routes/health.router.js";
 import {
   studentsRouter,
@@ -26,7 +27,7 @@ export function createApp() {
   app.disable("x-powered-by");
   app.use((req, res, next) => {
     const origin = req.headers.origin;
-    if (origin) {
+    if (origin && env.allowedOrigins.includes(origin)) {
       res.setHeader("Access-Control-Allow-Origin", origin);
       res.setHeader("Access-Control-Allow-Credentials", "true");
     }

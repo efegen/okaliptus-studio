@@ -1,6 +1,6 @@
 # Yoga Stüdyosu Dashboard — v1 Spesifikasyonu
 
-**Spec versiyonu:** 1.4 · son revizyon kapsamı için bkz. §11.
+**Spec versiyonu:** 1.5 · son revizyon kapsamı için bkz. §11.
 
 ## 0. Bağlam ve Hedef
 
@@ -2041,7 +2041,63 @@ V1 kapsamı dışında kalan özellikler:
 
 ## 11. Spec ile kod tabanı arasındaki sürüm notları
 
-### v1.4 (mevcut) — kod realitesi ile spec'in hizalanması
+### v1.5 (mevcut) — Mobile + PWA + public deploy sertleştirme
+
+v1.5 revizyonu, v1.4'ün "ayrı sprint'e ertelenmiş" PWA artefaktlarını ve mobile-first kullanım için shell mimarisini v1 kapsamına aldı. Aynı revizyonda public deploy hazırlığı kapsamında CORS whitelist altyapısı ve login rate limit kapatıldı; deploy hedefi Vercel + Railway'den Cloudflare Pages + Railway'e döndü. Backend ve veri modeli tarafında değişiklik **yok**; tüm değişiklik frontend mimari ve operasyonel sertleştirme.
+
+**Spec değişiklikleri (kod kapsama alındı):**
+
+- **PWA altyapısı.** `vite-plugin-pwa` (autoUpdate + Workbox runtime caching) entegre edildi. Manifest: name "Okaliptus Yoga Studio", short_name "Okaliptus", `theme_color: '#f5efe6'` (krem), `display=standalone`, `orientation=portrait`, `lang=tr`. İkonlar: pwa-192/512/512-maskable + apple-touch-icon + favicon.svg ([public/](public/)). Workbox cache stratejisi: API → NetworkFirst (5 dk TTL, 100 entry, 5 sn timeout), static assets → CacheFirst. 401 davranışı: api-cache temizlenir + service worker → client `auth:unauthorized` mesajı yayar, frontend bu mesajla login'e redirect olur. v1.4 line 2095'in "kapsamı dışı" ifadesi v1.5 ile geçersizdir.
+
+- **Mobile shell mimarisi.** Frontend artık iki shell ile geliyor: web (mevcut) ve mobile. [main.jsx](src/main.jsx) içinde `useIsMobile` hook'u viewport breakpoint'inde aktif shell'i seçer. MobileApp shell yapısı: sticky `MobileHeader` + scrollable `<main>` + fixed `BottomTabBar`. Quick-Add (`+`) FAB bottom tab merkezinde (henüz no-op stub — v1.6+'a ertelendi).
+
+- **Mobile pages (v1.5 kapsamında tamamlanmış).**
+  - `MobileHome` = `MobileGreetingHeader` + `MobileKpiSection` + `MobileWeekCalendar`
+  - `MobileCalendar` (haftalık görünüm) + `MobileLessonSheet` (lesson detay + complete / cancel / payment / product-sale edit-delete actions)
+  - `MobileCreateLessonSheet` (yeni ders bottom sheet)
+  - `MobileStudents` + `MobileStudentList` + `MobileStudentsKpi` + `MobileStudentsMenu` + `MobileCreateStudentPage`
+  - Mobile-only stylesheet: [src/mobile/styles.css](src/mobile/styles.css) (~2550 satır)
+
+- **Shared hooks/utils (frontend mimari).** [src/mobile/shared/](src/mobile/shared/) klasörü hem mobile hem web tarafından kullanılan hook ve util'leri içerir: `useLessonActions`, `useWeekLessons`, `useWeeklyKpi`, `useStudents`, `lessonMeta`, `studentMeta`. `useLessonActions` web'in `home.jsx`/`LessonModal`'ından extract edildi (modal yeniden kullanılabilirliği için). Klasör adı yanıltıcı (web de import ediyor) ama v1.5'te `mobile/shared/` altında bırakıldı; rename v1.6'da değerlendirilir.
+
+- **Login iOS attrs.** [src/login.jsx](src/login.jsx) username input'una `autoCapitalize="none"`, `autoCorrect="off"`, `inputMode="text"` eklendi (§8.6 mobil davranışı tamamlandı). v1.4 hijyen TODO'su kapatıldı.
+
+- **CORS whitelist altyapısı.** Backend artık `env.allowedOrigins` ile çalışır ([env.ts](backend/src/config/env.ts) + [app.ts](backend/src/server/app.ts)). Sadece whitelist'teki origin'lere `Access-Control-Allow-*` header'ları yansıtır; whitelist boşsa production'da hiçbir cross-origin istek geçmez (fail-secure). Dev'de fallback olarak `localhost:5173` + `127.0.0.1:5173` izinli. Operatör production'da `ALLOWED_ORIGINS=https://<domain>` env var'ını set etmelidir.
+
+- **Login rate limit.** `POST /auth/login` artık `express-rate-limit` middleware'i ile korunuyor: 5 başarısız deneme / 15 dakika / IP başına. Başarılı login sayaçtan düşmez (`skipSuccessfulRequests: true`). v1.4 §2.14 / §9 / §10'daki "rate limit yok" ifadeleri v1.5 ile geçersizdir; mevcut hata kodu `RATE_LIMITED` (HTTP 429). Rate limiter store şu an in-memory (process-local); horizontal scale gerekirse Redis'e taşınır.
+
+- **`studio_settings.default_lesson_duration` drop.** Migration `0228_drop_default_lesson_duration.sql` ile kolon DB'den kaldırıldı; v1.4 line 2084'teki "kalıntı kolon" hijyen notu v1.5 ile kapatıldı.
+
+**Production deploy notları (Cloudflare Pages + Railway, v1.4 line 2089-2095'i süpersedes):**
+
+- **Frontend:** Cloudflare Pages (free tier). Build: `npm run build`, output: `dist/`. SPA fallback için `public/_redirects` (`/*  /index.html  200`). Build env: `VITE_API_BASE_URL` (production API origin).
+- **Backend + Postgres:** Railway (~$5/ay, Express + Postgres tek proje). Cookie cross-origin için aynı eTLD+1 önerilir: `<domain>` (Pages) + `api.<domain>` (Railway custom domain). `SameSite=none + Secure` ile çalışır.
+- Deploy öncesi check: `ALLOWED_ORIGINS` set, `VITE_API_BASE_URL` set, `SameSite=none + Secure` doğrulandı, `npm run smoke:reset` yeşil, `/health` endpoint Railway probe'a bağlı.
+- **Cloudflare Workers'a backend port v1.6+'a ertelendi:** Mevcut `pg@8.13.1` + Express `createServer().listen()` pattern'i Worker'a doğrudan oturmuyor. Workers'a geçiş için pg ≥ 8.16.3 + Hono refactor + Hyperdrive setup gerekir; ayda 5 dolar tasarruf bu lift'i bugün haklı çıkarmıyor.
+
+**v1.6+'a bilinçli ertelenenler:**
+
+- **Mobile Settings sayfası** ([MobileApp.jsx](src/mobile/MobileApp.jsx) içinde placeholder)
+- **Mobile Student Profile detay sayfası** (MobileApp.jsx içinde placeholder)
+- **Mobile Quick-Add (`+`) FAB** — bottom sheet modal stub, henüz no-op
+- **`src/mobile/shared/` → `src/shared/` rename** — düşük öncelik, isim yanıltıcı ama low-impact
+- **Spec §7 tam test matrisi** — mevcut backend smoke 17 senaryo + frontend Vitest 26 test §7'nin büyük çoğunluğunu kapsar; CRUD edge case matrisi v1.6'da
+- **Cloudflare Workers backend port** (yukarıda gerekçesi)
+- **KVKK aydınlatma metni + veri sahibi hakları endpoint'i** — gerçek müşteri öncesi blocker; demo / staj başvurusu öncesi gerekli değil
+- **DB backup stratejisi** — Railway retention öğrenilmeli; yetmezse `pg_dump` → R2/S3 cron job
+- **Frontend error tracking (Sentry vb.)** — public deploy ile birlikte v1.5 sonu / v1.6 başı eklenir; ücretsiz tier yeterli
+- **Auth audit log + login event tracking** — v1.4 line 2055 hâlâ geçerli; eklenmesi düşük öncelik
+- **GitHub Actions CI** (PR'larda smoke + Vitest) — depo profesyonelliği için iyi sinyal, deploy sonrası eklenir
+
+**Test kapsamı durumu (dürüst tarif):**
+
+v1 test stratejisi iki katmanlı: backend smoke suite (17 senaryo, servis-katmanı integration, [backend/scripts/smoke/](backend/scripts/smoke/)) + frontend Vitest (7 dosya, 26 test, [src/__tests__/](src/__tests__/)). Spec §7'nin temel akışlarını (lesson + payment + package + discount + multi-entity + uncomplete + auth + KPI E2E + DB invariants + audit + net-amount edge cases) karşılar. Tam test matrisi (her CRUD edge case, her hata yolu) v1.6'ya ertelendi; mevcut kapsam canlı kullanım için yeterli kabul edildi. `npm run smoke:reset` (backend, full clean) + `npm run test` (frontend) yeşilse v1 deploy-ready.
+
+**Why (genel gerekçe):**
+
+v1.5, v1.4'ün "ileride" diye işaretlediği iki sürüklenmeyi (PWA artefaktları + public deploy sertleştirme) tek revizyonda kapatıyor. Solo developer + henüz canlıya çıkmamış proje + dış görünürlük gereksinimi (staj başvurusu, GitHub repo) bağlamı: bir teknik incelemeci açtığında README + spec + canlı demo URL üçgeninin tutarlı olduğunu görmeli. Workers migrasyonu, KVKK metni ve §7 tam test matrisi gibi büyük lift'ler v1.6'ya bilinçli olarak ertelendi — kazanım/efor oranı şu an düşük.
+
+### v1.4 (önceki) — kod realitesi ile spec'in hizalanması
 
 v1.4, v1.3 spec'inde söz verilen ama implementasyonda *kasıtlı olarak* sadeleştirilen auth katmanını yazıya döktü. Solo developer + kapalı admin sistemi gerçeği üzerine over-engineering riskini azalttı; ileride gerekirse genişletilecek yüzeyleri açıkça v1 dışı işaretledi. Aynı revizyonda kod tabanında v1.3 sonrası eklenmiş `lesson_uncompleted` akışı, `lesson_types` ve `settings` audit kanalları da spec'e dahil edildi.
 
@@ -2083,8 +2139,7 @@ v1.4, v1.3 spec'inde söz verilen ama implementasyonda *kasıtlı olarak* sadele
 - `audit_logs.entity_type` CHECK listesinde `'balance_transaction'` kalıntısı (0203 ile içerik silinmiş ama listede duruyor). Yeni satır eklenemiyor; pratik etki yok.
 - `studio_settings.default_lesson_duration` kalıntı kolonu (v1.2 notu — kullanılmıyor, settings UI'da görünüyor).
 - Spec §7 test senaryoları henüz büyük ölçüde implement edilmedi; mevcut smoke test'ler 01/04/05/06/08/10. Auth happy/sad path testi yok. Bilinçli olarak v1.5+'a ertelendi.
-- Login formunun iOS attribute'leri (`autoCapitalize="none"`, `autoCorrect="off"`, `inputMode="text"`) eklenmedi — §8.6 hâlâ niyet olarak yazılı, kod uyguladığında niyet kalır.
-- CORS production'da `ALLOWED_ORIGINS` whitelist'i set edilmedi; deploy zamanı kapatılacak (kod bugün her origin'i kabul ediyor → ⚠️ canlı öncesi düzeltilmeli).
+- CORS whitelist altyapısı kodda hazır (`env.allowedOrigins`, [app.ts](backend/src/server/app.ts) gelen origin'i yalnızca whitelist'te varsa yansıtır). Production'da operatör `ALLOWED_ORIGINS=https://<domain>` env var'ını set etmek zorunda; aksi halde production'da hiçbir cross-origin istek geçmez (fail-secure). Dev'de fallback olarak `localhost:5173` + `127.0.0.1:5173` izinli.
 
 **Production deploy notları (Vercel + Railway):**
 - Frontend Vercel'de (Hobby plan teknik kapasite olarak yeterli; ToS "personal use" gri alanı için Pro yükseltmesi ileride değerlendirilebilir).
