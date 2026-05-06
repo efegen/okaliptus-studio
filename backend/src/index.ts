@@ -10,8 +10,11 @@ async function main(): Promise<void> {
   const app = createApp();
   const server = createServer(app);
 
-  server.listen(env.port, () => {
-    console.log(`Backend server listening on port ${env.port}.`);
+  // Bind explicitly to 0.0.0.0 so Railway's edge proxy can reach the
+  // container. Default binding can land on ::/127.0.0.1 only in some
+  // container setups, which yields 502 from the platform router.
+  server.listen(env.port, "0.0.0.0", () => {
+    console.log(`Backend server listening on 0.0.0.0:${env.port}.`);
   });
 
   const shutdown = async (signal: string) => {
