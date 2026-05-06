@@ -1,5 +1,7 @@
 import React from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useWeekLessons } from './shared/useWeekLessons';
+import { queryKeys } from '../hooks/queryKeys';
 import { MobileLessonSheet } from './MobileLessonSheet';
 import { MobileCreateLessonSheet } from './MobileCreateLessonSheet';
 import { MobileToast } from './MobileToast';
@@ -171,9 +173,9 @@ export function MobileCalendar() {
   const [weekStart, setWeekStart] = React.useState(() => getCurrentMonday());
   const [selectedSession, setSelectedSession] = React.useState(null);
   const [slotInfo, setSlotInfo] = React.useState(null);
-  const [refreshKey, setRefreshKey] = React.useState(0);
   const [toast, setToast] = React.useState(null);
-  const { sessions, error, isLoading } = useWeekLessons(weekStart, refreshKey);
+  const queryClient = useQueryClient();
+  const { sessions, error, isLoading } = useWeekLessons(weekStart);
 
   const dayNumbers = getWeekDayNumbers(weekStart);
   const todayIndex = getTodayColumnIndex(weekStart);
@@ -242,7 +244,7 @@ export function MobileCalendar() {
   function handleSlotClick(d, h) { setSlotInfo({ dayIndex: d, hour: h }); }
   function handleCreated() {
     setSlotInfo(null);
-    setRefreshKey(k => k + 1);
+    queryClient.invalidateQueries({ queryKey: queryKeys.weekLessons() });
   }
 
   const sessionsByDay = React.useMemo(() => {
@@ -325,7 +327,7 @@ export function MobileCalendar() {
           onClose={() => setSelectedSession(null)}
           onUpdated={(message) => {
             setSelectedSession(null);
-            setRefreshKey(k => k + 1);
+            queryClient.invalidateQueries({ queryKey: queryKeys.weekLessons() });
             if (message) setToast(message);
           }}
         />

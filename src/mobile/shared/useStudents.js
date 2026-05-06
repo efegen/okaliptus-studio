@@ -1,41 +1,22 @@
-import React from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { getStudents, getStudentsKpi } from '../../api';
+import { queryKeys } from '../../hooks/queryKeys';
 
-export function useStudents(refreshKey = 0) {
-  const [state, setState] = React.useState({
-    students: null,
-    kpi: null,
-    error: null,
-    isLoading: true,
+export function useStudents() {
+  const studentsQuery = useQuery({
+    queryKey: queryKeys.students(),
+    queryFn: getStudents,
+    staleTime: 2 * 60 * 1000,
   });
-
-  React.useEffect(() => {
-    let cancelled = false;
-    setState(prev => ({ ...prev, isLoading: true, error: null }));
-
-    async function load() {
-      try {
-        const [students, kpi] = await Promise.all([
-          getStudents(),
-          getStudentsKpi(),
-        ]);
-        if (cancelled) return;
-        setState({ students, kpi, error: null, isLoading: false });
-      } catch (error) {
-        if (cancelled) return;
-        console.error('[useStudents] yüklenemedi:', error);
-        setState({
-          students: null,
-          kpi: null,
-          error: error instanceof Error ? error.message : 'Öğrenci verisi alınamadı.',
-          isLoading: false,
-        });
-      }
-    }
-
-    void load();
-    return () => { cancelled = true; };
-  }, [refreshKey]);
-
-  return state;
+  const kpiQuery = useQuery({
+    queryKey: queryKeys.studentsKpi(),
+    queryFn: getStudentsKpi,
+    staleTime: 2 * 60 * 1000,
+  });
+  return {
+    students: studentsQuery.data ?? null,
+    kpi: kpiQuery.data ?? null,
+    isLoading: studentsQuery.isLoading || kpiQuery.isLoading,
+    error: (studentsQuery.error?.message || kpiQuery.error?.message) ?? null,
+  };
 }

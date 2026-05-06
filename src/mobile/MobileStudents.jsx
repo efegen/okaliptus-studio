@@ -1,6 +1,8 @@
 import React from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Icon } from '../layout';
 import { useStudents } from './shared/useStudents';
+import { queryKeys } from '../hooks/queryKeys';
 import { MobileStudentsKpi } from './MobileStudentsKpi';
 import { MobileStudentList } from './MobileStudentList';
 import { MobileCreateStudentPage } from './MobileCreateStudentPage';
@@ -9,8 +11,8 @@ import { MobileStudentsMenu } from './MobileStudentsMenu';
 
 export function MobileStudents({ onOpenStudent }) {
   const [query, setQuery] = React.useState('');
-  const [refreshKey, setRefreshKey] = React.useState(0);
   const [createOpen, setCreateOpen] = React.useState(false);
+  const queryClient = useQueryClient();
   const [toastMessage, setToastMessage] = React.useState(null);
   const [activeFilter, setActiveFilter] = React.useState(null);
   const [filterMode, setFilterMode] = React.useState('all');
@@ -18,7 +20,7 @@ export function MobileStudents({ onOpenStudent }) {
   const [openMenu, setOpenMenu] = React.useState(null);
   const filterTriggerRef = React.useRef(null);
   const sortTriggerRef = React.useRef(null);
-  const { students, kpi, isLoading, error } = useStudents(refreshKey);
+  const { students, kpi, isLoading, error } = useStudents();
 
   function handleCreateClick() {
     setCreateOpen(true);
@@ -30,7 +32,8 @@ export function MobileStudents({ onOpenStudent }) {
 
   function handleCreated() {
     setCreateOpen(false);
-    setRefreshKey(k => k + 1);
+    queryClient.invalidateQueries({ queryKey: queryKeys.students() });
+    queryClient.invalidateQueries({ queryKey: queryKeys.studentsKpi() });
     setToastMessage('Öğrenci eklendi');
   }
 

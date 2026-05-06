@@ -13,6 +13,12 @@
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+
+function renderWithQuery(ui) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+}
 
 vi.mock("../api", () => ({
   getWeeklyKpi: vi.fn(),
@@ -84,7 +90,7 @@ describe("HomePage", () => {
   });
 
   it("renders without crashing and calls expected APIs", async () => {
-    render(<HomePage layout="detayli" onNavigate={() => {}} />);
+    renderWithQuery(<HomePage layout="detayli" onNavigate={() => {}} />);
     // KPI fetch + week schedule fetch + settings fetch beklenir
     await screen.findAllByText(/./, { selector: "h1, h2, h3, .card" }).catch(() => {});
     expect(getWeeklyKpi).toHaveBeenCalled();
@@ -92,7 +98,7 @@ describe("HomePage", () => {
   });
 
   it("renders financial KPI cards (Tahsilat / Ciro / Receivable)", async () => {
-    render(<HomePage layout="detayli" onNavigate={() => {}} />);
+    renderWithQuery(<HomePage layout="detayli" onNavigate={() => {}} />);
     // Spec §8.1 başlıkları geniş eşleşmeli
     const labels = await screen.findAllByText(/(tahsilat|ciro|alacak|kredi|ders)/i);
     expect(labels.length).toBeGreaterThan(0);

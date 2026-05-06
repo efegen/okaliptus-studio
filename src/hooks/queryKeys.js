@@ -1,0 +1,17 @@
+export const queryKeys = {
+  weeklyKpi:          ()      => ['weeklyKpi'],
+  weekLessons:        (ms)    => ms !== undefined ? ['weekLessons', ms] : ['weekLessons'],
+  students:           ()      => ['students'],
+  studentsKpi:        ()      => ['studentsKpi'],
+  studentById:        (id)    => ['student', id],
+  studentLessons:     (id)    => ['student', id, 'lessons'],
+  studentPackages:    (id)    => ['student', id, 'packages'],
+  studentProductSales:(id)    => ['student', id, 'productSales'],
+  studentMovements:   (id)    => ['student', id, 'movements'],
+  instructors:        ()      => ['instructors'],
+  lessonTypes:        ()      => ['lessonTypes'],
+  settings:           ()      => ['settings'],
+  debtors:            ()      => ['debtors'],
+  auditLogs:          (params)=> ['auditLogs', params],
+  auditUsers:         ()      => ['auditUsers'],
+};

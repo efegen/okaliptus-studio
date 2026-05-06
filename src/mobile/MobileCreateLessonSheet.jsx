@@ -1,11 +1,13 @@
 import React from 'react';
 import { Drawer } from 'vaul';
+import { useQuery } from '@tanstack/react-query';
 import {
   createLesson,
   getStudents,
   getInstructors,
   getLessonTypes,
 } from '../api';
+import { queryKeys } from '../hooks/queryKeys';
 import { Avatar } from '../layout';
 
 function OnsiteIcon({ size = 14 }) {
@@ -124,11 +126,16 @@ export function MobileCreateLessonSheet({ slotInfo, weekStart, onClose, onCreate
   const open = !!slotInfo;
   const portalContainer = React.useMemo(getMobilePaletteRoot, []);
 
-  const [students, setStudents] = React.useState([]);
-  const [instructors, setInstructors] = React.useState([]);
-  const [lessonTypes, setLessonTypes] = React.useState([]);
-  const [metaLoading, setMetaLoading] = React.useState(false);
-  const [fetchError, setFetchError] = React.useState(null);
+  const studentsQuery = useQuery({ queryKey: queryKeys.students(), queryFn: getStudents, staleTime: 2 * 60 * 1000 });
+  const instructorsQuery = useQuery({ queryKey: queryKeys.instructors(), queryFn: getInstructors, staleTime: 5 * 60 * 1000 });
+  const lessonTypesQuery = useQuery({ queryKey: queryKeys.lessonTypes(), queryFn: getLessonTypes, staleTime: 5 * 60 * 1000 });
+
+  const students = studentsQuery.data ?? [];
+  const instructors = instructorsQuery.data ?? [];
+  const lessonTypes = lessonTypesQuery.data ?? [];
+  const metaLoading = studentsQuery.isLoading || instructorsQuery.isLoading || lessonTypesQuery.isLoading;
+  const fetchError = [studentsQuery.error, instructorsQuery.error, lessonTypesQuery.error]
+    .filter(Boolean).map(e => e.message).join(' · ') || null;
 
   const [selectedStudent, setSelectedStudent] = React.useState(null);
   const [mode, setMode] = React.useState('onsite');
@@ -149,40 +156,18 @@ export function MobileCreateLessonSheet({ slotInfo, weekStart, onClose, onCreate
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slotInfo?.dayIndex, slotInfo?.hour, weekStart?.getTime()]);
 
-  // Load metadata once when sheet opens.
+  // Initialize defaults when data arrives from cache or network.
   React.useEffect(() => {
-    if (!open) return;
-    let cancelled = false;
-    setMetaLoading(true);
-    setFetchError(null);
-    Promise.allSettled([getStudents(), getInstructors(), getLessonTypes()])
-      .then(([sRes, iRes, ltRes]) => {
-        if (cancelled) return;
-        const errors = [];
-        if (sRes.status === 'fulfilled') {
-          setStudents(sRes.value || []);
-        } else {
-          errors.push(sRes.reason?.message || 'Öğrenci listesi alınamadı.');
-        }
-        if (iRes.status === 'fulfilled') {
-          const list = iRes.value || [];
-          setInstructors(list);
-          if (list.length > 0) setInstructorId(String(list[0].id));
-        } else {
-          errors.push(iRes.reason?.message || 'Eğitmen listesi alınamadı.');
-        }
-        if (ltRes.status === 'fulfilled') {
-          const list = ltRes.value || [];
-          setLessonTypes(list);
-          if (list.length > 0) setLessonTypeId(String(list[0].id));
-        } else {
-          errors.push(ltRes.reason?.message || 'Ders türü listesi alınamadı.');
-        }
-        setFetchError(errors.length > 0 ? errors.join(' · ') : null);
-        setMetaLoading(false);
-      });
-    return () => { cancelled = true; };
-  }, [open]);
+    if (instructors.length > 0 && !instructorId) {
+      setInstructorId(String(instructors[0].id));
+    }
+  }, [instructors]);
+
+  React.useEffect(() => {
+    if (lessonTypes.length > 0 && !lessonTypeId) {
+      setLessonTypeId(String(lessonTypes[0].id));
+    }
+  }, [lessonTypes]);
 
   const lessonDate = React.useMemo(() => {
     if (!slotInfo || !weekStart) return null;

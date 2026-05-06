@@ -1,6 +1,8 @@
 // Home / Dashboard page - hierarchy-first, action-center right rail
 
 import React from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from './hooks/queryKeys';
 import {
   STUDENTS, WEEK_SESSIONS, DEBTS, INCOME_HISTORY,
   DAYS_TR, DAYS_TR_SHORT,
@@ -31,50 +33,12 @@ function clampBarWidth(value) {
 }
 
 function useWeeklyKpiState() {
-  const [state, setState] = React.useState({
-    data: null,
-    error: null,
-    isLoading: true,
+  const { data, error, isLoading } = useQuery({
+    queryKey: queryKeys.weeklyKpi(),
+    queryFn: getWeeklyKpi,
+    staleTime: 2 * 60 * 1000,
   });
-
-  React.useEffect(() => {
-    let cancelled = false;
-
-    async function loadWeeklyKpi() {
-      try {
-        const data = await getWeeklyKpi();
-
-        if (cancelled) {
-          return;
-        }
-
-        setState({
-          data,
-          error: null,
-          isLoading: false,
-        });
-      } catch (error) {
-        if (cancelled) {
-          return;
-        }
-
-        console.error('[WeeklyKpi] fetch basarisiz, mock veriye donuluyor:', error);
-        setState({
-          data: null,
-          error: error instanceof Error ? error.message : 'Haftalik KPI verisi alinamadi.',
-          isLoading: false,
-        });
-      }
-    }
-
-    void loadWeeklyKpi();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  return state;
+  return { data: data ?? null, error: error?.message ?? null, isLoading };
 }
 
 function getIstanbulToday() {
@@ -265,52 +229,13 @@ function normalizeApiLesson(l) {
   };
 }
 
-function useWeekLessonsState(weekStart, refreshKey) {
-  const [state, setState] = React.useState({
-    lessons: null,
-    error: null,
-    isLoading: true,
+function useWeekLessonsState(weekStart) {
+  const { data: lessons, error, isLoading } = useQuery({
+    queryKey: queryKeys.weekLessons(weekStart.getTime()),
+    queryFn: () => getWeekLessons(weekStart),
+    staleTime: 60 * 1000,
   });
-
-  const weekStartKey = weekStart.getTime();
-
-  React.useEffect(() => {
-    let cancelled = false;
-
-    // Synchronously clear stale lessons before the async fetch so the
-    // calendar never renders a previous week's sessions under the new week's columns.
-    setState({ lessons: null, error: null, isLoading: true });
-
-    async function loadWeekLessons() {
-      try {
-        const lessons = await getWeekLessons(weekStart);
-
-        if (cancelled) {
-          return;
-        }
-
-        setState({ lessons, error: null, isLoading: false });
-      } catch (error) {
-        if (cancelled) {
-          return;
-        }
-
-        setState({
-          lessons: null,
-          error: error instanceof Error ? error.message : 'Haftalik ders verisi alinamadi.',
-          isLoading: false,
-        });
-      }
-    }
-
-    void loadWeekLessons();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [weekStartKey, refreshKey]);
-
-  return state;
+  return { lessons: lessons ?? null, error: error?.message ?? null, isLoading };
 }
 
 // ─── Collapsed calendar helpers ─────────────────────────────────────────────
@@ -375,26 +300,28 @@ function getSessionTopPx(rows, rowOffsets, hourH, time) {
 // ─── Settings loader ────────────────────────────────────────────────────────
 
 function useStudioSettings() {
-  const [settings, setSettings] = React.useState(null);
-
-  React.useEffect(() => {
-    let cancelled = false;
-    getSettings()
-      .then(data => { if (!cancelled) setSettings(data); })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, []);
-
-  return settings;
+  const { data } = useQuery({
+    queryKey: queryKeys.settings(),
+    queryFn: getSettings,
+    staleTime: 5 * 60 * 1000,
+  });
+  return data ?? null;
 }
 
 // ─── Create Lesson Modal ─────────────────────────────────────────────────────
 
 function CreateLessonModal({ dayIndex, hour, weekStart, onClose, onCreated, defaultMode = 'onsite' }) {
-  const [students, setStudents] = React.useState([]);
-  const [instructors, setInstructors] = React.useState([]);
-  const [lessonTypes, setLessonTypes] = React.useState([]);
-  const [metaLoading, setMetaLoading] = React.useState(true);
+  const studentsQuery = useQuery({ queryKey: queryKeys.students(), queryFn: getStudents, staleTime: 2 * 60 * 1000 });
+  const instructorsQuery = useQuery({ queryKey: queryKeys.instructors(), queryFn: getInstructors, staleTime: 5 * 60 * 1000 });
+  const lessonTypesQuery = useQuery({ queryKey: queryKeys.lessonTypes(), queryFn: getLessonTypes, staleTime: 5 * 60 * 1000 });
+
+  const students = studentsQuery.data ?? [];
+  const instructors = instructorsQuery.data ?? [];
+  const lessonTypes = lessonTypesQuery.data ?? [];
+  const metaLoading = studentsQuery.isLoading || instructorsQuery.isLoading || lessonTypesQuery.isLoading;
+  const fetchError = [studentsQuery.error, instructorsQuery.error, lessonTypesQuery.error]
+    .filter(Boolean).map(e => e.message).join(' · ') || null;
+
   const [selectedStudent, setSelectedStudent] = React.useState(null);
   const [query, setQuery] = React.useState('');
   const [comboOpen, setComboOpen] = React.useState(false);
@@ -405,36 +332,21 @@ function CreateLessonModal({ dayIndex, hour, weekStart, onClose, onCreated, defa
   const [lessonTypeId, setLessonTypeId] = React.useState('');
   const [note, setNote] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
-  const [fetchError, setFetchError] = React.useState(null);
   const [submitError, setSubmitError] = React.useState(null);
   const inputRef = React.useRef(null);
   const comboRootRef = React.useRef(null);
 
   React.useEffect(() => {
-    let cancelled = false;
-    Promise.allSettled([getStudents(), getInstructors(), getLessonTypes()])
-      .then(([studentsR, instructorsR, typesR]) => {
-        if (cancelled) return;
-        const errors = [];
-        if (studentsR.status === 'fulfilled') setStudents(studentsR.value);
-        else errors.push('Öğrenci listesi alınamadı.');
-        if (instructorsR.status === 'fulfilled') {
-          setInstructors(instructorsR.value);
-          if (instructorsR.value.length > 0) setInstructorId(String(instructorsR.value[0].id));
-        } else {
-          errors.push('Eğitmen listesi alınamadı.');
-        }
-        if (typesR.status === 'fulfilled') {
-          setLessonTypes(typesR.value);
-          if (typesR.value.length > 0) setLessonTypeId(String(typesR.value[0].id));
-        } else {
-          errors.push('Ders türü listesi alınamadı.');
-        }
-        if (errors.length > 0) setFetchError(errors.join(' '));
-        setMetaLoading(false);
-      });
-    return () => { cancelled = true; };
-  }, []);
+    if (instructors.length > 0 && !instructorId) {
+      setInstructorId(String(instructors[0].id));
+    }
+  }, [instructors]);
+
+  React.useEffect(() => {
+    if (lessonTypes.length > 0 && !lessonTypeId) {
+      setLessonTypeId(String(lessonTypes[0].id));
+    }
+  }, [lessonTypes]);
 
   React.useEffect(() => {
     if (!comboOpen) return;
@@ -2307,12 +2219,12 @@ function WeekNavBar({ weekStart, onPrev, onNext, onToday, onWeekSelect, sessions
 
 // ─── Week Calendar ───────────────────────────────────────────────────────────
 
-export function WeekCalendar({ weekStart, variant = "detailed", onSessionClick, alwaysFrom = 17, alwaysTo = 23, defaultLessonMode = 'onsite', activePaymentMethods = { cash: true, iban: true }, onSessionsLoaded, externalRefreshKey = 0 }) {
+export function WeekCalendar({ weekStart, variant = "detailed", onSessionClick, alwaysFrom = 17, alwaysTo = 23, defaultLessonMode = 'onsite', activePaymentMethods = { cash: true, iban: true }, onSessionsLoaded }) {
   const hourH = variant === "compact" ? 36 : 48;
+  const queryClient = useQueryClient();
 
   const weekDayNumbers = React.useMemo(() => getWeekDayNumbers(weekStart), [weekStart]);
   const todayIndex = React.useMemo(() => getTodayColumnIndex(weekStart), [weekStart]);
-  const [refreshKey, setRefreshKey] = React.useState(0);
   const [expandedBands, setExpandedBands] = React.useState(new Set());
   const [createModal, setCreateModal] = React.useState(null);
   const [lessonModalSession, setLessonModalSession] = React.useState(null);
@@ -2322,7 +2234,7 @@ export function WeekCalendar({ weekStart, variant = "detailed", onSessionClick, 
     onSessionClick && onSessionClick(s);
   }
 
-  const { lessons, error } = useWeekLessonsState(weekStart, `${refreshKey}_${externalRefreshKey}`);
+  const { lessons, error } = useWeekLessonsState(weekStart);
 
   // Reset expanded bands when week changes so bands from the old week don't bleed over.
   React.useEffect(() => {
@@ -2446,7 +2358,7 @@ export function WeekCalendar({ weekStart, variant = "detailed", onSessionClick, 
           weekStart={weekStart}
           defaultMode={defaultLessonMode}
           onClose={() => setCreateModal(null)}
-          onCreated={() => { setCreateModal(null); setRefreshKey(k => k + 1); }}
+          onCreated={() => { setCreateModal(null); queryClient.invalidateQueries({ queryKey: queryKeys.weekLessons() }); }}
         />
       )}
       {lessonModalSession && (
@@ -2454,7 +2366,7 @@ export function WeekCalendar({ weekStart, variant = "detailed", onSessionClick, 
           session={lessonModalSession}
           activePaymentMethods={activePaymentMethods}
           onClose={() => setLessonModalSession(null)}
-          onUpdated={() => { setLessonModalSession(null); setRefreshKey(k => k + 1); }}
+          onUpdated={() => { setLessonModalSession(null); queryClient.invalidateQueries({ queryKey: queryKeys.weekLessons() }); }}
         />
       )}
     </>
@@ -2674,7 +2586,8 @@ function UpcomingEventsCard() {
   );
 }
 
-function QuickActions({ defaultLessonMode = 'onsite', activePaymentMethods = { cash: true, iban: true }, onNavigate, onLessonCreated }) {
+function QuickActions({ defaultLessonMode = 'onsite', activePaymentMethods = { cash: true, iban: true }, onNavigate }) {
+  const queryClient = useQueryClient();
   const [modal, setModal] = React.useState(null); // 'lesson' | 'sale' | 'pay'
 
   return (
@@ -2741,7 +2654,7 @@ function QuickActions({ defaultLessonMode = 'onsite', activePaymentMethods = { c
         <StandaloneCreateLessonModal
           defaultMode={defaultLessonMode}
           onClose={() => setModal(null)}
-          onCreated={() => { setModal(null); onLessonCreated?.(); }}
+          onCreated={() => { setModal(null); queryClient.invalidateQueries({ queryKey: queryKeys.weekLessons() }); }}
         />
       )}
       {modal === 'sale' && (
@@ -2791,9 +2704,9 @@ export function HomePage({ layout, onNavigate }) {
     iban: studioSettings?.paymentMethodIban ?? true,
   };
 
+  const queryClient = useQueryClient();
   const [weekStart, setWeekStart] = React.useState(() => getCurrentMonday());
   const [weekSessions, setWeekSessions] = React.useState([]);
-  const [calRefreshKey, setCalRefreshKey] = React.useState(0);
   function goToPrevWeek() { setWeekStart(ws => addWeeks(ws, -1)); }
   function goToNextWeek() { setWeekStart(ws => addWeeks(ws, 1)); }
   function goToCurrentWeek() { setWeekStart(getCurrentMonday()); }
@@ -2829,7 +2742,7 @@ export function HomePage({ layout, onNavigate }) {
               <WeekNavBar weekStart={weekStart} onPrev={goToPrevWeek} onNext={goToNextWeek} onToday={goToCurrentWeek} onWeekSelect={setWeekStart} sessions={weekSessions} />
             </div>
           </div>
-          <WeekCalendar weekStart={weekStart} variant="detailed" alwaysFrom={calendarAlwaysFrom} alwaysTo={calendarAlwaysTo} defaultLessonMode={defaultLessonMode} activePaymentMethods={activePaymentMethods} onSessionsLoaded={setWeekSessions} externalRefreshKey={calRefreshKey} />
+          <WeekCalendar weekStart={weekStart} variant="detailed" alwaysFrom={calendarAlwaysFrom} alwaysTo={calendarAlwaysTo} defaultLessonMode={defaultLessonMode} activePaymentMethods={activePaymentMethods} onSessionsLoaded={setWeekSessions} />
           <div className="cal-legend">
             <span className="leg"><span className="leg-sw ls-planned"></span>Planlandı</span>
             <span className="leg"><span className="leg-sw ls-unpaid"></span>Tamamlandı · Ödenmedi</span>
@@ -2901,7 +2814,7 @@ export function HomePage({ layout, onNavigate }) {
               <WeekNavBar weekStart={weekStart} onPrev={goToPrevWeek} onNext={goToNextWeek} onToday={goToCurrentWeek} onWeekSelect={setWeekStart} sessions={weekSessions} />
             </div>
           </div>
-          <WeekCalendar weekStart={weekStart} variant="compact" alwaysFrom={calendarAlwaysFrom} alwaysTo={calendarAlwaysTo} defaultLessonMode={defaultLessonMode} activePaymentMethods={activePaymentMethods} onSessionsLoaded={setWeekSessions} externalRefreshKey={calRefreshKey} />
+          <WeekCalendar weekStart={weekStart} variant="compact" alwaysFrom={calendarAlwaysFrom} alwaysTo={calendarAlwaysTo} defaultLessonMode={defaultLessonMode} activePaymentMethods={activePaymentMethods} onSessionsLoaded={setWeekSessions} />
         </div>
       </div>
     );
@@ -2978,7 +2891,7 @@ export function HomePage({ layout, onNavigate }) {
             </div>
           </div>
           <div style={{padding: "14px 18px 18px"}}>
-            <WeekCalendar weekStart={weekStart} variant="detailed" alwaysFrom={calendarAlwaysFrom} alwaysTo={calendarAlwaysTo} defaultLessonMode={defaultLessonMode} activePaymentMethods={activePaymentMethods} onSessionsLoaded={setWeekSessions} externalRefreshKey={calRefreshKey} />
+            <WeekCalendar weekStart={weekStart} variant="detailed" alwaysFrom={calendarAlwaysFrom} alwaysTo={calendarAlwaysTo} defaultLessonMode={defaultLessonMode} activePaymentMethods={activePaymentMethods} onSessionsLoaded={setWeekSessions} />
             <div className="cal-legend">
               <span className="leg"><span className="leg-sw onsite"></span>yüzyüze</span>
               <span className="leg"><span className="leg-sw online"></span>online</span>
@@ -2996,7 +2909,6 @@ export function HomePage({ layout, onNavigate }) {
               defaultLessonMode={defaultLessonMode}
               activePaymentMethods={activePaymentMethods}
               onNavigate={onNavigate}
-              onLessonCreated={() => setCalRefreshKey(k => k + 1)}
             />
           </div>
           <DebtActionCard />

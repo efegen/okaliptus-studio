@@ -1,5 +1,6 @@
-import React from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { getWeekLessons } from '../../api';
+import { queryKeys } from '../../hooks/queryKeys';
 
 function extractIstanbulParts(isoString) {
   const fmt = new Intl.DateTimeFormat('en-CA', {
@@ -71,42 +72,21 @@ function normalizeLesson(l) {
   };
 }
 
-export function useWeekLessons(weekStart, refreshKey = 0) {
-  const [state, setState] = React.useState({
-    sessions: null,
-    error: null,
-    isLoading: true,
+function selectSessions(data) {
+  return (data || []).map(normalizeLesson).filter(s => s.lessonState !== 'cancelled');
+}
+
+export function useWeekLessons(weekStart) {
+  const weekStartMs = weekStart.getTime();
+  const { data: sessions, error, isLoading } = useQuery({
+    queryKey: queryKeys.weekLessons(weekStartMs),
+    queryFn: () => getWeekLessons(weekStart),
+    select: selectSessions,
+    staleTime: 60 * 1000,
   });
-
-  const weekStartKey = weekStart.getTime();
-
-  React.useEffect(() => {
-    let cancelled = false;
-    setState({ sessions: null, error: null, isLoading: true });
-
-    async function load() {
-      try {
-        const data = await getWeekLessons(weekStart);
-        if (cancelled) return;
-        const sessions = (data || [])
-          .map(normalizeLesson)
-          .filter(s => s.lessonState !== 'cancelled');
-        setState({ sessions, error: null, isLoading: false });
-      } catch (error) {
-        if (cancelled) return;
-        console.error('[useWeekLessons] fetch basarisiz:', error);
-        setState({
-          sessions: null,
-          error: error instanceof Error ? error.message : 'Haftalik ders verisi alinamadi.',
-          isLoading: false,
-        });
-      }
-    }
-
-    void load();
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [weekStartKey, refreshKey]);
-
-  return state;
+  return {
+    sessions: sessions ?? null,
+    error: error?.message ?? null,
+    isLoading,
+  };
 }
