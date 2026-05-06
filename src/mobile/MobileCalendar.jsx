@@ -180,35 +180,111 @@ export function MobileCalendar() {
   const dayNumbers = getWeekDayNumbers(weekStart);
   const todayIndex = getTodayColumnIndex(weekStart);
   const scrollRef = React.useRef(null);
+  const headsRef = React.useRef(null);
+  const bodiesRef = React.useRef(null);
+  const pageOffsetRef = React.useRef(0);
 
-  // JS axis-lock for vertical-dominant gestures only: when a vertical drag is
-  // detected, suppress horizontal snap+scroll so the gesture commits to y.
-  // We deliberately DO NOT lock during horizontal-dominant gestures: toggling
-  // `overflow-y: hidden` mid-gesture causes iOS Safari to reset scrollTop to 0
-  // and snap back, producing a visible vertical flash on every horizontal swipe.
+  // Horizontal pagination uses CSS transform on TWO synced tracks (heads +
+  // bodies) inside a vertical-only scroll container. Why two tracks?
+  //   1) `scrollLeft` on a 2-axis `overflow: auto` container with sticky
+  //      descendants is buggy on iOS Safari (resets to 0 on cross-axis
+  //      scroll), so we cannot use horizontal scrolling at all.
+  //   2) `position: sticky` inside a transformed ancestor breaks in WebKit:
+  //      the sticky element loses its scrollport and stops sticking. So the
+  //      day-heads cannot live inside the transformed bodies grid.
+  // Solution: bodies grid is transformed for horizontal pagination; the heads
+  // row is sticky-top OUTSIDE any transformed ancestor, with its own inner
+  // track that mirrors the bodies' transform.
+  const getDayWidth = () => {
+    const el = scrollRef.current;
+    if (!el) return 100;
+    const styles = getComputedStyle(el);
+    const dayWStr = styles.getPropertyValue('--day-w').trim();
+    return parseFloat(dayWStr) || (el.clientWidth - 56) / 3;
+  };
+
+  const getMaxOffset = () => {
+    const bodies = bodiesRef.current;
+    const wrap = bodies?.parentElement;
+    const dayW = getDayWidth();
+    if (!bodies || !wrap || dayW <= 0) return 0;
+    const overflow = bodies.offsetWidth - wrap.clientWidth;
+    return Math.max(0, Math.round(overflow / dayW));
+  };
+
+  const applyTransform = React.useCallback((offset, withTransition) => {
+    const heads = headsRef.current;
+    const bodies = bodiesRef.current;
+    if (!heads && !bodies) return;
+    const dayW = getDayWidth();
+    const tf = `translateX(${-offset * dayW}px)`;
+    const transition = withTransition ? '' : 'none';
+    if (heads) {
+      heads.style.transition = transition;
+      heads.style.transform = tf;
+    }
+    if (bodies) {
+      bodies.style.transition = transition;
+      bodies.style.transform = tf;
+    }
+  }, []);
+
   React.useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    let startX = 0, startY = 0, lockedAxis = null;
+    let startX = 0, startY = 0, axis = null, baseOffset = 0, lastDx = 0;
+
+    const setDragTransform = (px) => {
+      const heads = headsRef.current;
+      const bodies = bodiesRef.current;
+      const tf = `translateX(${px}px)`;
+      if (heads) {
+        heads.style.transition = 'none';
+        heads.style.transform = tf;
+      }
+      if (bodies) {
+        bodies.style.transition = 'none';
+        bodies.style.transform = tf;
+      }
+    };
 
     const onTouchStart = (e) => {
       if (e.touches.length !== 1) return;
       startX = e.touches[0].clientX;
       startY = e.touches[0].clientY;
-      lockedAxis = null;
-      el.classList.remove('lock-y');
+      axis = null;
+      baseOffset = pageOffsetRef.current;
+      lastDx = 0;
     };
     const onTouchMove = (e) => {
-      if (lockedAxis || e.touches.length !== 1) return;
-      const dx = Math.abs(e.touches[0].clientX - startX);
-      const dy = Math.abs(e.touches[0].clientY - startY);
-      if (dx < 10 && dy < 10) return;
-      lockedAxis = dx > dy ? 'x' : 'y';
-      if (lockedAxis === 'y') el.classList.add('lock-y');
+      if (e.touches.length !== 1) return;
+      const dx = e.touches[0].clientX - startX;
+      const dy = e.touches[0].clientY - startY;
+      if (!axis) {
+        if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
+        axis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
+      }
+      if (axis === 'x') {
+        lastDx = dx;
+        const dayW = getDayWidth();
+        const maxOffset = getMaxOffset();
+        const px = Math.max(-maxOffset * dayW, Math.min(0, -baseOffset * dayW + dx));
+        setDragTransform(px);
+      }
     };
     const onTouchEnd = () => {
-      lockedAxis = null;
-      el.classList.remove('lock-y');
+      if (axis === 'x') {
+        const dayW = getDayWidth();
+        const maxOffset = getMaxOffset();
+        let delta = 0;
+        if (Math.abs(lastDx) > dayW / 4) {
+          delta = -Math.sign(lastDx) * Math.max(1, Math.round(Math.abs(lastDx) / dayW));
+        }
+        const newOffset = Math.max(0, Math.min(maxOffset, baseOffset + delta));
+        pageOffsetRef.current = newOffset;
+        applyTransform(newOffset, true);
+      }
+      axis = null;
     };
 
     el.addEventListener('touchstart', onTouchStart, { passive: true });
@@ -221,20 +297,26 @@ export function MobileCalendar() {
       el.removeEventListener('touchend', onTouchEnd);
       el.removeEventListener('touchcancel', onTouchEnd);
     };
-  }, []);
+  }, [applyTransform]);
+
+  React.useEffect(() => {
+    const onResize = () => applyTransform(pageOffsetRef.current, false);
+    window.addEventListener('resize', onResize);
+    window.addEventListener('orientationchange', onResize);
+    return () => {
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('orientationchange', onResize);
+    };
+  }, [applyTransform]);
 
   React.useLayoutEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
-    if (todayIndex >= 0) {
-      const styles = getComputedStyle(el);
-      const dayWStr = styles.getPropertyValue('--day-w').trim();
-      const dayW = parseFloat(dayWStr) || (el.clientWidth - 56) / 3;
-      el.scrollLeft = Math.max(0, (todayIndex - 1)) * dayW;
-    } else {
-      el.scrollLeft = 0;
-    }
+    const maxOffset = getMaxOffset();
+    const initial = Math.max(0, Math.min(maxOffset, todayIndex >= 0 ? todayIndex - 1 : 0));
+    pageOffsetRef.current = initial;
+    applyTransform(initial, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [weekStart.getTime()]);
 
@@ -277,35 +359,50 @@ export function MobileCalendar() {
             ))}
           </aside>
 
-          <div className="mobile-cal-grid">
-            {Array.from({ length: 7 }, (_, d) => {
-              const isToday = d === todayIndex;
-              return (
-                <section
-                  key={d}
-                  className={'mobile-cal-day-col' + (isToday ? ' today' : '')}
-                >
-                  <header className={'mobile-cal-day-head' + (isToday ? ' today' : '')}>
-                    <span className="mobile-cal-day-name">{DAYS_TR_SHORT[d]}</span>
-                    <span className="mobile-cal-day-num">{dayNumbers[d]}</span>
-                  </header>
-                  <div className="mobile-cal-day-body">
-                    {HOURS.map(h => (
-                      <div
-                        key={h}
-                        className="mobile-cal-hour-cell"
-                        role="button"
-                        aria-label={`${DAYS_TR_SHORT[d]} ${String(h).padStart(2, '0')}:00 boş slot`}
-                        onClick={() => handleSlotClick(d, h)}
-                      />
-                    ))}
-                    {sessionsByDay[d].map(s => (
-                      <LessonBlock key={s.id} session={s} onSelect={setSelectedSession} />
-                    ))}
-                  </div>
-                </section>
-              );
-            })}
+          <div className="mobile-cal-day-area">
+            <div className="mobile-cal-heads-row">
+              <div className="mobile-cal-heads-track" ref={headsRef}>
+                {Array.from({ length: 7 }, (_, d) => {
+                  const isToday = d === todayIndex;
+                  return (
+                    <header
+                      key={d}
+                      className={'mobile-cal-day-head' + (isToday ? ' today' : '')}
+                    >
+                      <span className="mobile-cal-day-name">{DAYS_TR_SHORT[d]}</span>
+                      <span className="mobile-cal-day-num">{dayNumbers[d]}</span>
+                    </header>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="mobile-cal-bodies-wrap">
+              <div className="mobile-cal-bodies" ref={bodiesRef}>
+                {Array.from({ length: 7 }, (_, d) => {
+                  const isToday = d === todayIndex;
+                  return (
+                    <div
+                      key={d}
+                      className={'mobile-cal-day-body' + (isToday ? ' today' : '')}
+                    >
+                      {HOURS.map(h => (
+                        <div
+                          key={h}
+                          className="mobile-cal-hour-cell"
+                          role="button"
+                          aria-label={`${DAYS_TR_SHORT[d]} ${String(h).padStart(2, '0')}:00 boş slot`}
+                          onClick={() => handleSlotClick(d, h)}
+                        />
+                      ))}
+                      {sessionsByDay[d].map(s => (
+                        <LessonBlock key={s.id} session={s} onSelect={setSelectedSession} />
+                      ))}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         </div>
 

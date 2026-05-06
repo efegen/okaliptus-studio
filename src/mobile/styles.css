@@ -502,25 +502,65 @@
   .mobile-cal-scroll {
     flex: 1 1 0;
     min-height: 0;
-    overflow: auto;
+    /* Vertical-only scroll. Horizontal pagination is implemented via CSS
+       transform on `.mobile-cal-bodies` and `.mobile-cal-heads-track` (see
+       MobileCalendar useEffect). iOS Safari resets scrollLeft to 0 on
+       cross-axis scroll when sticky descendants exist + 2-axis overflow:auto,
+       so we never let scrollLeft become non-zero. */
+    overflow-y: auto;
+    overflow-x: hidden;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
-    scroll-snap-type: x mandatory;
-    scroll-padding-left: 56px;
-    scroll-snap-stop: always;
+    touch-action: pan-y;
     position: relative;
-  }
-  /* JS axis-lock: when vertical drag is detected, suppress horizontal snap+scroll
-     so the gesture is committed to the vertical axis. Released on touchend. */
-  .mobile-cal-scroll.lock-y {
-    overflow-x: hidden;
-    scroll-snap-type: none;
   }
 
   .mobile-cal-frame {
     display: grid;
-    grid-template-columns: 56px max-content;
+    grid-template-columns: 56px 1fr;
+    width: 100%;
+  }
+
+  .mobile-cal-day-area {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .mobile-cal-heads-row {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    height: 36px;
+    overflow: hidden;
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--ink-4);
+  }
+
+  .mobile-cal-heads-track {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: var(--day-w);
     width: max-content;
+    height: 100%;
+    transition: transform 0.3s cubic-bezier(0.2, 0, 0.1, 1);
+    will-change: transform;
+  }
+
+  .mobile-cal-bodies-wrap {
+    flex: 1 1 auto;
+    overflow: hidden;
+    position: relative;
+    min-width: 0;
+  }
+
+  .mobile-cal-bodies {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: var(--day-w);
+    width: max-content;
+    transition: transform 0.3s cubic-bezier(0.2, 0, 0.1, 1);
+    will-change: transform;
   }
 
   .mobile-cal-time-col {
@@ -551,36 +591,17 @@
     box-sizing: border-box;
   }
 
-  .mobile-cal-grid {
-    display: grid;
-    grid-auto-flow: column;
-    grid-auto-columns: var(--day-w);
-  }
-
-  .mobile-cal-day-col {
-    scroll-snap-align: start;
-    display: flex;
-    flex-direction: column;
-    border-right: 1px solid var(--ink-4);
-    min-width: 0;
-  }
-  .mobile-cal-day-col.today {
-    background: oklch(0.97 0.01 45);
-  }
-
   .mobile-cal-day-head {
-    position: sticky;
-    top: 0;
-    z-index: 3;
-    height: 36px;
+    height: 100%;
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 6px;
     background: var(--surface-2);
-    border-bottom: 1px solid var(--ink-4);
     font-size: 12px;
     color: var(--ink-2);
+    border-right: 1px solid var(--ink-4);
+    box-sizing: border-box;
   }
   .mobile-cal-day-head.today {
     background: var(--ink);
@@ -607,6 +628,11 @@
   .mobile-cal-day-body {
     position: relative;
     height: 768px;
+    border-right: 1px solid var(--ink-4);
+    box-sizing: border-box;
+  }
+  .mobile-cal-day-body.today {
+    background: oklch(0.97 0.01 45);
   }
 
   .mobile-cal-hour-cell {
@@ -767,8 +793,11 @@
     border-top-left-radius: 16px;
     border-top-right-radius: 16px;
     padding: 0 16px calc(env(safe-area-inset-bottom, 0px) + 20px);
+    /* Sheet itself never scrolls — body has the scroll. Two nested scroll
+       containers caused the header to scroll out of view and not return. */
     max-height: 85dvh;
-    overflow-y: auto;
+    min-height: 50dvh;
+    overflow: hidden;
     outline: none;
   }
 
@@ -1063,12 +1092,6 @@
   }
 
   /* ---------- Lesson sheet — multi-phase additions ---------- */
-
-  .mobile-lsheet-content {
-    display: flex;
-    flex-direction: column;
-    padding: 0 16px;
-  }
 
   .mobile-lsheet-body {
     flex: 1 1 auto;
@@ -2527,16 +2550,9 @@
 
 /* ─── Landscape: full-week calendar, hide bottom tab on calendar page ── */
 @media (orientation: landscape) and ((max-width: 900px) or (pointer: coarse)) {
-  /* Show all 7 days at once; no horizontal snap. */
+  /* Show all 7 days at once. */
   .mobile-calendar-page {
     --day-w: calc((100vw - 56px) / 7);
-  }
-  .mobile-cal-scroll {
-    scroll-snap-type: none;
-    scroll-padding-left: 0;
-  }
-  .mobile-cal-day-col {
-    scroll-snap-align: none;
   }
 
   /* Hide bottom tab while on the calendar page only. */
