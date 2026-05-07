@@ -1,7 +1,10 @@
 // Shared layout: sidebar (narrow, icons only), icons, primitives
 
 import React from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { initials } from './data';
+import { getStudents } from './api';
+import { queryKeys } from './hooks/queryKeys';
 
 export const Icon = {
   Calendar: (p) => (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" {...p}><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 9h18M8 3v4M16 3v4"/></svg>),
@@ -83,7 +86,7 @@ export const PAGE_LABELS = {
   settings: "Ayarlar",
 };
 
-export function Header({ page, user, onLogout }) {
+export function Header({ page, user, onLogout, onOpenStudent }) {
   const [menuOpen, setMenuOpen] = React.useState(false);
   const menuRef = React.useRef(null);
 
@@ -108,10 +111,7 @@ export function Header({ page, user, onLogout }) {
         )}
       </div>
       <div className="header-tools">
-        <div className="header-search">
-          <Icon.Search width="15" height="15"/>
-          <input placeholder="Öğrenci, ders ya da not ara..."/>
-        </div>
+        <HeaderSearch onOpenStudent={onOpenStudent} />
         <div className="header-actions">
           <button className="iconbtn" aria-label="Bildirimler"><Icon.Bell width="16" height="16"/></button>
           <div className="header-profile-wrap" ref={menuRef}>
@@ -143,6 +143,137 @@ export function Header({ page, user, onLogout }) {
         </div>
       </div>
     </header>
+  );
+}
+
+function HeaderSearch({ onOpenStudent }) {
+  const [query, setQuery] = React.useState('');
+  const [open, setOpen] = React.useState(false);
+  const [activeIndex, setActiveIndex] = React.useState(0);
+  const wrapRef = React.useRef(null);
+  const inputRef = React.useRef(null);
+
+  const trimmed = query.trim();
+  const enabled = trimmed.length >= 1;
+
+  const studentsQuery = useQuery({
+    queryKey: queryKeys.students(),
+    queryFn: getStudents,
+    staleTime: 2 * 60 * 1000,
+    enabled,
+  });
+
+  const matches = React.useMemo(() => {
+    if (!enabled) return [];
+    const list = studentsQuery.data ?? [];
+    const q = trimmed.toLowerCase();
+    return list
+      .filter(s =>
+        s.full_name.toLowerCase().includes(q) ||
+        (s.nickname && s.nickname.toLowerCase().includes(q)) ||
+        (s.phone && s.phone.includes(trimmed))
+      )
+      .slice(0, 8);
+  }, [studentsQuery.data, trimmed, enabled]);
+
+  React.useEffect(() => {
+    setActiveIndex(0);
+  }, [trimmed]);
+
+  React.useEffect(() => {
+    if (!open) return;
+    function handleClick(e) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [open]);
+
+  function selectStudent(id) {
+    if (!id) return;
+    setQuery('');
+    setOpen(false);
+    inputRef.current?.blur();
+    if (onOpenStudent) onOpenStudent(String(id));
+  }
+
+  function handleKeyDown(e) {
+    if (e.key === 'Escape') {
+      setQuery('');
+      setOpen(false);
+      inputRef.current?.blur();
+      return;
+    }
+    if (!enabled || matches.length === 0) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActiveIndex(i => (i + 1) % matches.length);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActiveIndex(i => (i - 1 + matches.length) % matches.length);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const pick = matches[activeIndex] ?? matches[0];
+      selectStudent(pick?.id);
+    }
+  }
+
+  const showDropdown = open && enabled;
+  const isLoading = studentsQuery.isLoading || studentsQuery.isFetching;
+
+  return (
+    <div className="header-search-wrap" ref={wrapRef}>
+      <div className={"header-search" + (showDropdown ? " is-open" : "")}>
+        <Icon.Search width="15" height="15"/>
+        <input
+          ref={inputRef}
+          value={query}
+          onChange={e => { setQuery(e.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          onKeyDown={handleKeyDown}
+          placeholder="Öğrenci ara..."
+          aria-label="Öğrenci ara"
+        />
+      </div>
+      {showDropdown && (
+        <div className="header-search-menu" role="listbox">
+          {matches.length === 0 ? (
+            <div className="header-search-empty">
+              {isLoading && !studentsQuery.data
+                ? 'Yükleniyor...'
+                : `"${trimmed}" için sonuç bulunamadı.`}
+            </div>
+          ) : (
+            matches.map((s, i) => (
+              <button
+                key={s.id}
+                type="button"
+                className={"header-search-item" + (i === activeIndex ? " active" : "")}
+                onMouseEnter={() => setActiveIndex(i)}
+                onClick={() => selectStudent(s.id)}
+                role="option"
+                aria-selected={i === activeIndex}
+              >
+                <span className="avatar avatar-xs avatar-soft" aria-hidden="true">
+                  {initials(s.full_name)}
+                </span>
+                <span className="header-search-item-main">
+                  <span className="header-search-item-name">
+                    {s.full_name}
+                    {s.nickname && (
+                      <span className="header-search-item-nick"> · {s.nickname}</span>
+                    )}
+                  </span>
+                  {s.phone && (
+                    <span className="header-search-item-phone">{s.phone}</span>
+                  )}
+                </span>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 

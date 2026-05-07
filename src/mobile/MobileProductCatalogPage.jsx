@@ -18,7 +18,7 @@ function ProductThumb({ product, size = 44 }) {
       <img
         src={product.image_url}
         alt=""
-        className="mobile-qsell-thumb"
+        className="mobile-psale-thumb"
         style={{ width: size, height: size }}
         loading="lazy"
         onError={(e) => { e.currentTarget.style.display = 'none'; }}
@@ -27,7 +27,7 @@ function ProductThumb({ product, size = 44 }) {
   }
   return (
     <span
-      className="mobile-qsell-thumb mobile-qsell-thumb-fallback"
+      className="mobile-psale-thumb mobile-psale-thumb-fallback"
       style={{ width: size, height: size }}
       aria-hidden="true"
     >

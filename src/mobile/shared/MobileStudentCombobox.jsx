@@ -9,6 +9,17 @@ import { Avatar } from '../../layout';
 export function MobileStudentCombobox({ students, selected, onSelect, onClear, loading, autoFocus = false, placeholder = 'Öğrenci ara…' }) {
   const [query, setQuery] = React.useState('');
 
+  // iOS Safari can leave the focused input out of the visible area after the
+  // soft keyboard opens (the scrollable sheet body shifts and our --mobile-kb-h
+  // lift fires after the focus). Re-pin the input near the top of its
+  // scroll container once the keyboard layout has settled.
+  function pinIntoView(el) {
+    if (!el) return;
+    const run = () => el.scrollIntoView({ block: 'start', inline: 'nearest' });
+    setTimeout(run, 50);
+    setTimeout(run, 280);
+  }
+
   const filtered = React.useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return [];
@@ -51,6 +62,7 @@ export function MobileStudentCombobox({ students, selected, onSelect, onClear, l
         onChange={e => setQuery(e.target.value)}
         placeholder={placeholder}
         autoFocus={autoFocus}
+        onFocus={(e) => pinIntoView(e.currentTarget)}
       />
       {hasQuery && (
         <div

@@ -194,29 +194,28 @@ export function MobileQuickLessonSheet({ open, onClose, onCreated }) {
                   onSelect={selectStudent}
                   onClear={() => setSelectedStudent(null)}
                   loading={metaLoading}
-                  autoFocus={!selectedStudent}
                 />
               </FormRow>
 
-              <div className="mobile-qadd-row-2col">
-                <FormRow label="Tarih">
+              <FormRow label="Tarih ve saat">
+                <div className="mobile-csheet-datetime">
                   <input
                     type="date"
-                    className="mobile-csheet-input"
+                    aria-label="Tarih"
+                    className="mobile-csheet-input mobile-csheet-datetime-input"
                     value={dateStr}
                     onChange={e => setDateStr(e.target.value)}
                   />
-                </FormRow>
-                <FormRow label="Saat">
                   <input
                     type="time"
-                    className="mobile-csheet-input"
+                    aria-label="Saat"
+                    className="mobile-csheet-input mobile-csheet-datetime-input"
                     value={timeStr}
                     onChange={e => setTimeStr(e.target.value)}
                     step={900}
                   />
-                </FormRow>
-              </div>
+                </div>
+              </FormRow>
 
               <FormRow label="Eğitmen">
                 <select

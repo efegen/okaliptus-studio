@@ -17,10 +17,14 @@
   --line-2: oklch(0.78 0.015 70);
   --line-strong: oklch(0.5 0.015 70);
 
-  --accent: oklch(0.52 0.14 40);            /* deeper terracotta */
-  --accent-hover: oklch(0.46 0.14 40);
-  --accent-2: oklch(0.93 0.04 40);
-  --accent-ink: oklch(0.35 0.11 40);
+  /* Brand accent: sage green. Studio identity color, used as the default
+     for buttons, active states, dots, etc. across desktop + mobile. The
+     `.palette-*` classes (defined further down) override these so the user
+     can pick a different swatch from the Tweaks panel. */
+  --accent: oklch(0.5 0.08 145);
+  --accent-hover: oklch(0.44 0.08 145);
+  --accent-2: oklch(0.93 0.03 145);
+  --accent-ink: oklch(0.35 0.08 145);
 
   --sage: oklch(0.48 0.09 145);
   --sage-2: oklch(0.93 0.03 145);
@@ -211,6 +215,70 @@ input, select { font-family: inherit; }
   border: none; outline: none; background: transparent; flex: 1; font-size: 13px; color: var(--ink);
 }
 .header-search input::placeholder { color: var(--ink-4); }
+
+.header-search-wrap { position: relative; }
+.header-search.is-open { border-color: var(--ink); background: var(--surface); color: var(--ink); }
+.header-search-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  min-width: 280px;
+  max-height: 360px;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  padding: 4px;
+  z-index: 200;
+}
+.header-search-empty {
+  padding: 12px 12px;
+  font-size: 13px;
+  color: var(--ink-3);
+  text-align: center;
+}
+.header-search-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  background: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: var(--ink-2);
+}
+.header-search-item.active,
+.header-search-item:hover { background: var(--bg-2); color: var(--ink); }
+.header-search-item-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+.header-search-item-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.header-search-item-nick {
+  font-weight: 400;
+  color: var(--ink-3);
+}
+.header-search-item-phone {
+  font-size: 11px;
+  color: var(--ink-3);
+  font-family: var(--f-mono);
+}
 
 .header-actions { display: flex; gap: 6px; align-items: center; }
 
@@ -809,7 +877,7 @@ input, select { font-family: inherit; }
 }
 .action-eyebrow::before {
   content: ""; width: 6px; height: 6px; border-radius: 50%;
-  background: var(--accent); box-shadow: 0 0 0 3px oklch(0.52 0.14 40 / 0.3);
+  background: var(--accent); box-shadow: 0 0 0 3px color-mix(in oklch, var(--accent) 30%, transparent);
 }
 .next-time {
   font-family: var(--f-serif);
@@ -2225,8 +2293,11 @@ input, select { font-family: inherit; }
 }
 .tweak-sw.on { box-shadow: 0 0 0 2px var(--ink); }
 
-/* Palette variants */
+/* Palette variants. Sage is the default brand accent (set in :root above);
+   .palette-sage stays as a no-op so the swatch picker still has a target.
+   The other palettes override the accent tokens. */
 .palette-sage { --accent: oklch(0.5 0.08 145); --accent-hover: oklch(0.44 0.08 145); --accent-2: oklch(0.93 0.03 145); --accent-ink: oklch(0.35 0.08 145); }
+.palette-terracotta { --accent: oklch(0.52 0.14 40); --accent-hover: oklch(0.46 0.14 40); --accent-2: oklch(0.93 0.04 40); --accent-ink: oklch(0.35 0.11 40); }
 .palette-slate { --accent: oklch(0.4 0.06 240); --accent-hover: oklch(0.35 0.06 240); --accent-2: oklch(0.93 0.02 240); --accent-ink: oklch(0.3 0.05 240); }
 .palette-gold { --accent: oklch(0.58 0.13 75); --accent-hover: oklch(0.5 0.13 75); --accent-2: oklch(0.94 0.04 75); --accent-ink: oklch(0.4 0.1 75); }
 
@@ -3210,7 +3281,7 @@ input, select { font-family: inherit; }
   flex-shrink: 0;
   transition: color 0.1s, background 0.1s;
 }
-.combo-clear:hover { color: var(--ink); background: oklch(0.87 0.04 40); }
+.combo-clear:hover { color: var(--ink); background: var(--surface-2); }
 
 .combo-drop {
   position: absolute;

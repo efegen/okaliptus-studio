@@ -7,15 +7,17 @@ import { MobileCalendar } from './MobileCalendar';
 import { MobileStudents } from './MobileStudents';
 import { MobileQuickAddSheet } from './MobileQuickAddSheet';
 import { MobileQuickPaymentSheet } from './MobileQuickPaymentSheet';
-import { MobileQuickSellSheet } from './MobileQuickSellSheet';
 import { MobileQuickLessonSheet } from './MobileQuickLessonSheet';
 import { MobileStudentProfilePage } from './MobileStudentProfilePage';
 import { MobileToast } from './MobileToast';
 import { MobileMenu } from './MobileMenu';
 import { MobileProductCatalogPage } from './MobileProductCatalogPage';
+import { MobileProductSalePage } from './MobileProductSalePage';
+import { MobileProductSaleCheckoutPage } from './MobileProductSaleCheckoutPage';
 import { SettingsPage } from '../settings';
 import { CatalogPage } from '../catalog';
 import { queryKeys } from '../hooks/queryKeys';
+import { fmtTL } from '../data';
 
 // Mobile shell: header (when shown) + page body + fixed bottom tab bar. The
 // center "+" FAB opens the QuickAdd action sheet (Ödeme al · Ürün sat · Ders
@@ -41,21 +43,30 @@ export function MobileApp({
   const queryClient = useQueryClient();
   const onStudentsPage = page === 'students';
   const onMenuChild = page === 'settings' || page === 'catalog' || page === 'products';
+  const onProductSale = page === 'product-sale' || page === 'product-sale-checkout';
   const showBack = (onStudentsPage && !!studentDetailId) || onMenuChild;
   const hideHeader =
     page === 'home' ||
     page === 'calendar' ||
     page === 'students' ||
-    page === 'menu';
+    page === 'menu' ||
+    onProductSale;
 
   // QuickAdd state — `quickAdd` is the entry sheet, `quickFlow` is the chosen
-  // sub-sheet ('payment' | 'sale' | 'lesson' | null).
+  // sub-sheet ('payment' | 'lesson' | null). 'sale' artık tam sayfa modülüne
+  // (`page === 'product-sale'`) yönlenir, sheet değil.
   const [quickAddOpen, setQuickAddOpen] = React.useState(false);
   const [quickFlow, setQuickFlow] = React.useState(null);
   // When a quick sheet is opened from a student profile, this carries the
   // preselected student so the sheet can skip the student picker.
   const [profileActionStudent, setProfileActionStudent] = React.useState(null);
   const [toast, setToast] = React.useState(null);
+
+  // Ürün satışı modülünün state'i page'ler arası paylaşılır: katalog → checkout
+  // sırasında sepet ve seçili öğrenci korunur, akış sonunda topluca temizlenir.
+  const [productSaleCart, setProductSaleCart] = React.useState(() => new Map());
+  const [productSaleStudent, setProductSaleStudent] = React.useState(null);
+  const [productSaleNote, setProductSaleNote] = React.useState('');
 
   function handleBack() {
     if (onMenuChild) {
@@ -76,6 +87,12 @@ export function MobileApp({
 
   function handleQuickPick(actionId) {
     setQuickAddOpen(false);
+    if (actionId === 'sale') {
+      setProductSaleStudent(null);
+      setStudentDetailId(null);
+      setPage('product-sale');
+      return;
+    }
     setQuickFlow(actionId);
   }
 
@@ -85,13 +102,31 @@ export function MobileApp({
   }
 
   function handleProfileSale(student) {
-    setProfileActionStudent(student);
-    setQuickFlow('sale');
+    setProductSaleStudent(student);
+    setPage('product-sale');
   }
 
   function handleQuickFlowClose() {
     setQuickFlow(null);
     setProfileActionStudent(null);
+  }
+
+  function resetProductSaleState() {
+    setProductSaleCart(new Map());
+    setProductSaleStudent(null);
+    setProductSaleNote('');
+  }
+
+  function handleProductSaleClose() {
+    resetProductSaleState();
+    setPage(studentDetailId ? 'students' : 'home');
+  }
+
+  function handleProductSaleCompleted({ count, total }) {
+    resetProductSaleState();
+    invalidateAfterMutation('sale');
+    setPage(studentDetailId ? 'students' : 'home');
+    setToast(`${count} ürün · ${fmtTL(total)} kaydedildi`);
   }
 
   function invalidateAfterMutation(kind) {
@@ -162,6 +197,28 @@ export function MobileApp({
     body = <CatalogPage />;
   } else if (page === 'products') {
     body = <MobileProductCatalogPage />;
+  } else if (page === 'product-sale') {
+    body = (
+      <MobileProductSalePage
+        cart={productSaleCart}
+        setCart={setProductSaleCart}
+        onOpenCheckout={() => setPage('product-sale-checkout')}
+        onClose={handleProductSaleClose}
+      />
+    );
+  } else if (page === 'product-sale-checkout') {
+    body = (
+      <MobileProductSaleCheckoutPage
+        cart={productSaleCart}
+        setCart={setProductSaleCart}
+        student={productSaleStudent}
+        setStudent={setProductSaleStudent}
+        note={productSaleNote}
+        setNote={setProductSaleNote}
+        onBack={() => setPage('product-sale')}
+        onCompleted={handleProductSaleCompleted}
+      />
+    );
   } else {
     body = <PagePlaceholder title="Bilinmeyen sayfa" />;
   }
@@ -195,12 +252,6 @@ export function MobileApp({
         open={quickFlow === 'payment'}
         onClose={handleQuickFlowClose}
         onCompleted={(msg) => handleQuickCompleted('payment', msg)}
-        preselectedStudent={profileActionStudent}
-      />
-      <MobileQuickSellSheet
-        open={quickFlow === 'sale'}
-        onClose={handleQuickFlowClose}
-        onCompleted={(msg) => handleQuickCompleted('sale', msg)}
         preselectedStudent={profileActionStudent}
       />
       <MobileQuickLessonSheet

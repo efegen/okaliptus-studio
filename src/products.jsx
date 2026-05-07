@@ -185,6 +185,70 @@ function entrySelectionState(entry, selected) {
   return 'partial';
 }
 
+// ─── CategoryCombobox ───────────────────────────────────────────────────────
+
+function CategoryCombobox({ value, onChange, knownCategories }) {
+  const knownSet = new Set(knownCategories.map(c => c.category));
+  const hasCustom = value && !knownSet.has(value);
+  const [customMode, setCustomMode] = React.useState(hasCustom);
+  const [customValue, setCustomValue] = React.useState(hasCustom ? value : '');
+
+  function handleSelectChange(e) {
+    const v = e.target.value;
+    if (v === '__custom__') {
+      setCustomMode(true);
+      setCustomValue('');
+      onChange('');
+    } else {
+      setCustomMode(false);
+      onChange(v);
+    }
+  }
+
+  function handleCustomChange(e) {
+    setCustomValue(e.target.value);
+    onChange(e.target.value);
+  }
+
+  function handleCancelCustom() {
+    setCustomMode(false);
+    setCustomValue('');
+    onChange('');
+  }
+
+  return (
+    <div className="cat-combo">
+      {!customMode ? (
+        <select
+          className="prod-modal-input"
+          value={value}
+          onChange={handleSelectChange}
+        >
+          <option value="">— Kategori yok —</option>
+          {knownCategories.map(c => (
+            <option key={c.category} value={c.category}>{c.category}</option>
+          ))}
+          <option value="__custom__">Yeni kategori gir…</option>
+        </select>
+      ) : (
+        <div style={{ display: 'flex', gap: 6 }}>
+          <input
+            className="prod-modal-input"
+            style={{ flex: 1 }}
+            value={customValue}
+            onChange={handleCustomChange}
+            placeholder="ör. Tütsü ve Buhurdanlık"
+            autoFocus
+          />
+          <button type="button" className="btn btn-ghost btn-xs" onClick={handleCancelCustom} style={{ flexShrink: 0 }}>
+            ← Seç
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── ProductModal ───────────────────────────────────────────────────────────
 
 function ProductModal({ initial, knownCategories, onClose, onSaved }) {
@@ -328,17 +392,19 @@ function ProductModal({ initial, knownCategories, onClose, onSaved }) {
               <div className="form-row-2">
                 <div className="form-row" style={{ margin: 0 }}>
                   <label>Kategori</label>
-                  <input
-                    className="prod-modal-input"
-                    value={form.category}
-                    onChange={e => set('category', e.target.value)}
-                    placeholder="ör. Tütsü ve Buhurdanlık"
-                    list="prod-cat-suggestions"
-                  />
-                  {knownCategories.length > 0 && (
-                    <datalist id="prod-cat-suggestions">
-                      {knownCategories.map(c => <option key={c.category} value={c.category} />)}
-                    </datalist>
+                  {knownCategories.length > 0 ? (
+                    <CategoryCombobox
+                      value={form.category}
+                      onChange={v => set('category', v)}
+                      knownCategories={knownCategories}
+                    />
+                  ) : (
+                    <input
+                      className="prod-modal-input"
+                      value={form.category}
+                      onChange={e => set('category', e.target.value)}
+                      placeholder="ör. Tütsü ve Buhurdanlık"
+                    />
                   )}
                 </div>
                 <div className="form-row" style={{ margin: 0 }}>
@@ -856,7 +922,7 @@ function BulkActionBar({
           <>
             <button type="button" className="btn btn-ghost btn-xs" onClick={() => setPicker('price')} disabled={busy}>
               <Icon.Tag width="13" height="13" />
-              Fiyat değiştir
+              Fiyat güncelle
             </button>
             <button type="button" className="btn btn-ghost btn-xs" onClick={() => setPicker('category')} disabled={busy}>
               <Icon.Layers width="13" height="13" />

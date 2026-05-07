@@ -45,9 +45,28 @@ function App({ currentUser, onLogout }) {
       .catch(() => {});
   }, []);
 
+  // Mirror palette/density classes onto <html> so they cascade into every
+  // Radix/Vaul portal too (sheets/dialogs render under document.body, outside
+  // the React subtree). Without this the portalled bottom sheets fall back to
+  // the :root defaults — which are terracotta — and ignore the chosen palette.
+  React.useEffect(() => {
+    const root = document.documentElement;
+    const paletteCls = `palette-${tweaks.palette}`;
+    const densityCls = `density-${tweaks.density}`;
+    root.classList.add(paletteCls, densityCls);
+    return () => {
+      root.classList.remove(paletteCls, densityCls);
+    };
+  }, [tweaks.palette, tweaks.density]);
+
   function navigate(nextPage) {
     setStudentDetailId(null);
     setPage(nextPage);
+  }
+
+  function openStudent(studentId) {
+    setStudentDetailId(studentId);
+    setPage('students');
   }
 
   React.useEffect(() => {
@@ -97,7 +116,7 @@ function App({ currentUser, onLogout }) {
     <div className={cls}>
       <Sidebar page={page} setPage={navigate} />
       <div style={{display:"flex",flexDirection:"column",minWidth:0}}>
-        <Header page={page} user={currentUser} onLogout={onLogout} />
+        <Header page={page} user={currentUser} onLogout={onLogout} onOpenStudent={openStudent} />
         <main className="main" data-screen-label={page}>
           {page === "home" && <HomePage layout={tweaks.homeLayout} onNavigate={navigate} />}
           {page === "students" && (

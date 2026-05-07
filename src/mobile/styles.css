@@ -1668,7 +1668,9 @@
     z-index: 61;
     display: flex;
     flex-direction: column;
-    background: var(--bg);
+    /* Lighter than page --bg so the sheet reads as a raised surface, while
+       inputs (--bg) sit slightly inset against it. */
+    background: var(--surface);
     border-top-left-radius: 16px;
     border-top-right-radius: 16px;
     /* When closed: 88dvh as before. When keyboard is open: fill the space
@@ -1721,14 +1723,18 @@
     overflow-y: auto;
     display: flex;
     flex-direction: column;
-    gap: 14px;
-    padding: 14px 0;
+    gap: 16px;
+    padding: 16px 0;
+    /* When iOS scrolls a focused input into view, leave breathing room above
+       it so the label is also visible. */
+    scroll-padding-top: 12px;
+    scroll-padding-bottom: 12px;
   }
 
   .mobile-csheet-form-row {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 8px;
   }
 
   .mobile-csheet-label {
@@ -1752,9 +1758,10 @@
     padding: 0 12px;
     border: 1px solid var(--ink-4);
     border-radius: 10px;
-    background: var(--surface);
+    background: var(--bg);
     color: var(--ink);
     box-sizing: border-box;
+    scroll-margin-top: 12px;
   }
   .mobile-csheet-combo-input:focus {
     outline: 2px solid var(--accent);
@@ -1766,7 +1773,7 @@
     overflow-y: auto;
     border: 1px solid var(--ink-4);
     border-radius: 10px;
-    background: var(--surface);
+    background: var(--bg);
   }
 
   .mobile-csheet-combo-item {
@@ -1819,7 +1826,7 @@
     padding: 8px 12px;
     border: 1px solid var(--ink-4);
     border-radius: 10px;
-    background: var(--surface);
+    background: var(--bg);
   }
   .mobile-csheet-combo-chip-name {
     flex: 1 1 auto;
@@ -1857,9 +1864,10 @@
     font-size: 16px;
     border: 1px solid var(--ink-4);
     border-radius: 10px;
-    background: var(--surface);
+    background: var(--bg);
     color: var(--ink);
     box-sizing: border-box;
+    scroll-margin-top: 12px;
   }
 
   .mobile-csheet-mode {
@@ -1872,17 +1880,17 @@
     align-items: center;
     justify-content: center;
     gap: 6px;
-    min-height: 48px;
+    min-height: 44px;
     border: 1px solid var(--ink-4);
     border-radius: 10px;
-    background: transparent;
+    background: var(--bg);
     color: var(--ink-2);
     font-size: 14px;
     font-weight: 600;
     cursor: pointer;
   }
   .mobile-csheet-mode-btn.is-on {
-    background: var(--surface-2);
+    background: color-mix(in oklch, var(--accent) 10%, var(--bg));
     border-color: var(--accent);
     color: var(--accent);
   }
@@ -1894,13 +1902,26 @@
     font-size: 16px;
     border: 1px solid var(--ink-4);
     border-radius: 10px;
-    background: var(--surface);
+    background: var(--bg);
     color: var(--ink);
     box-sizing: border-box;
+    scroll-margin-top: 12px;
   }
   .mobile-csheet-input:focus {
     outline: 2px solid var(--accent);
     outline-offset: -2px;
+  }
+  /* iOS Safari right-aligns native time inputs by default while date inputs
+     stay left — force both to match the rest of the form. The actual value
+     is rendered inside ::-webkit-date-and-time-value, so we target that too. */
+  .mobile-csheet-input[type="date"],
+  .mobile-csheet-input[type="time"] {
+    text-align: left;
+    font-variant-numeric: tabular-nums;
+  }
+  .mobile-csheet-input[type="date"]::-webkit-date-and-time-value,
+  .mobile-csheet-input[type="time"]::-webkit-date-and-time-value {
+    text-align: left;
   }
 
   .mobile-csheet-error {
@@ -1918,7 +1939,7 @@
     gap: 10px;
     padding: 12px 0 calc(env(safe-area-inset-bottom, 0px) + 16px);
     border-top: 1px solid var(--ink-4);
-    background: var(--bg);
+    background: var(--surface);
   }
   .mobile-csheet-btn-ghost,
   .mobile-csheet-btn-primary {
@@ -1930,7 +1951,7 @@
   }
   .mobile-csheet-btn-ghost {
     border: 1px solid var(--ink-4);
-    background: transparent;
+    background: var(--bg);
     color: var(--ink);
   }
   .mobile-csheet-btn-ghost:active { background: var(--surface-2); }
@@ -2101,13 +2122,28 @@
     margin-top: 2px;
   }
 
-  /* Two-column row used for date+time inputs in the quick lesson sheet. */
+  /* Two-column row used for date+time inputs in the quick lesson sheet.
+     (Legacy; new sheet uses .mobile-csheet-datetime below.) */
   .mobile-qadd-row-2col {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: 10px;
   }
-  .mobile-qadd-row-2col .mobile-csheet-form-row { gap: 6px; }
+  .mobile-qadd-row-2col .mobile-csheet-form-row { gap: 8px; }
+
+  /* Date + time pair under a single label. Flex with min-width:0 prevents the
+     iOS native date input's intrinsic width from pushing the time input out
+     of the row (was causing visible overflow / vertical wrap on narrow
+     phones). */
+  .mobile-csheet-datetime {
+    display: flex;
+    gap: 10px;
+    width: 100%;
+  }
+  .mobile-csheet-datetime-input {
+    flex: 1 1 0;
+    min-width: 0;
+  }
 
   /* ---------- Quick payment debt list (mobile-qpay-*) ---------- */
 
@@ -4157,198 +4193,6 @@
   }
 }
 
-/* ─── Quick Sell sheet: catalog grid + cart ─────────────────────────── */
-.mobile-qsell-sheet .mobile-csheet-body {
-  padding-bottom: 88px; /* leave room for sticky cart bar */
-}
-
-.mobile-qsell-thumb {
-  width: 56px;
-  height: 56px;
-  border-radius: 10px;
-  object-fit: cover;
-  background: var(--surface-2, #f1f1f1);
-  display: inline-block;
-  flex-shrink: 0;
-}
-
-.mobile-qsell-thumb-fallback {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 600;
-  font-size: 22px;
-  color: var(--text-muted, #777);
-  background: var(--surface-2, #eee);
-}
-
-.mobile-qsell-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 8px;
-  margin-top: 4px;
-}
-
-.mobile-qsell-card {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 10px;
-  border-radius: 12px;
-  border: 1px solid var(--border, #e5e5e5);
-  background: var(--surface-1, #fff);
-  text-align: left;
-  cursor: pointer;
-  transition: transform .08s ease, border-color .08s ease;
-}
-
-.mobile-qsell-card:active {
-  transform: scale(0.98);
-}
-
-.mobile-qsell-card.is-incart {
-  border-color: var(--accent, #2563eb);
-  background: var(--accent-tint, #eff4ff);
-}
-
-.mobile-qsell-card .mobile-qsell-thumb {
-  width: 100%;
-  height: 88px;
-  border-radius: 8px;
-}
-
-.mobile-qsell-card-body {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.mobile-qsell-card-name {
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 1.2;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.mobile-qsell-card-price {
-  font-size: 12px;
-  color: var(--text-muted, #666);
-  font-variant-numeric: tabular-nums;
-}
-
-.mobile-qsell-card-badge {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  min-width: 22px;
-  height: 22px;
-  padding: 0 6px;
-  border-radius: 11px;
-  background: var(--accent, #2563eb);
-  color: #fff;
-  font-size: 12px;
-  font-weight: 600;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.mobile-qsell-stickybar {
-  position: sticky;
-  bottom: 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 16px;
-  background: var(--surface-1, #fff);
-  border-top: 1px solid var(--border, #e5e5e5);
-  margin: 0 -16px;
-}
-
-.mobile-qsell-stickybar-meta {
-  font-size: 14px;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-}
-
-.mobile-qsell-cart {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 4px;
-}
-
-.mobile-qsell-cart-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px;
-  border-radius: 10px;
-  background: var(--surface-2, #f7f7f7);
-}
-
-.mobile-qsell-cart-main {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  flex: 1;
-  min-width: 0;
-}
-
-.mobile-qsell-cart-name {
-  font-size: 14px;
-  font-weight: 500;
-}
-
-.mobile-qsell-cart-meta {
-  font-size: 12px;
-  color: var(--text-muted, #666);
-  font-variant-numeric: tabular-nums;
-}
-
-.mobile-qsell-qty {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.mobile-qsell-qty-btn {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  border: 1px solid var(--border, #d4d4d4);
-  background: var(--surface-1, #fff);
-  font-size: 16px;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.mobile-qsell-qty-val {
-  min-width: 20px;
-  text-align: center;
-  font-variant-numeric: tabular-nums;
-  font-weight: 500;
-}
-
-.mobile-qsell-cart-total {
-  display: flex;
-  justify-content: space-between;
-  padding: 12px 8px 4px;
-  font-size: 16px;
-  border-top: 1px dashed var(--border, #e5e5e5);
-  margin-top: 4px;
-}
-
-.mobile-qsell-cart-total strong {
-  font-variant-numeric: tabular-nums;
-}
-
 /* ─── Product catalog page ────────────────────────────────────────────── */
 .mobile-products-page {
   display: flex;
@@ -4443,70 +4287,6 @@
   font-family: monospace;
 }
 
-/* Quick Sell sheet — kategori chip rowu + varyant etiketi */
-.mobile-qsell-cats {
-  display: flex;
-  gap: 6px;
-  overflow-x: auto;
-  padding: 4px 0 8px;
-  margin: 0 -2px;
-  scrollbar-width: none;
-}
-.mobile-qsell-cats::-webkit-scrollbar { display: none; }
-
-.mobile-qsell-cat-chip {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border-radius: 100px;
-  border: 1px solid var(--border, #d4d4d4);
-  background: var(--surface-1, #fff);
-  color: var(--text-muted, #555);
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.mobile-qsell-cat-chip.is-active {
-  background: var(--accent, #2563eb);
-  border-color: var(--accent, #2563eb);
-  color: #fff;
-}
-
-.mobile-qsell-cat-count {
-  font-size: 10px;
-  font-weight: 600;
-  padding: 1px 6px;
-  border-radius: 100px;
-  background: rgba(0, 0, 0, 0.08);
-  font-variant-numeric: tabular-nums;
-}
-
-.mobile-qsell-cat-chip.is-active .mobile-qsell-cat-count {
-  background: rgba(255, 255, 255, 0.22);
-}
-
-.mobile-qsell-card-variant {
-  font-size: 11px;
-  color: var(--text-muted, #777);
-  font-weight: 500;
-  line-height: 1.2;
-  display: -webkit-box;
-  -webkit-line-clamp: 1;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.mobile-qsell-cart-variant {
-  font-size: 11px;
-  color: var(--text-muted, #777);
-  font-weight: 500;
-  font-style: italic;
-}
-
 /* ─── Landscape: full-week calendar, hide bottom tab on calendar page ── */
 @media (orientation: landscape) and ((max-width: 900px) or (pointer: coarse)) {
   /* Show all 7 days at once. */
@@ -4523,3 +4303,726 @@
     bottom: env(safe-area-inset-bottom, 0px);
   }
 }
+
+/* ─── Mobile product sale (full-screen module: catalog + checkout) ───── */
+
+.mobile-psale-page {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  z-index: 90;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  animation: mobile-psale-in 180ms ease-out;
+}
+
+@keyframes mobile-psale-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.mobile-psale-topbar {
+  flex: 0 0 auto;
+  height: calc(env(safe-area-inset-top) + 48px);
+  display: grid;
+  grid-template-columns: 44px 1fr 44px;
+  align-items: center;
+  gap: 4px;
+  padding: env(safe-area-inset-top) 6px 0 6px;
+  border-bottom: 1px solid var(--ink-4);
+  background: var(--bg);
+  box-sizing: border-box;
+}
+.mobile-psale-topbar-title {
+  margin: 0;
+  text-align: center;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mobile-psale-iconbtn {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.mobile-psale-iconbtn:active { background: var(--surface-2); }
+.mobile-psale-iconbtn:disabled { opacity: 0.4; cursor: not-allowed; }
+.mobile-psale-cart-iconbadge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--accent);
+  color: var(--surface);
+  font-size: 11px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 0 0 2px var(--bg);
+}
+
+.mobile-psale-toolbar {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 16px 6px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--ink-4);
+}
+.mobile-psale-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  height: 38px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--ink-2);
+}
+.mobile-psale-search input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  font-family: inherit;
+  font-size: 15px;
+  color: var(--ink);
+  padding: 0;
+  outline: none;
+}
+.mobile-psale-search input::placeholder { color: var(--ink-3); }
+.mobile-psale-search-clear {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--ink-4);
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.mobile-psale-cats {
+  display: flex;
+  gap: 5px;
+  overflow-x: auto;
+  padding: 1px 0 2px;
+  margin: 0 -2px;
+  scrollbar-width: none;
+}
+.mobile-psale-cats::-webkit-scrollbar { display: none; }
+.mobile-psale-cat-chip {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 100px;
+  border: 1px solid var(--ink-4);
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.mobile-psale-cat-chip.is-active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--surface);
+}
+.mobile-psale-cat-count {
+  font-size: 9px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 100px;
+  background: rgba(0, 0, 0, 0.08);
+  font-variant-numeric: tabular-nums;
+}
+.mobile-psale-cat-chip.is-active .mobile-psale-cat-count {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.mobile-psale-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 12px 16px calc(env(safe-area-inset-bottom, 0px) + 84px);
+}
+.mobile-psale-state {
+  text-align: center;
+  padding: 32px 16px;
+  color: var(--ink-3);
+  font-size: 14px;
+}
+.mobile-psale-error {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: color-mix(in oklch, var(--warn, #c44) 12%, transparent);
+  color: var(--warn, #c44);
+  font-size: 13px;
+}
+.mobile-psale-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+.mobile-psale-grid-cell {
+  display: flex;
+}
+
+.mobile-psale-card {
+  position: relative;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
+  border-radius: 14px;
+  border: 1px solid var(--ink-4);
+  background: var(--surface);
+  text-align: left;
+  overflow: hidden;
+  transition: border-color 100ms ease, box-shadow 100ms ease;
+}
+.mobile-psale-card.is-incart {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent) inset;
+}
+.mobile-psale-card-imgwrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  background: var(--surface-2);
+  display: block;
+}
+.mobile-psale-card-imgwrap .mobile-psale-thumb {
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
+  object-fit: cover;
+  display: block;
+}
+.mobile-psale-thumb {
+  border-radius: 10px;
+  object-fit: cover;
+  background: var(--surface-2);
+  display: inline-block;
+  flex-shrink: 0;
+}
+.mobile-psale-thumb-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 22px;
+  color: var(--ink-3);
+  background: var(--surface-2);
+}
+.mobile-psale-card-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 6px;
+  border-radius: 12px;
+  background: var(--accent);
+  color: var(--surface);
+  font-size: 12px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 0 0 2px var(--surface);
+}
+.mobile-psale-card-variantchip {
+  position: absolute;
+  bottom: 6px;
+  left: 6px;
+  padding: 3px 8px;
+  border-radius: 100px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.mobile-psale-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 8px 10px 10px;
+  flex: 1 1 auto;
+  min-height: 92px;
+}
+.mobile-psale-card-name {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--ink);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.mobile-psale-card-variant {
+  font-size: 11px;
+  color: var(--ink-3);
+  font-weight: 500;
+  line-height: 1.2;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.mobile-psale-card-cat {
+  font-size: 10px;
+  color: var(--ink-3);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+}
+.mobile-psale-card-price {
+  margin-top: auto;
+  padding-top: 4px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+.mobile-psale-card-footer {
+  padding: 0 10px 10px;
+  display: flex;
+  align-items: stretch;
+}
+.mobile-psale-card-btn {
+  width: 100%;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--surface);
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform 80ms ease, background 100ms ease;
+}
+.mobile-psale-card-btn:active { transform: scale(0.97); }
+.mobile-psale-card.is-incart .mobile-psale-card-btn {
+  background: var(--surface);
+  color: var(--ink);
+  border-color: var(--ink-4);
+}
+.mobile-psale-card-stepper {
+  width: 100%;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px;
+  border-radius: 999px;
+  border: 1px solid var(--accent);
+  background: var(--surface);
+}
+.mobile-psale-card-stepper-btn {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  color: var(--ink);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.mobile-psale-card-stepper-btn:active { background: var(--surface-2); }
+.mobile-psale-card-stepper-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.mobile-psale-card-stepper-val {
+  flex: 1 1 auto;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.mobile-psale-cartbar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 14px calc(env(safe-area-inset-bottom, 0px) + 12px);
+  background: var(--bg);
+  border-top: 1px solid var(--ink-4);
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.05);
+  z-index: 5;
+}
+.mobile-psale-cartbar-meta {
+  font-size: 14px;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.mobile-psale-cartbar-meta strong {
+  color: var(--accent);
+  margin-right: 2px;
+}
+.mobile-psale-cartbar-btn {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--accent);
+  color: var(--surface);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.mobile-psale-cartbar-btn:active {
+  background: var(--accent-hover, var(--accent));
+  transform: translateY(1px);
+}
+.mobile-psale-cartbar-arrow { font-size: 16px; line-height: 1; }
+
+.mobile-psale-vsheet-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 95;
+}
+.mobile-psale-vsheet-content {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 96;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - var(--mobile-kb-h, 0px) - 64px);
+  border-top-left-radius: 16px;
+  border-top-right-radius: 16px;
+  background: var(--bg);
+  outline: none;
+}
+.mobile-psale-vsheet-handle {
+  align-self: center;
+  width: 44px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--ink-4);
+  margin: 8px 0 6px;
+}
+.mobile-psale-vsheet-head {
+  padding: 4px 16px 10px;
+  border-bottom: 1px solid var(--ink-4);
+}
+.mobile-psale-vsheet-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.mobile-psale-vsheet-sub {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.mobile-psale-vsheet-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.mobile-psale-vrow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid var(--ink-4);
+  background: var(--surface);
+}
+.mobile-psale-vrow.is-picked {
+  border-color: var(--accent);
+  background: color-mix(in oklch, var(--accent) 8%, var(--surface));
+}
+.mobile-psale-vrow-main {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.mobile-psale-vrow-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.mobile-psale-vrow-price {
+  font-size: 13px;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.mobile-psale-qty {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.mobile-psale-qty-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  border: 1px solid var(--ink-4);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.mobile-psale-qty-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.mobile-psale-qty-val {
+  min-width: 24px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.mobile-psale-vsheet-actions {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 8px;
+  padding: 10px 16px calc(env(safe-area-inset-bottom, 0px) + 12px);
+  border-top: 1px solid var(--ink-4);
+  background: var(--bg);
+}
+.mobile-psale-btn-ghost {
+  flex: 0 0 auto;
+  min-height: 46px;
+  padding: 0 18px;
+  border: 1px solid var(--ink-4);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--ink-2);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.mobile-psale-btn-primary {
+  flex: 1 1 auto;
+  min-height: 46px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--accent);
+  color: var(--surface);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.mobile-psale-btn-primary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Checkout sayfası */
+.mobile-psale-co-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 12px 16px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.mobile-psale-co-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.mobile-psale-co-section-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
+  font-weight: 600;
+  padding: 0 4px;
+}
+.mobile-psale-co-cart {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.mobile-psale-co-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--ink-4);
+  background: var(--surface);
+}
+.mobile-psale-co-row-main {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.mobile-psale-co-row-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.25;
+}
+.mobile-psale-co-row-meta {
+  font-size: 12px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+.mobile-psale-co-row-remove {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-3);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.mobile-psale-co-row-remove:active {
+  background: var(--surface-2);
+  color: var(--warn, #c44);
+}
+
+.mobile-psale-co-card {
+  background: var(--surface);
+  border: 1px solid var(--ink-4);
+  border-radius: 12px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.mobile-psale-co-newstudent {
+  align-self: flex-start;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 4px 0;
+  cursor: pointer;
+}
+.mobile-psale-co-textarea {
+  width: 100%;
+  min-height: 70px;
+  padding: 10px 12px;
+  font-size: 15px;
+  line-height: 1.45;
+  border: 1px solid var(--ink-4);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--ink);
+  box-sizing: border-box;
+  resize: vertical;
+  font-family: inherit;
+}
+.mobile-psale-co-textarea::placeholder { color: var(--ink-3); }
+.mobile-psale-co-textarea:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.mobile-psale-co-total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 4px 4px;
+  border-top: 1px dashed var(--ink-4);
+  font-size: 15px;
+}
+.mobile-psale-co-total-val {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.mobile-psale-co-actions {
+  flex: 0 0 auto;
+  padding: 12px 16px calc(env(safe-area-inset-bottom, 0px) + 14px);
+  border-top: 1px solid var(--ink-4);
+  background: var(--bg);
+}
+.mobile-psale-co-submit {
+  width: 100%;
+  min-height: 50px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--accent);
+  color: var(--surface);
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.mobile-psale-co-submit:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
