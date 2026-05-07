@@ -6,14 +6,17 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/index.js",
+    "start": "node dist/db/migrate.js && node dist/index.js",
     "db:migrate": "tsx src/db/migrate.ts",
     "db:bootstrap": "tsx scripts/bootstrap.ts",
     "smoke": "tsx scripts/smoke/run-all.ts",
     "smoke:single": "tsx scripts/smoke/run-all.ts --only",
     "smoke:reset": "tsx scripts/reset_db.ts && tsx src/db/migrate.ts && tsx scripts/bootstrap.ts && tsx scripts/smoke/run-all.ts",
     "import:trendyol": "tsx scripts/import-trendyol-products.ts",
-    "archive:zero-stock": "tsx scripts/archive-zero-stock.ts"
+    "archive:zero-stock": "tsx scripts/archive-zero-stock.ts",
+    "products:export": "tsx scripts/products-export.ts",
+    "products:import": "tsx scripts/products-import.ts",
+    "db:size": "tsx scripts/db-size-check.ts"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
