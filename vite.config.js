@@ -55,9 +55,22 @@ export default defineConfig({
             },
           },
           {
-            urlPattern: /\.(?:png|jpg|jpeg|svg|webp|woff2)$/,
+            // Tüm resimler (same-origin SPA asset'leri + cross-origin Trendyol/HB CDN
+            // ürün görselleri) ve fontlar. cacheableResponse statuses: [0, 200] —
+            // CDN'den gelen opaque (cross-origin no-cors) yanıtları kabul eder; bu
+            // olmadan Workbox onları sessizce cache'lemiyor ve her gezindiğinde
+            // resim tekrar yükleniyor.
+            urlPattern: ({ request }) =>
+              request.destination === 'image' || request.destination === 'font',
             handler: 'CacheFirst',
-            options: { cacheName: 'asset-cache' },
+            options: {
+              cacheName: 'image-font-cache',
+              cacheableResponse: { statuses: [0, 200] },
+              expiration: {
+                maxEntries: 300,
+                maxAgeSeconds: 60 * 60 * 24 * 30, // 30 gün
+              },
+            },
           },
         ],
       },
