@@ -1,5 +1,5 @@
 import React from 'react';
-import { Avatar } from '../layout';
+import { Avatar, Icon } from '../layout';
 import { getWeekLessons } from '../api';
 
 function getGreeting() {
@@ -79,11 +79,24 @@ function formatLessonsLine(lessons) {
   return `Bugün ${total} dersin var · ${completed} tamamlandı`;
 }
 
-export function MobileGreetingHeader({ user }) {
+export function MobileGreetingHeader({ user, onLogout }) {
   const { lessons, error } = useTodayLessons();
   const displayName = user?.displayName || '';
   const greeting = displayName ? `${getGreeting()}, ${displayName}` : getGreeting();
   const lessonsLine = error ? null : formatLessonsLine(lessons);
+  const [profileOpen, setProfileOpen] = React.useState(false);
+  const menuRef = React.useRef(null);
+
+  React.useEffect(() => {
+    if (!profileOpen) return;
+    function handleClick(e) {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setProfileOpen(false);
+      }
+    }
+    document.addEventListener('pointerdown', handleClick);
+    return () => document.removeEventListener('pointerdown', handleClick);
+  }, [profileOpen]);
 
   return (
     <div className="mobile-greeting-header">
@@ -94,8 +107,29 @@ export function MobileGreetingHeader({ user }) {
         )}
       </div>
       {displayName && (
-        <div className="mobile-greeting-avatar">
-          <Avatar name={displayName} size="md" />
+        <div className="mobile-profile-wrap" ref={menuRef}>
+          <button
+            type="button"
+            className="mobile-avatar-btn"
+            onClick={() => setProfileOpen(o => !o)}
+            aria-label="Hesap menüsü"
+          >
+            <Avatar name={displayName} size="md" />
+          </button>
+          {profileOpen && (
+            <div className="mobile-profile-menu">
+              <div className="mobile-profile-menu-name">{displayName}</div>
+              {onLogout && (
+                <button
+                  className="mobile-profile-menu-item"
+                  onClick={() => { setProfileOpen(false); onLogout(); }}
+                >
+                  <Icon.LogOut width="16" height="16" />
+                  Çıkış yap
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

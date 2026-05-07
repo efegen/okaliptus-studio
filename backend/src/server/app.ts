@@ -13,6 +13,7 @@ import {
   productSalesRouter,
   listStudentProductSalesHandler,
 } from "./routes/product-sales.router.js";
+import { productsRouter } from "./routes/products.router.js";
 import { kpiRouter } from "./routes/kpi.router.js";
 import { settingsRouter } from "./routes/settings.router.js";
 import { instructorsRouter } from "./routes/instructors.router.js";
@@ -56,6 +57,7 @@ export function createApp() {
   app.use("/payments", paymentsRouter);
   app.use("/packages", packagesRouter);
   app.use("/product-sales", productSalesRouter);
+  app.use("/products", productsRouter);
   app.use("/kpi", kpiRouter);
   app.use("/settings", settingsRouter);
   app.use("/instructors", instructorsRouter);

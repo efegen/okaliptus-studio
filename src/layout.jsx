@@ -32,6 +32,7 @@ export const Icon = {
   LogOut: (p) => (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" {...p}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>),
   Filter: (p) => (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" {...p}><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg>),
   Sort: (p) => (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" {...p}><path d="M7 3v18M3 17l4 4 4-4M17 21V3M13 7l4-4 4 4"/></svg>),
+  Menu: (p) => (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" {...p}><path d="M3 6h18M3 12h18M3 18h18"/></svg>),
 };
 
 export function Sidebar({ page, setPage }) {
@@ -39,6 +40,7 @@ export function Sidebar({ page, setPage }) {
     { id: "home",     label: "Ana Sayfa",            icon: Icon.Home },
     { id: "students", label: "Öğrenciler",           icon: Icon.Users },
     { id: "catalog",  label: "Dersler ve Eğitmenler", icon: Icon.Layers },
+    { id: "products", label: "Ürünler",                icon: Icon.Tag },
   ];
   return (
     <aside className="sidebar">
@@ -77,6 +79,7 @@ export const PAGE_LABELS = {
   home: "Ana Sayfa",
   students: "Öğrenciler",
   catalog: "Dersler ve Eğitmenler",
+  products: "Ürünler",
   settings: "Ayarlar",
 };
 

@@ -2684,6 +2684,8 @@ export function HomePage({ layout, onNavigate }) {
   const occupancyRatio = parseNumericValue(weeklyKpiData?.occupancyRatio, null);
   const receivable = parseNumericValue(weeklyKpiData?.receivable, 0);
   const debtorStudentCount = parseNumericValue(weeklyKpiData?.debtorStudentCount, null);
+  const totalStudentCount = parseNumericValue(weeklyKpiData?.totalStudentCount, null);
+  const activeStudentCount = parseNumericValue(weeklyKpiData?.activeStudentCount, null);
   const collectionRateValue = revenueTotal > 0 ? Math.round((cashInflowTotal / revenueTotal) * 100) : 0;
   const collectionRateBarWidth = clampBarWidth(collectionRateValue);
   const monthlyCashInflowTotal = parseNumericValue(weeklyKpiData?.monthlyCashInflow?.total, 0);
@@ -2845,15 +2847,6 @@ export function HomePage({ layout, onNavigate }) {
           </div>
         </div>
 
-        <div className="kpi-card">
-          <div className="kpi-card-label">Bu hafta ders</div>
-          <div className="kpi-card-main">
-            <span className="kpi-card-val">{lessonsPlanned}</span>
-            <span className="kpi-card-val2">ders planlandı</span>
-          </div>
-          <div className="kpi-card-sub"><strong>{lessonsCompleted}</strong> tamamlandı · <strong>{remainingLessons}</strong> sırada</div>
-        </div>
-
         <div className={`kpi-card${receivable > 0 ? " kpi-card-warn" : ""}`}>
           <div className="kpi-card-label">Bekleyen tahsilat</div>
           <div className="kpi-card-main">
@@ -2864,6 +2857,17 @@ export function HomePage({ layout, onNavigate }) {
           </div>
           <div className="kpi-card-sub">
             <strong>{debtorStudentCount ?? 0}</strong> öğrencinin borcu var
+          </div>
+        </div>
+
+        <div className="kpi-card">
+          <div className="kpi-card-label">Toplam öğrenci</div>
+          <div className="kpi-card-main">
+            <span className="kpi-card-val">{totalStudentCount ?? '—'}</span>
+            <span className="kpi-card-val2">öğrenci</span>
+          </div>
+          <div className="kpi-card-sub">
+            <strong>{activeStudentCount ?? '—'}</strong> aktif · <strong>{totalStudentCount != null && activeStudentCount != null ? totalStudentCount - activeStudentCount : '—'}</strong> pasif
           </div>
         </div>
 

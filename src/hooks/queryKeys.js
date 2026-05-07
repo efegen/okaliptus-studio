@@ -10,6 +10,8 @@ export const queryKeys = {
   studentMovements:   (id)    => ['student', id, 'movements'],
   instructors:        ()      => ['instructors'],
   lessonTypes:        ()      => ['lessonTypes'],
+  products:           (params)=> params !== undefined ? ['products', params] : ['products'],
+  productById:        (id)    => ['product', id],
   settings:           ()      => ['settings'],
   debtors:            ()      => ['debtors'],
   auditLogs:          (params)=> ['auditLogs', params],

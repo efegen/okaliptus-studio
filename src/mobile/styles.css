@@ -110,6 +110,63 @@
   }
   .mobile-iconbtn:active { background: var(--surface-2); }
 
+  /* ---------- Mobile profile menu ---------- */
+
+  .mobile-profile-wrap {
+    position: relative;
+  }
+
+  .mobile-avatar-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: 0;
+    padding: 2px;
+    border-radius: 999px;
+    cursor: pointer;
+  }
+  .mobile-avatar-btn:active { opacity: 0.7; }
+
+  .mobile-profile-menu {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    min-width: 160px;
+    background: var(--surface);
+    border: 1px solid var(--ink-8);
+    border-radius: 12px;
+    box-shadow: 0 8px 24px color-mix(in oklch, var(--ink) 12%, transparent);
+    overflow: hidden;
+    z-index: 200;
+  }
+
+  .mobile-profile-menu-name {
+    padding: 10px 14px 8px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink);
+    border-bottom: 1px solid var(--ink-8);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .mobile-profile-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 11px 14px;
+    background: transparent;
+    border: 0;
+    font-size: 14px;
+    color: var(--warn);
+    cursor: pointer;
+    text-align: left;
+  }
+  .mobile-profile-menu-item:active { background: var(--surface-2); }
+
   /* ---------- Main scroll region ---------- */
 
   .mobile-main {
@@ -433,6 +490,243 @@
 
   .mobile-week-day.selected .mobile-week-day-label {
     color: var(--ink);
+  }
+
+  /* ---------- Day lessons list (home) ---------- */
+
+  .mobile-day-lessons {
+    padding: 4px 16px calc(96px + env(safe-area-inset-bottom));
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .mobile-day-lessons-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 4px 2px 2px;
+  }
+
+  .mobile-day-lessons-title {
+    font-family: var(--f-sans);
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--ink);
+    margin: 0;
+    line-height: 1.2;
+  }
+
+  .mobile-day-lessons-count {
+    font-family: var(--f-sans);
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--ink-3);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .mobile-day-lessons-empty {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 22px 16px;
+    background: var(--surface);
+    border: 1px dashed var(--line-2);
+    border-radius: 14px;
+    color: var(--ink-3);
+    font-size: 14px;
+  }
+
+  .mobile-day-lessons-empty-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 999px;
+    background: var(--surface-2);
+    color: var(--ink-3);
+    font-size: 14px;
+    line-height: 1;
+  }
+
+  .mobile-day-lessons-skeleton {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .mobile-day-lessons-skel-row {
+    height: 64px;
+    border-radius: 14px;
+    background: linear-gradient(
+      90deg,
+      var(--surface) 0%,
+      var(--surface-2) 50%,
+      var(--surface) 100%
+    );
+    background-size: 200% 100%;
+    animation: mobile-day-skel 1.2s ease-in-out infinite;
+  }
+
+  @keyframes mobile-day-skel {
+    0%   { background-position: 100% 0; }
+    100% { background-position: -100% 0; }
+  }
+
+  .mobile-day-lessons-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .mobile-day-row {
+    --rail: var(--ink-4);
+    width: 100%;
+    display: grid;
+    grid-template-columns: auto 3px 1fr auto;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    background: var(--surface);
+    border: 1px solid var(--line-2);
+    border-radius: 14px;
+    cursor: pointer;
+    text-align: left;
+    transition: transform 80ms ease, background 160ms ease, border-color 160ms ease;
+    -webkit-tap-highlight-color: transparent;
+    min-height: 64px;
+  }
+
+  .mobile-day-row:active {
+    transform: scale(0.985);
+    background: var(--surface-2);
+  }
+
+  .mobile-day-row-time {
+    font-family: var(--f-mono);
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+    letter-spacing: -0.2px;
+    min-width: 46px;
+  }
+
+  .mobile-day-row-rail {
+    align-self: stretch;
+    width: 3px;
+    margin: 2px 0;
+    border-radius: 2px;
+    background: var(--rail);
+  }
+
+  .mobile-day-row-body {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  .mobile-day-row-name-line {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .mobile-day-row-name {
+    font-family: var(--f-sans);
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--ink);
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .mobile-day-row-tag {
+    flex-shrink: 0;
+    font-family: var(--f-sans);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    line-height: 1;
+    padding: 3px 6px;
+    border-radius: 999px;
+    background: color-mix(in oklch, var(--accent) 14%, transparent);
+    color: var(--accent);
+  }
+
+  .mobile-day-row-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--f-sans);
+    font-size: 12px;
+    color: var(--ink-3);
+    line-height: 1.2;
+    min-width: 0;
+  }
+
+  .mobile-day-row-state {
+    font-weight: 500;
+  }
+
+  .mobile-day-row-sep {
+    opacity: 0.6;
+  }
+
+  .mobile-day-row-amount {
+    font-variant-numeric: tabular-nums;
+    color: var(--ink-2);
+  }
+
+  .mobile-day-row-chev {
+    font-size: 22px;
+    line-height: 1;
+    color: var(--ink-4);
+    font-weight: 300;
+  }
+
+  /* State accents on the rail + amount color. Hues mirror the calendar
+     blocks (planned=blue, paid=green, partial=amber, unpaid=red) but at
+     higher chroma since the row is on a neutral surface. */
+
+  .mobile-day-row-planned {
+    --rail: oklch(0.62 calc(0.18 * var(--ls-sat)) 245);
+  }
+
+  .mobile-day-row-paid {
+    --rail: oklch(0.58 calc(0.16 * var(--ls-sat)) 145);
+  }
+  .mobile-day-row-paid .mobile-day-row-state {
+    color: oklch(0.42 calc(0.18 * var(--ls-sat)) 145);
+  }
+
+  .mobile-day-row-partial {
+    --rail: oklch(0.66 calc(0.18 * var(--ls-sat)) 65);
+  }
+  .mobile-day-row-partial .mobile-day-row-state,
+  .mobile-day-row-partial .mobile-day-row-amount {
+    color: oklch(0.46 calc(0.20 * var(--ls-sat)) 60);
+  }
+
+  .mobile-day-row-unpaid {
+    --rail: oklch(0.60 calc(0.20 * var(--ls-sat)) 25);
+  }
+  .mobile-day-row-unpaid .mobile-day-row-state,
+  .mobile-day-row-unpaid .mobile-day-row-amount {
+    color: oklch(0.46 calc(0.22 * var(--ls-sat)) 25);
   }
 
   /* ---------- Calendar page (mobile-cal-*) ---------- */
@@ -1367,14 +1661,20 @@
     position: fixed;
     left: 0;
     right: 0;
-    bottom: 0;
+    /* Lift above the iOS soft keyboard. --mobile-kb-h is set on :root by
+       MobileApp from window.visualViewport; defaults to 0px when no keyboard
+       is open. */
+    bottom: var(--mobile-kb-h, 0px);
     z-index: 61;
     display: flex;
     flex-direction: column;
     background: var(--bg);
     border-top-left-radius: 16px;
     border-top-right-radius: 16px;
-    max-height: 88dvh;
+    /* When closed: 88dvh as before. When keyboard is open: fill the space
+       above it (with a small top gap). `min()` ensures we never grow past
+       88dvh. */
+    max-height: min(88dvh, calc(100dvh - var(--mobile-kb-h, 0px) - 12px));
     outline: none;
   }
 
@@ -1646,6 +1946,302 @@
     cursor: not-allowed;
   }
 
+  /* Single-button footer: span the full row instead of 50/50 split. */
+  .mobile-csheet-actions:has(.mobile-csheet-btn-full) {
+    grid-template-columns: 1fr;
+  }
+
+  /* ---------- Quick-add entry sheet (mobile-qadd-*) ----------
+     Center "+" FAB opens this. Three large action tiles stacked vertically:
+     Ödeme al · Ürün sat · Ders oluştur. Each tile is a full-width row with a
+     tinted icon chip on the left, title + subtitle in the middle, and a chev
+     on the right (iOS push affordance). */
+
+  .mobile-qadd-overlay {
+    position: fixed;
+    inset: 0;
+    background: oklch(0 0 0 / 0.45);
+    z-index: 60;
+  }
+
+  .mobile-qadd-content {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 61;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg);
+    border-top-left-radius: 18px;
+    border-top-right-radius: 18px;
+    padding: 0 14px calc(env(safe-area-inset-bottom, 0px) + 14px);
+    outline: none;
+  }
+
+  .mobile-qadd-handle {
+    width: 40px;
+    height: 4px;
+    background: var(--ink-4);
+    border-radius: 999px;
+    margin: 8px auto 8px;
+    flex: 0 0 auto;
+  }
+
+  .mobile-qadd-header {
+    padding: 4px 4px 14px;
+  }
+  .mobile-qadd-title {
+    margin: 0;
+    font-family: var(--f-sans);
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--ink);
+  }
+  .mobile-qadd-desc {
+    margin: 2px 0 0;
+    font-size: 13px;
+    color: var(--ink-3);
+  }
+
+  .mobile-qadd-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .mobile-qadd-tile {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    width: 100%;
+    min-height: 68px;
+    padding: 12px 14px;
+    border: 1px solid var(--ink-4);
+    border-radius: 14px;
+    background: var(--surface);
+    color: var(--ink);
+    text-align: left;
+    cursor: pointer;
+    transition: transform 80ms ease, background 120ms ease;
+  }
+  .mobile-qadd-tile:active {
+    transform: scale(0.985);
+    background: var(--surface-2);
+  }
+
+  .mobile-qadd-tile-icon {
+    flex: 0 0 auto;
+    width: 44px;
+    height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 12px;
+    background: var(--surface-2);
+    color: var(--ink);
+  }
+
+  /* Subtle, distinct tints per tile so the action sheet feels lively without
+     screaming. Light/dark theme aware via color-mix on the surface variable. */
+  .mobile-qadd-tile.is-mint .mobile-qadd-tile-icon {
+    background: color-mix(in oklch, var(--ok, #2a9d8f) 14%, var(--surface));
+    color: var(--ok, #2a9d8f);
+  }
+  .mobile-qadd-tile.is-amber .mobile-qadd-tile-icon {
+    background: color-mix(in oklch, #d97706 14%, var(--surface));
+    color: #b45309;
+  }
+  .mobile-qadd-tile.is-lavender .mobile-qadd-tile-icon {
+    background: color-mix(in oklch, var(--accent) 14%, var(--surface));
+    color: var(--accent);
+  }
+
+  .mobile-qadd-tile-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .mobile-qadd-tile-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--ink);
+  }
+  .mobile-qadd-tile-subtitle {
+    font-size: 12.5px;
+    color: var(--ink-3);
+  }
+  .mobile-qadd-tile-chev {
+    flex: 0 0 auto;
+    color: var(--ink-3);
+  }
+
+  .mobile-qadd-actions {
+    padding-top: 12px;
+  }
+  .mobile-qadd-cancel {
+    width: 100%;
+    min-height: 48px;
+    border: 0;
+    border-radius: 12px;
+    background: var(--surface-2);
+    color: var(--ink);
+    font-family: var(--f-sans);
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .mobile-qadd-cancel:active { background: color-mix(in oklch, var(--ink) 8%, var(--surface-2)); }
+
+  .mobile-qadd-hint {
+    font-size: 12px;
+    color: var(--ink-3);
+    margin-top: 2px;
+  }
+
+  /* Two-column row used for date+time inputs in the quick lesson sheet. */
+  .mobile-qadd-row-2col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .mobile-qadd-row-2col .mobile-csheet-form-row { gap: 6px; }
+
+  /* ---------- Quick payment debt list (mobile-qpay-*) ---------- */
+
+  .mobile-qpay-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 80px;
+    border: 1px dashed var(--ink-4);
+    border-radius: 12px;
+    color: var(--ink-3);
+    font-size: 14px;
+    padding: 16px;
+  }
+  .mobile-qpay-empty-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 999px;
+    background: color-mix(in oklch, var(--ok, #2a9d8f) 14%, var(--surface));
+    color: var(--ok, #2a9d8f);
+    font-weight: 700;
+  }
+
+  .mobile-qpay-debt-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .mobile-qpay-debt-list .mobile-csheet-label { margin-bottom: 2px; }
+
+  .mobile-qpay-debt-card {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    min-height: 64px;
+    padding: 12px 14px;
+    border: 1px solid var(--ink-4);
+    border-radius: 12px;
+    background: var(--surface);
+    color: var(--ink);
+    text-align: left;
+    cursor: pointer;
+  }
+  .mobile-qpay-debt-card:active { background: var(--surface-2); }
+
+  .mobile-qpay-debt-main {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    overflow: hidden;
+  }
+  .mobile-qpay-debt-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--ink);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .mobile-qpay-debt-sub {
+    font-size: 12px;
+    color: var(--ink-3);
+    font-variant-numeric: tabular-nums;
+  }
+  .mobile-qpay-debt-amt {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+  }
+  .mobile-qpay-debt-remaining {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+  .mobile-qpay-debt-meta {
+    font-size: 11px;
+    color: var(--ink-3);
+    font-variant-numeric: tabular-nums;
+  }
+  .mobile-qpay-debt-chev {
+    flex: 0 0 auto;
+    color: var(--ink-3);
+  }
+
+  .mobile-qpay-summary {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 14px;
+    border: 1px solid var(--ink-4);
+    border-radius: 12px;
+    background: var(--surface);
+  }
+  .mobile-qpay-summary-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 13px;
+  }
+  .mobile-qpay-summary-row-emph {
+    padding-top: 8px;
+    border-top: 1px solid var(--ink-4);
+    font-size: 14px;
+  }
+  .mobile-qpay-summary-label {
+    color: var(--ink-3);
+    flex: 0 0 auto;
+  }
+  .mobile-qpay-summary-value {
+    flex: 1 1 auto;
+    text-align: right;
+    color: var(--ink);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .mobile-qpay-summary-meta {
+    color: var(--ink-3);
+    font-weight: 400;
+  }
+  .mobile-qpay-summary-row-emph .mobile-qpay-summary-value {
+    color: var(--accent);
+  }
+
   /* ---------- Create student page (Faz D.3) — full-screen ---------- */
 
   .mobile-cstudent-page {
@@ -1727,31 +2323,31 @@
     -webkit-overflow-scrolling: touch;
     display: flex;
     flex-direction: column;
-    gap: 22px;
-    padding: 8px 16px 24px;
+    gap: 16px;
+    padding: 6px 16px 24px;
   }
 
-  /* Hero block — centered avatar + name + nickname */
+  /* Hero block — horizontal: avatar | (name stacked over nickname) */
   .mobile-cstudent-hero {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     align-items: center;
-    gap: 4px;
-    padding: 16px 0 8px;
+    gap: 14px;
+    padding: 10px 4px 6px;
   }
   .mobile-cstudent-hero-avatar {
-    width: 72px;
-    height: 72px;
+    flex: 0 0 auto;
+    width: 52px;
+    height: 52px;
     border-radius: 999px;
     background: color-mix(in oklch, var(--accent) 14%, var(--surface));
     color: var(--accent);
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    font-size: 26px;
+    font-size: 18px;
     font-weight: 700;
     letter-spacing: 0.02em;
-    margin-bottom: 6px;
     box-shadow: 0 1px 0 var(--ink-4);
   }
   .mobile-cstudent-hero-avatar.is-placeholder {
@@ -1760,21 +2356,27 @@
     color: var(--ink-3);
     box-shadow: none;
   }
+  .mobile-cstudent-hero-fields {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
   .mobile-cstudent-hero-name {
     display: block;
-    max-width: min(280px, 86%);
     width: 100%;
-    margin: 2px auto 0;
-    text-align: center;
+    margin: 0;
+    text-align: left;
     border: 0;
     border-bottom: 1.5px solid var(--ink-4);
     background: transparent;
     font-family: inherit;
-    font-size: 22px;
+    font-size: 17px;
     font-weight: 600;
     color: var(--ink);
     caret-color: var(--accent);
-    padding: 6px 4px 7px;
+    padding: 4px 0 5px;
     outline: none;
     transition: border-color 140ms ease, padding-bottom 140ms ease;
   }
@@ -1784,25 +2386,24 @@
   }
   .mobile-cstudent-hero-name:focus {
     border-bottom-color: var(--accent);
-    padding-bottom: 6px;
+    padding-bottom: 4px;
     border-bottom-width: 2px;
   }
 
   .mobile-cstudent-hero-nick {
     display: block;
-    max-width: min(220px, 76%);
     width: 100%;
-    margin: 8px auto 0;
-    text-align: center;
+    margin: 4px 0 0;
+    text-align: left;
     border: 0;
     border-bottom: 1px dashed var(--ink-4);
     background: transparent;
     font-family: inherit;
-    font-size: 14px;
+    font-size: 13px;
     color: var(--ink-2);
     font-style: italic;
     caret-color: var(--accent);
-    padding: 4px 4px 5px;
+    padding: 3px 0 4px;
     outline: none;
     transition: border-color 140ms ease, border-bottom-style 140ms ease;
   }
@@ -1816,9 +2417,9 @@
   }
 
   .mobile-cstudent-hero-hint {
-    margin-top: 10px;
+    margin: -10px 4px 0;
     font-size: 12px;
-    color: var(--ink-3);
+    color: var(--warn, #c44);
   }
 
   /* Section — title + content (card or block) */
@@ -1970,6 +2571,569 @@
     cursor: not-allowed;
     box-shadow: none;
     transform: none;
+  }
+
+  /* ---------- Mobile student profile page (mobile-msp-*) ---------- */
+
+  .mobile-msp-page {
+    position: relative;
+    min-height: 100%;
+    background: var(--bg);
+    padding-top: env(safe-area-inset-top);
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Topbar */
+  .mobile-msp-topbar {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    display: grid;
+    grid-template-columns: 44px 1fr 44px;
+    align-items: center;
+    padding: 0 2px;
+    height: 48px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--ink-4);
+    box-sizing: border-box;
+  }
+  .mobile-msp-back,
+  .mobile-msp-more-btn {
+    width: 44px;
+    height: 44px;
+    min-height: 44px;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--ink);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+  .mobile-msp-back:active,
+  .mobile-msp-more-btn:active { background: var(--surface-2); }
+  .mobile-msp-topbar-title {
+    margin: 0;
+    text-align: center;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--ink);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .mobile-msp-topbar-right {
+    position: relative;
+    display: flex;
+    justify-content: flex-end;
+  }
+  .mobile-msp-topbar-spacer { width: 44px; height: 44px; }
+
+  /* Overflow menu */
+  .mobile-msp-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    min-width: 176px;
+    background: var(--surface);
+    border: 1px solid var(--ink-4);
+    border-radius: 14px;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.13);
+    overflow: hidden;
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+  }
+  .mobile-msp-menu-item {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    text-align: left;
+    padding: 12px 16px;
+    min-height: 44px;
+    font-size: 15px;
+    color: var(--ink);
+    cursor: pointer;
+  }
+  .mobile-msp-menu-item:active { background: var(--surface-2); }
+  .mobile-msp-menu-item:disabled { opacity: 0.38; cursor: not-allowed; }
+  .mobile-msp-menu-item.is-danger { color: #c0392b; }
+  .mobile-msp-menu-item + .mobile-msp-menu-item { border-top: 1px solid var(--ink-4); }
+
+  /* Body scroll */
+  .mobile-msp-body {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 16px 16px calc(env(safe-area-inset-bottom) + 28px);
+  }
+
+  /* ── Hero ── */
+  .mobile-msp-hero {
+    display: flex;
+    align-items: center;
+    gap: 13px;
+    padding: 2px 0 4px;
+  }
+  .mobile-msp-avatar {
+    flex: 0 0 52px;
+    width: 52px;
+    height: 52px;
+    border-radius: 999px;
+    background: color-mix(in oklch, var(--accent) 16%, var(--surface));
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    font-weight: 800;
+    letter-spacing: 0.01em;
+    flex-shrink: 0;
+  }
+  .mobile-msp-avatar.is-empty {
+    background: var(--surface-2);
+    color: var(--ink-3);
+  }
+  .mobile-msp-hero-info {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .mobile-msp-hero-name-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .mobile-msp-hero-name {
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--ink);
+    line-height: 1.25;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
+  .mobile-msp-badge {
+    flex-shrink: 0;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: color-mix(in oklch, #6aaa52 20%, var(--surface));
+    color: #2e6b1e;
+  }
+  .mobile-msp-badge.is-inactive {
+    background: var(--surface-2);
+    color: var(--ink-3);
+  }
+  .mobile-msp-hero-sub {
+    font-size: 13px;
+    color: var(--ink-2);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .mobile-msp-hero-nick {
+    font-size: 12px;
+    color: var(--ink-3);
+    font-style: italic;
+  }
+
+  /* ── Finance card ── */
+  .mobile-msp-finance {
+    background: var(--surface);
+    border: 1px solid var(--ink-4);
+    border-radius: 16px;
+    overflow: hidden;
+  }
+
+  /* Open-account (debt) variant */
+  .mobile-msp-finance.is-debt {
+    position: relative;
+    background: color-mix(in oklch, #c0392b 7%, var(--surface));
+    border-color: color-mix(in oklch, #c0392b 28%, var(--ink-4));
+  }
+  .mobile-msp-finance.is-debt::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    background: #c0392b;
+  }
+  .mobile-msp-finance-head {
+    padding: 12px 16px 12px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .mobile-msp-finance-eyebrow {
+    font-size: 10.5px;
+    font-weight: 800;
+    color: #c0392b;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+  }
+  .mobile-msp-finance-amount {
+    font-size: 26px;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+    color: #c0392b;
+    line-height: 1.15;
+  }
+  .mobile-msp-finance-caption {
+    font-size: 12.5px;
+    color: var(--ink-2);
+    margin-top: 2px;
+    font-weight: 500;
+  }
+
+  /* Optional ders+ürün split shown only when both have debt */
+  .mobile-msp-finance-split {
+    display: flex;
+    border-top: 1px solid color-mix(in oklch, #c0392b 20%, var(--ink-4));
+  }
+  .mobile-msp-finance-split-row {
+    flex: 1 1 0;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    padding: 9px 14px 9px 18px;
+    gap: 8px;
+  }
+  .mobile-msp-finance-split-row + .mobile-msp-finance-split-row {
+    border-left: 1px solid color-mix(in oklch, #c0392b 20%, var(--ink-4));
+    padding-left: 14px;
+  }
+  .mobile-msp-finance-split-lbl {
+    font-size: 12px;
+    color: var(--ink-3);
+  }
+  .mobile-msp-finance-split-val {
+    font-size: 13.5px;
+    font-weight: 700;
+    color: #c0392b;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Clear-state variant */
+  .mobile-msp-finance.is-clear {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    background: color-mix(in oklch, #6aaa52 6%, var(--surface));
+    border-color: color-mix(in oklch, #6aaa52 20%, var(--ink-4));
+  }
+  .mobile-msp-finance-clear-icon {
+    flex-shrink: 0;
+    width: 30px;
+    height: 30px;
+    border-radius: 999px;
+    background: color-mix(in oklch, #6aaa52 22%, var(--surface));
+    color: #2e6b1e;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .mobile-msp-finance-clear-body {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .mobile-msp-finance-clear-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: #2e6b1e;
+    line-height: 1.2;
+  }
+  .mobile-msp-finance-clear-sub {
+    font-size: 12.5px;
+    color: var(--ink-3);
+  }
+
+  /* ── Activity list (rich rows + date buckets) ── */
+  .mobile-msp-activity {
+    background: var(--surface);
+    border: 1px solid var(--ink-4);
+    border-radius: 14px;
+    overflow: hidden;
+  }
+  .mobile-msp-act-group + .mobile-msp-act-group {
+    border-top: 1px solid var(--ink-4);
+  }
+  .mobile-msp-act-group-label {
+    padding: 9px 14px 5px;
+    font-size: 10.5px;
+    font-weight: 700;
+    color: var(--ink-3);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    background: color-mix(in oklch, var(--surface-2) 55%, var(--surface));
+    border-bottom: 1px solid var(--ink-4);
+  }
+  .mobile-msp-act-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 11px 14px;
+    border-bottom: 1px solid var(--ink-4);
+  }
+  .mobile-msp-act-row:last-child { border-bottom: 0; }
+  .mobile-msp-act-main {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .mobile-msp-act-title-row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+    flex-wrap: wrap;
+  }
+  .mobile-msp-act-title {
+    font-size: 14.5px;
+    font-weight: 600;
+    color: var(--ink);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+  }
+  .mobile-msp-act-pill {
+    flex-shrink: 0;
+    font-size: 9.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 2px 7px;
+    border-radius: 999px;
+    line-height: 1.4;
+  }
+  .mobile-msp-act-pill-paid {
+    background: color-mix(in oklch, #6aaa52 16%, var(--surface));
+    color: #2e6b1e;
+  }
+  .mobile-msp-act-pill-open {
+    background: color-mix(in oklch, #c0392b 13%, var(--surface));
+    color: #a02b1e;
+  }
+  .mobile-msp-act-pill-partial {
+    background: color-mix(in oklch, #b8762a 16%, var(--surface));
+    color: #8a5418;
+  }
+  .mobile-msp-act-pill-scheduled {
+    background: color-mix(in oklch, var(--accent) 14%, var(--surface));
+    color: var(--accent);
+  }
+  .mobile-msp-act-pill-muted {
+    background: var(--surface-2);
+    color: var(--ink-3);
+  }
+  .mobile-msp-act-meta {
+    font-size: 12px;
+    color: var(--ink-3);
+    font-variant-numeric: tabular-nums;
+    line-height: 1.3;
+  }
+  .mobile-msp-act-note {
+    font-size: 12.5px;
+    color: var(--ink-2);
+    font-style: italic;
+    line-height: 1.35;
+    margin-top: 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    word-break: break-word;
+  }
+  .mobile-msp-act-right {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+    padding-top: 1px;
+  }
+  .mobile-msp-act-amount {
+    font-size: 14.5px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink);
+    text-align: right;
+    white-space: nowrap;
+    line-height: 1.1;
+  }
+  .mobile-msp-act-amount-warn {
+    color: #c0392b;
+  }
+  .mobile-msp-act-amount-muted {
+    color: var(--ink-2);
+    font-weight: 600;
+  }
+  .mobile-msp-act-amount-quiet {
+    color: var(--ink-3);
+    font-weight: 500;
+  }
+  .mobile-msp-act-discount {
+    font-size: 11px;
+    font-weight: 600;
+    color: #2e6b1e;
+    background: color-mix(in oklch, #6aaa52 14%, var(--surface));
+    padding: 1px 6px;
+    border-radius: 999px;
+    line-height: 1.3;
+    font-variant-numeric: tabular-nums;
+  }
+  .mobile-msp-act-more {
+    padding: 10px 14px;
+    text-align: center;
+    font-size: 12px;
+    color: var(--ink-3);
+    background: color-mix(in oklch, var(--surface-2) 50%, var(--surface));
+    border-top: 1px solid var(--ink-4);
+  }
+
+  /* ── Action buttons ── */
+  .mobile-msp-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .mobile-msp-action-primary,
+  .mobile-msp-action-secondary {
+    appearance: none;
+    border: 0;
+    border-radius: 14px;
+    font-size: 14px;
+    font-weight: 700;
+    min-height: 52px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    cursor: pointer;
+    transition: transform 60ms ease, opacity 60ms ease;
+  }
+  .mobile-msp-action-primary {
+    background: var(--accent);
+    color: #fff;
+  }
+  .mobile-msp-action-secondary {
+    background: var(--surface);
+    color: var(--ink);
+    border: 1px solid var(--ink-4);
+  }
+  .mobile-msp-action-primary:active,
+  .mobile-msp-action-secondary:active { transform: scale(0.97); }
+  .mobile-msp-action-primary:disabled {
+    background: var(--surface-2);
+    color: var(--ink-3);
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  /* ── Info section ── */
+  .mobile-msp-section {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .mobile-msp-section-label {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--ink-3);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 0 4px;
+    margin-bottom: 2px;
+  }
+  .mobile-msp-rows {
+    background: var(--surface);
+    border: 1px solid var(--ink-4);
+    border-radius: 14px;
+    overflow: hidden;
+  }
+  .mobile-msp-info-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 16px;
+    min-height: 46px;
+    border-bottom: 1px solid var(--ink-4);
+  }
+  .mobile-msp-info-row:last-child { border-bottom: 0; }
+  .mobile-msp-info-label {
+    flex: 0 0 auto;
+    font-size: 14px;
+    color: var(--ink-2);
+  }
+  .mobile-msp-info-value {
+    flex: 1 1 auto;
+    text-align: right;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--ink);
+    word-break: break-word;
+  }
+  .mobile-msp-rows-empty {
+    padding: 14px 16px;
+    font-size: 14px;
+    color: var(--ink-3);
+  }
+  .mobile-msp-note {
+    background: var(--surface);
+    border: 1px solid var(--ink-4);
+    border-radius: 14px;
+    padding: 12px 16px;
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--ink);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  /* Error */
+  .mobile-msp-error {
+    background: color-mix(in oklch, #c0392b 10%, var(--surface));
+    border: 1px solid color-mix(in oklch, #c0392b 30%, var(--ink-4));
+    color: #c0392b;
+    border-radius: 12px;
+    padding: 10px 14px;
+    font-size: 14px;
+  }
+
+  /* Skeleton */
+  .mobile-msp-skel {
+    background: var(--surface-2);
+    border-radius: 14px;
+    animation: mobile-msp-skel-pulse 1.4s ease-in-out infinite;
+  }
+  .mobile-msp-skel-hero     { height: 68px; }
+  .mobile-msp-skel-finance  { height: 92px; }
+  .mobile-msp-skel-actions  { height: 52px; }
+  .mobile-msp-skel-activity { height: 220px; }
+  .mobile-msp-skel-info     { height: 140px; }
+  @keyframes mobile-msp-skel-pulse {
+    0%, 100% { opacity: 0.55; }
+    50%       { opacity: 0.85; }
   }
 
   /* ---------- Students page (Faz D.1) ---------- */
@@ -2546,6 +3710,801 @@
     background: var(--line-2);
     margin: 6px 4px;
   }
+
+  /* ─── Mobile Menu (Faz F.2 — sağ alttaki tab'in açtığı sayfa) ─── */
+  .mobile-menu {
+    padding: 16px 0 32px;
+  }
+
+  .mobile-menu-title {
+    margin: 0;
+    padding: 8px 16px 16px;
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+  }
+
+  .mobile-menu-list {
+    display: flex;
+    flex-direction: column;
+    background: var(--surface);
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+  }
+
+  .mobile-menu-item {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 16px;
+    background: transparent;
+    border: 0;
+    border-top: 1px solid var(--line);
+    color: var(--ink);
+    font-size: 16px;
+    font-weight: 500;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .mobile-menu-item:first-child {
+    border-top: 0;
+  }
+
+  .mobile-menu-item:active {
+    background: var(--surface-2);
+  }
+
+  .mobile-menu-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    color: var(--ink-2);
+    flex-shrink: 0;
+  }
+
+  .mobile-menu-label {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .mobile-menu-chevron {
+    display: inline-flex;
+    align-items: center;
+    color: var(--ink-4);
+    flex-shrink: 0;
+  }
+
+  .mobile-menu-item.is-danger {
+    color: var(--warn);
+  }
+
+  .mobile-menu-item.is-danger .mobile-menu-icon {
+    color: var(--warn);
+  }
+
+  /* ---------- Catalog (Dersler ve Eğitmenler) ---------- */
+  /* Renders the desktop CatalogPage / LessonTypesSection / InstructorsSection
+   * inside the mobile shell. Mobile header already shows the page title, so
+   * we suppress the duplicate page-head and tighten paddings/touch targets. */
+
+  .mobile-main .catalog-page {
+    padding: 14px 14px 8px;
+    gap: 14px;
+  }
+
+  .mobile-main .catalog-page > .page-head {
+    display: none;
+  }
+
+  /* Tabs: equal-width, larger tap target, no negative margin */
+  .mobile-main .catalog-tabs {
+    margin-top: 0;
+    gap: 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+  .mobile-main .catalog-tab {
+    justify-content: center;
+    padding: 12px 8px;
+    font-size: 14px;
+    min-height: 48px;
+  }
+
+  /* Section head: stack search + primary button full width */
+  .mobile-main .catalog-section-head {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+  .mobile-main .catalog-section-head .eyebrow {
+    margin-bottom: 0;
+  }
+  .mobile-main .catalog-section-head .head-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    width: 100%;
+  }
+  .mobile-main .catalog-section-head .lt-search {
+    width: 100%;
+    min-width: 0;
+    padding: 10px 12px;
+  }
+  .mobile-main .catalog-section-head .btn-primary {
+    justify-content: center;
+    width: 100%;
+    font-size: 14px;
+  }
+
+  /* Filter chips: bigger tap area, comfortable spacing */
+  .mobile-main .lt-filters {
+    gap: 8px;
+  }
+  .mobile-main .lt-chip {
+    padding: 8px 14px;
+    font-size: 13px;
+    min-height: 38px;
+  }
+
+  /* Cards: single column, tighter padding, smaller mark */
+  .mobile-main .lt-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  .mobile-main .lt-card {
+    min-height: 0;
+    padding: 14px 16px 14px 18px;
+    gap: 12px;
+  }
+  .mobile-main .lt-card-mark {
+    width: 38px;
+    height: 38px;
+    font-size: 12px;
+  }
+  .mobile-main .lt-card-name {
+    font-size: 19px;
+  }
+  /* Override the global mobile button min-height so card icon buttons stay
+   * compact (40px) instead of stretching to 44px and pushing layout. */
+  .mobile-main .lt-card .lt-card-edit {
+    width: 40px;
+    height: 40px;
+    min-height: 40px;
+  }
+  .mobile-main .lt-card-stats {
+    gap: 12px;
+    padding-top: 10px;
+  }
+  .mobile-main .lt-card-stat-value {
+    font-size: 15px;
+  }
+  .mobile-main .lt-card-stat-value.is-price {
+    font-size: 18px;
+  }
+
+  /* Empty / state messages: less vertical wasted space */
+  .mobile-main .lt-empty {
+    padding: 48px 20px;
+  }
+  .mobile-main .lt-empty-title {
+    font-size: 20px;
+  }
+  .mobile-main .lt-state {
+    min-height: 100px;
+    padding: 20px;
+  }
+
+  /* Lesson type / instructor modal: full-width stacked actions */
+  .modal.lt-modal {
+    width: 100%;
+    max-width: calc(100vw - 24px);
+  }
+  .modal.lt-modal .modal-actions {
+    flex-direction: column-reverse;
+    gap: 8px;
+  }
+  .modal.lt-modal .modal-actions .btn {
+    width: 100%;
+    justify-content: center;
+  }
+  .modal.lt-modal .lt-status-toggle {
+    display: flex;
+    width: 100%;
+  }
+  .modal.lt-modal .lt-status-btn {
+    flex: 1;
+    padding: 10px 12px;
+  }
+
+  /* ---------- Settings page (Ayarlar) ---------- */
+  /* Renders the desktop SettingsPage inside the mobile shell. Mobile header
+   * already shows the page title, so suppress page-head, give the page real
+   * padding, stack each row's label above its control, and stretch primary
+   * controls (mode segmented, save button) to full width. */
+
+  .mobile-main .settings-page {
+    padding: 14px 14px 8px;
+    gap: 14px;
+    max-width: none;
+  }
+
+  .mobile-main .settings-page > .page-head {
+    display: none;
+  }
+
+  /* Tabs: equal-width pill buttons, comfortable tap target */
+  .mobile-main .stg-tabs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+    padding: 0 0 12px;
+    margin-bottom: 0;
+  }
+  .mobile-main .stg-tab {
+    justify-content: center;
+    padding: 10px 12px;
+    font-size: 14px;
+    text-align: center;
+  }
+
+  /* Sections: tighten spacing between sections, keep cards clear */
+  .mobile-main .stg-section {
+    margin-bottom: 12px;
+  }
+  .mobile-main .stg-section-head {
+    padding: 9px 14px;
+  }
+
+  /* Rows: stack label above the control — the desktop 200px label column
+   * is too wide for narrow viewports and steals room from inputs. */
+  .mobile-main .stg-row,
+  .mobile-main .stg-row-top {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding: 14px;
+  }
+  .mobile-main .stg-row-label {
+    flex: none;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--ink);
+  }
+  .mobile-main .stg-row-control {
+    flex: none;
+    width: 100%;
+    gap: 10px;
+  }
+
+  /* Native inputs: roomier targets (font-size already locked to 16px globally) */
+  .mobile-main .stg-num {
+    width: 140px;
+    padding: 10px 12px;
+    text-align: left;
+  }
+  .mobile-main .stg-select {
+    flex: 1;
+    min-width: 0;
+    padding: 10px 12px;
+  }
+  .mobile-main .stg-time-range {
+    width: 100%;
+    gap: 10px;
+  }
+
+  /* Mode segmented: stretch to full row width, taller tap target */
+  .mobile-main .mode-seg {
+    width: 100%;
+  }
+  .mobile-main .mode-btn {
+    padding: 11px 12px;
+    font-size: 14px;
+  }
+
+  /* Checkbox group: stack vertically, larger hit area */
+  .mobile-main .stg-checks {
+    flex-direction: column;
+    gap: 0;
+    width: 100%;
+  }
+  .mobile-main .stg-check {
+    padding: 10px 0;
+    font-size: 15px;
+    min-height: 44px;
+  }
+  .mobile-main .stg-check input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+  }
+
+  /* Saturation slider + lesson-color preview: a touch larger thumb,
+   * preview blocks wrap onto two rows on the narrowest phones. */
+  .mobile-main .stg-sat-row {
+    gap: 14px;
+  }
+  .mobile-main .stg-slider {
+    height: 6px;
+  }
+  .mobile-main .stg-slider::-webkit-slider-thumb {
+    width: 22px;
+    height: 22px;
+  }
+  .mobile-main .stg-slider::-moz-range-thumb {
+    width: 22px;
+    height: 22px;
+  }
+  .mobile-main .stg-lesson-preview {
+    flex-wrap: wrap;
+  }
+  .mobile-main .stg-prev-block {
+    flex: 1 1 calc(50% - 6px);
+    min-height: 60px;
+  }
+
+  /* Save button: full-width primary action — the desktop right-aligned
+   * button is hard to reach with one thumb. */
+  .mobile-main .stg-actions {
+    justify-content: stretch;
+    padding-top: 4px;
+  }
+  .mobile-main .stg-actions .btn {
+    width: 100%;
+    justify-content: center;
+    font-size: 15px;
+  }
+
+  .mobile-main .stg-feedback {
+    margin-bottom: 10px;
+    font-size: 14px;
+  }
+
+  /* ---------- Activity panel (Ayarlar > Aktivite) ---------- */
+
+  .mobile-main .act-panel {
+    gap: 12px;
+    padding-top: 4px;
+  }
+
+  /* Filter bar: presets get the available width; "Eylemler" toggle stays
+   * wrapped to a new line if needed via flex-wrap. */
+  .mobile-main .act-filter-top {
+    gap: 8px;
+  }
+  .mobile-main .act-presets {
+    gap: 6px;
+  }
+  .mobile-main .act-preset-btn {
+    padding: 7px 14px;
+    font-size: 13px;
+  }
+  .mobile-main .act-actions-toggle {
+    padding: 7px 12px;
+    font-size: 13px;
+  }
+
+  /* Custom date range: full-width inputs side-by-side */
+  .mobile-main .act-custom-range {
+    gap: 8px;
+  }
+  .mobile-main .act-date-input {
+    flex: 1;
+    min-width: 0;
+    padding: 9px 10px;
+  }
+
+  /* Actor + search row: stack full-width so each input gets a real target */
+  .mobile-main .act-filter-row {
+    flex-direction: column;
+    gap: 8px;
+  }
+  .mobile-main .act-actor-select,
+  .mobile-main .act-q-input {
+    width: 100%;
+    min-width: 0;
+    padding: 10px 12px;
+  }
+
+  /* Action filter panel: drop the rigid 52px label column on narrow screens */
+  .mobile-main .act-action-group {
+    flex-direction: column;
+    gap: 6px;
+  }
+  .mobile-main .act-action-group-label {
+    width: auto;
+    padding-top: 0;
+  }
+  .mobile-main .act-action-pill {
+    padding: 6px 12px;
+    font-size: 12.5px;
+  }
+
+  /* Audit row: more breathing room; diff table can scroll horizontally
+   * if a row contains long values. */
+  .mobile-main .act-row-main {
+    padding: 12px 14px;
+    gap: 8px;
+  }
+  .mobile-main .act-row-detail {
+    padding: 12px 14px;
+  }
+  .mobile-main .act-diff-table {
+    display: block;
+    overflow-x: auto;
+  }
+
+  /* Undo confirm: stack buttons full-width, primary on top */
+  .mobile-main .act-confirm-btns {
+    flex-direction: column-reverse;
+    gap: 8px;
+  }
+  .mobile-main .act-confirm-btns .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* States */
+  .mobile-main .act-empty {
+    padding: 28px 12px;
+  }
+  .mobile-main .act-load-more {
+    width: 100%;
+  }
+}
+
+/* ─── Quick Sell sheet: catalog grid + cart ─────────────────────────── */
+.mobile-qsell-sheet .mobile-csheet-body {
+  padding-bottom: 88px; /* leave room for sticky cart bar */
+}
+
+.mobile-qsell-thumb {
+  width: 56px;
+  height: 56px;
+  border-radius: 10px;
+  object-fit: cover;
+  background: var(--surface-2, #f1f1f1);
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.mobile-qsell-thumb-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 22px;
+  color: var(--text-muted, #777);
+  background: var(--surface-2, #eee);
+}
+
+.mobile-qsell-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.mobile-qsell-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid var(--border, #e5e5e5);
+  background: var(--surface-1, #fff);
+  text-align: left;
+  cursor: pointer;
+  transition: transform .08s ease, border-color .08s ease;
+}
+
+.mobile-qsell-card:active {
+  transform: scale(0.98);
+}
+
+.mobile-qsell-card.is-incart {
+  border-color: var(--accent, #2563eb);
+  background: var(--accent-tint, #eff4ff);
+}
+
+.mobile-qsell-card .mobile-qsell-thumb {
+  width: 100%;
+  height: 88px;
+  border-radius: 8px;
+}
+
+.mobile-qsell-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.mobile-qsell-card-name {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.2;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.mobile-qsell-card-price {
+  font-size: 12px;
+  color: var(--text-muted, #666);
+  font-variant-numeric: tabular-nums;
+}
+
+.mobile-qsell-card-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 11px;
+  background: var(--accent, #2563eb);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mobile-qsell-stickybar {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+  background: var(--surface-1, #fff);
+  border-top: 1px solid var(--border, #e5e5e5);
+  margin: 0 -16px;
+}
+
+.mobile-qsell-stickybar-meta {
+  font-size: 14px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.mobile-qsell-cart {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.mobile-qsell-cart-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border-radius: 10px;
+  background: var(--surface-2, #f7f7f7);
+}
+
+.mobile-qsell-cart-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.mobile-qsell-cart-name {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.mobile-qsell-cart-meta {
+  font-size: 12px;
+  color: var(--text-muted, #666);
+  font-variant-numeric: tabular-nums;
+}
+
+.mobile-qsell-qty {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mobile-qsell-qty-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--border, #d4d4d4);
+  background: var(--surface-1, #fff);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.mobile-qsell-qty-val {
+  min-width: 20px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+.mobile-qsell-cart-total {
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 8px 4px;
+  font-size: 16px;
+  border-top: 1px dashed var(--border, #e5e5e5);
+  margin-top: 4px;
+}
+
+.mobile-qsell-cart-total strong {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─── Product catalog page ────────────────────────────────────────────── */
+.mobile-products-page {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+}
+
+.mobile-products-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.mobile-products-search {
+  flex: 1;
+}
+
+.mobile-products-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mobile-products-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  border-radius: 12px;
+  background: var(--surface-1, #fff);
+  border: 1px solid var(--border, #e5e5e5);
+  text-align: left;
+  cursor: pointer;
+}
+
+.mobile-products-row.is-archived {
+  opacity: .55;
+}
+
+.mobile-products-row-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.mobile-products-row-name {
+  font-weight: 500;
+}
+
+.mobile-products-row-meta {
+  font-size: 12px;
+  color: var(--text-muted, #666);
+  font-variant-numeric: tabular-nums;
+}
+
+.mobile-products-empty {
+  text-align: center;
+  padding: 24px 16px;
+  color: var(--text-muted, #666);
+  font-size: 14px;
+}
+
+.mobile-products-row-tags {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+  flex-wrap: wrap;
+}
+
+.mobile-products-cat,
+.mobile-products-mc {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 100px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.mobile-products-cat {
+  background: var(--surface-2, #eee);
+  color: var(--text-muted, #666);
+}
+
+.mobile-products-mc {
+  background: transparent;
+  color: var(--text-muted, #888);
+  border: 1px solid var(--border, #d4d4d4);
+  font-family: monospace;
+}
+
+/* Quick Sell sheet — kategori chip rowu + varyant etiketi */
+.mobile-qsell-cats {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 4px 0 8px;
+  margin: 0 -2px;
+  scrollbar-width: none;
+}
+.mobile-qsell-cats::-webkit-scrollbar { display: none; }
+
+.mobile-qsell-cat-chip {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 100px;
+  border: 1px solid var(--border, #d4d4d4);
+  background: var(--surface-1, #fff);
+  color: var(--text-muted, #555);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.mobile-qsell-cat-chip.is-active {
+  background: var(--accent, #2563eb);
+  border-color: var(--accent, #2563eb);
+  color: #fff;
+}
+
+.mobile-qsell-cat-count {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 100px;
+  background: rgba(0, 0, 0, 0.08);
+  font-variant-numeric: tabular-nums;
+}
+
+.mobile-qsell-cat-chip.is-active .mobile-qsell-cat-count {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.mobile-qsell-card-variant {
+  font-size: 11px;
+  color: var(--text-muted, #777);
+  font-weight: 500;
+  line-height: 1.2;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.mobile-qsell-cart-variant {
+  font-size: 11px;
+  color: var(--text-muted, #777);
+  font-weight: 500;
+  font-style: italic;
 }
 
 /* ─── Landscape: full-week calendar, hide bottom tab on calendar page ── */

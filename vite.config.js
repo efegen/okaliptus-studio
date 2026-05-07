@@ -34,7 +34,7 @@ export default defineConfig({
           {
             urlPattern: ({ url, request }) =>
               request.method === 'GET' &&
-              /^\/(kpi|lessons|students|packages|product-sales|settings|instructors|lesson-types|audit-logs)/.test(url.pathname),
+              /^\/(kpi|lessons|students|packages|product-sales|products|settings|instructors|lesson-types|audit-logs)/.test(url.pathname),
             handler: 'NetworkFirst',
             options: {
               cacheName: 'api-cache',
@@ -65,7 +65,7 @@ export default defineConfig({
   ],
   server: {
     proxy: {
-      '^/(auth|kpi|lessons|students|payments|packages|product-sales|settings|instructors|lesson-types|health|audit-logs)': {
+      '^/(auth|kpi|lessons|students|payments|packages|product-sales|products|settings|instructors|lesson-types|health|audit-logs)': {
         target: 'http://127.0.0.1:4000',
         changeOrigin: true,
       },
@@ -73,7 +73,7 @@ export default defineConfig({
   },
   preview: {
     proxy: {
-      '^/(auth|kpi|lessons|students|payments|packages|product-sales|settings|instructors|lesson-types|health|audit-logs)': {
+      '^/(auth|kpi|lessons|students|payments|packages|product-sales|products|settings|instructors|lesson-types|health|audit-logs)': {
         target: 'http://127.0.0.1:4000',
         changeOrigin: true,
       },

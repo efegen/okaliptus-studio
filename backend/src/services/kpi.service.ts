@@ -22,6 +22,8 @@ type WeeklyKpiResult = {
   receivable: string;
   activeCreditValue: string;
   debtorStudentCount: string;
+  totalStudentCount: string;
+  activeStudentCount: string;
   monthStart: string;
   monthlyCashInflow: {
     total: string;
@@ -121,6 +123,19 @@ export async function getWeeklyKpi(): Promise<WeeklyKpiResult> {
         WHERE (lesson_debt + product_debt) > 0.01
       ),
 
+      total_students AS (
+        SELECT
+          COUNT(*)                                                          AS total_student_count,
+          COUNT(*) FILTER (WHERE s.id IN (
+            SELECT DISTINCT student_id FROM lessons
+            WHERE status = 'completed'
+              AND starts_at >= now() - INTERVAL '30 days'
+              AND deleted_at IS NULL
+          ))                                                                AS active_student_count
+        FROM students s
+        WHERE s.deleted_at IS NULL
+      ),
+
       -- Aylık tahsilat (cash + iban)
       monthly_inflow AS (
         SELECT COALESCE(SUM(amount), 0) AS total
@@ -183,13 +198,15 @@ export async function getWeeklyKpi(): Promise<WeeklyKpiResult> {
       receivable.total_receivable::text               AS receivable,
       deferred.active_credit_value::text              AS active_credit_value,
       debtor_students.debtor_student_count::text      AS debtor_student_count,
+      total_students.total_student_count::text        AS total_student_count,
+      total_students.active_student_count::text       AS active_student_count,
 
       -- aylık finansal
       month_window.month_start::text                                                              AS month_start,
       monthly_inflow.total::text                                                                  AS monthly_cash_inflow_total,
       (monthly_lesson_rev.lesson_revenue + monthly_product_rev.product_revenue)::text             AS monthly_revenue_total
 
-    FROM date_window, month_window, inflow, lesson_rev, product_rev, lesson_counts, receivable, deferred, debtor_students,
+    FROM date_window, month_window, inflow, lesson_rev, product_rev, lesson_counts, receivable, deferred, debtor_students, total_students,
          monthly_inflow, monthly_lesson_rev, monthly_product_rev
   `);
 
@@ -221,6 +238,8 @@ export async function getWeeklyKpi(): Promise<WeeklyKpiResult> {
     receivable: r["receivable"] as string,
     activeCreditValue: r["active_credit_value"] as string,
     debtorStudentCount: r["debtor_student_count"] as string,
+    totalStudentCount: r["total_student_count"] as string,
+    activeStudentCount: r["active_student_count"] as string,
     monthStart: r["month_start"] as string,
     monthlyCashInflow: {
       total: r["monthly_cash_inflow_total"] as string,

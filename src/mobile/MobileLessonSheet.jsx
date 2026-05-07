@@ -309,6 +309,7 @@ export function MobileLessonSheet({ session, onClose, onUpdated }) {
       onOpenChange={(o) => { if (!o && !submitting) onClose(); }}
       dismissible={!submitting}
       shouldScaleBackground={false}
+      repositionInputs={false}
     >
       <Drawer.Portal container={portalContainer || undefined}>
         <Drawer.Overlay className="mobile-lsheet-overlay" />

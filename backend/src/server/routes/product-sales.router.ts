@@ -15,15 +15,46 @@ export const productSalesRouter = Router();
 // POST /product-sales
 // lessonId opsiyonel — ders tamamlama akışı dışında (standalone alışveriş) NULL
 // gelir. Verildiğinde sale o derse bağlanır ve ders takviminde simgelenir.
+//
+// items[] (v1.6): sepet kalemleri. Verildiğinde server-side total hesaplanır;
+// client'tan gelen totalAmount yok sayılır. items boş geçilirse legacy mod
+// (sadece totalAmount + note) çalışır — ders tamamlama gibi eski entegrasyonlar
+// için.
 productSalesRouter.post("/", async (req, res) => {
   try {
-    const { studentId, soldAt, totalAmount, note, lessonId } =
+    const { studentId, soldAt, totalAmount, note, lessonId, items } =
       req.body as Record<string, unknown>;
+
+    const parsedItems = Array.isArray(items)
+      ? items.map((raw, idx) => {
+          const it = raw as Record<string, unknown>;
+          if (it.quantity === undefined || it.quantity === null) {
+            throw Object.assign(new Error(`items[${idx}].quantity zorunlu.`), {
+              statusCode: 400,
+              code: "VALIDATION_ERROR",
+            });
+          }
+          return {
+            productId:
+              it.productId != null && it.productId !== ""
+                ? (it.productId as string | number)
+                : null,
+            name: it.name != null ? String(it.name) : null,
+            unitPrice:
+              it.unitPrice != null
+                ? (it.unitPrice as string | number)
+                : undefined,
+            quantity: Number(it.quantity),
+          };
+        })
+      : undefined;
 
     const data = await createProductSale({
       studentId: studentId as string | number,
       soldAt: String(soldAt ?? ""),
-      totalAmount: totalAmount as string | number,
+      totalAmount:
+        totalAmount != null ? (totalAmount as string | number) : undefined,
+      items: parsedItems,
       note: note != null ? String(note) : null,
       lessonId:
         lessonId != null && lessonId !== ""

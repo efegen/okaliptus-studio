@@ -8,7 +8,7 @@ import {
   getLessonTypes,
 } from '../api';
 import { queryKeys } from '../hooks/queryKeys';
-import { Avatar } from '../layout';
+import { MobileStudentCombobox } from './shared/MobileStudentCombobox';
 
 function OnsiteIcon({ size = 14 }) {
   return (
@@ -37,82 +37,6 @@ function FormRow({ label, children }) {
     <div className="mobile-csheet-form-row">
       <label className="mobile-csheet-label">{label}</label>
       {children}
-    </div>
-  );
-}
-
-function MobileStudentCombobox({ students, selected, onSelect, onClear, loading }) {
-  const [query, setQuery] = React.useState('');
-
-  const filtered = React.useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return [];
-    const qd = q.replace(/\D/g, '');
-    return students.filter(s =>
-      s.full_name?.toLowerCase().includes(q) ||
-      (s.nickname && s.nickname.toLowerCase().includes(q)) ||
-      (qd.length > 0 && s.phone && s.phone.replace(/\D/g, '').includes(qd))
-    ).slice(0, 200);
-  }, [students, query]);
-
-  const hasQuery = query.trim().length > 0;
-
-  if (selected) {
-    return (
-      <div className="mobile-csheet-combo-chip">
-        <Avatar name={selected.full_name || ''} size="sm" />
-        <span className="mobile-csheet-combo-chip-name">
-          {selected.full_name}
-          {selected.nickname && <span className="mobile-csheet-combo-chip-nick"> ({selected.nickname})</span>}
-        </span>
-        <button
-          type="button"
-          className="mobile-csheet-combo-chip-clear"
-          onClick={onClear}
-          aria-label="Öğrenciyi temizle"
-        >
-          ×
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <div className="mobile-csheet-combo">
-      <input
-        type="text"
-        className="mobile-csheet-combo-input"
-        value={query}
-        onChange={e => setQuery(e.target.value)}
-        placeholder="Öğrenci ara…"
-      />
-      {hasQuery && (
-      <div className="mobile-csheet-combo-list">
-        {loading && students.length === 0 && (
-          <div className="mobile-csheet-combo-empty">Yükleniyor…</div>
-        )}
-        {!loading && filtered.length === 0 && (
-          <div className="mobile-csheet-combo-empty">Sonuç bulunamadı</div>
-        )}
-        {filtered.map(s => (
-          <button
-            key={s.id}
-            type="button"
-            className="mobile-csheet-combo-item"
-            onClick={() => onSelect(s)}
-          >
-            <Avatar name={s.full_name || ''} size="sm" />
-            <span className="mobile-csheet-combo-item-name">
-              {s.full_name}
-              {s.nickname && <span className="mobile-csheet-combo-item-nick"> ({s.nickname})</span>}
-            </span>
-            {s.phone && (
-              <span className="mobile-csheet-combo-item-meta">{s.phone}</span>
-            )}
-          </button>
-        ))}
-      </div>
-      )}
     </div>
   );
 }
@@ -225,6 +149,7 @@ export function MobileCreateLessonSheet({ slotInfo, weekStart, onClose, onCreate
       onOpenChange={(o) => { if (!o && !submitting) onClose(); }}
       dismissible={!submitting}
       shouldScaleBackground={false}
+      repositionInputs={false}
     >
       <Drawer.Portal container={portalContainer || undefined}>
         <Drawer.Overlay className="mobile-csheet-overlay" />

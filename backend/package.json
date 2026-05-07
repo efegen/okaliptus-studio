@@ -11,7 +11,8 @@
     "db:bootstrap": "tsx scripts/bootstrap.ts",
     "smoke": "tsx scripts/smoke/run-all.ts",
     "smoke:single": "tsx scripts/smoke/run-all.ts --only",
-    "smoke:reset": "tsx scripts/reset_db.ts && tsx src/db/migrate.ts && tsx scripts/bootstrap.ts && tsx scripts/smoke/run-all.ts"
+    "smoke:reset": "tsx scripts/reset_db.ts && tsx src/db/migrate.ts && tsx scripts/bootstrap.ts && tsx scripts/smoke/run-all.ts",
+    "import:trendyol": "tsx scripts/import-trendyol-products.ts"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -19,7 +20,8 @@
     "express": "^4.21.2",
     "express-rate-limit": "^8.5.0",
     "pg": "^8.13.1",
-    "web-push": "^3.6.7"
+    "web-push": "^3.6.7",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",

@@ -4,6 +4,7 @@ import { Router } from "express";
 import {
   createStudent,
   getStudentById,
+  getStudentSummary,
   getStudentsKpi,
   listDebtors,
   listStudents,
@@ -60,11 +61,27 @@ studentsRouter.get("/", async (_req, res) => {
 });
 
 // GET /students/:id
+// Detail endpoint dönüşü öğrencinin kişisel kaydının üstüne `summary` alanı
+// koyar (lesson_debt, product_debt, active_credit_value, remaining_credits).
+// Mobil profil sayfası tek call'la başlık + finansal özeti çizebilsin diye.
 studentsRouter.get("/:id", async (req, res) => {
   try {
     const id = parseId(req.params.id);
-    const data = await getStudentById(id);
-    res.json({ data });
+    const [student, summary] = await Promise.all([
+      getStudentById(id),
+      getStudentSummary(id),
+    ]);
+    res.json({
+      data: {
+        ...student,
+        summary: {
+          lesson_debt: summary.lesson_debt,
+          product_debt: summary.product_debt,
+          active_credit_value: summary.active_credit_value,
+          remaining_credits: summary.remaining_credits,
+        },
+      },
+    });
   } catch (err) {
     sendError(res, err);
   }

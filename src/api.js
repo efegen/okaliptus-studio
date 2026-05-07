@@ -243,6 +243,21 @@ export async function createStudent(input) {
   return ensureMutationResult(payload, 'Öğrenci oluşturulamadı.');
 }
 
+export async function updateStudent(studentId, input) {
+  const payload = await apiRequest(`/students/${encodeURIComponent(studentId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+  return ensureMutationResult(payload, 'Öğrenci güncellenemedi.');
+}
+
+export async function deleteStudent(studentId) {
+  const payload = await apiRequest(`/students/${encodeURIComponent(studentId)}`, {
+    method: 'DELETE',
+  });
+  return ensureMutationResult(payload, 'Öğrenci silinemedi.');
+}
+
 // ─── Payments ───────────────────────────────────────────────────────────────
 
 function ensureMutationResult(payload, fallbackMessage) {
@@ -291,10 +306,19 @@ export async function createLesson({
   return ensureMutationResult(payload, "Ders oluşturulamadı.");
 }
 
-export async function createProductSaleApi({ studentId, soldAt, totalAmount, note, lessonId }) {
+// items[] verildiğinde server total'i hesaplar; verilmezse legacy mod
+// (totalAmount + note) çalışır. Sepet (cart) tabanlı UI items[] kullanır.
+// Item şekli: { productId | (name + unitPrice), quantity }
+export async function createProductSaleApi({ studentId, soldAt, totalAmount, note, lessonId, items }) {
+  const body = { studentId, soldAt, note, lessonId: lessonId ?? null };
+  if (items && items.length > 0) {
+    body.items = items;
+  } else {
+    body.totalAmount = totalAmount;
+  }
   const payload = await apiRequest("/product-sales", {
     method: "POST",
-    body: JSON.stringify({ studentId, soldAt, totalAmount, note, lessonId: lessonId ?? null }),
+    body: JSON.stringify(body),
   });
   return ensureMutationResult(payload, "Ürün satışı oluşturulamadı.");
 }
@@ -462,6 +486,109 @@ export async function getAuditUsers() {
   const payload = await apiGet("/audit-logs/users");
   if (!Array.isArray(payload?.data)) throw new Error("Kullanıcı listesi alınamadı.");
   return payload.data;
+}
+
+// ─── Products (catalog) ─────────────────────────────────────────────────────
+
+export async function getProducts({ search, includeArchived = false, category } = {}) {
+  const params = new URLSearchParams();
+  if (search) params.set("search", search);
+  if (includeArchived) params.set("includeArchived", "true");
+  if (category) params.set("category", category);
+  const qs = params.toString();
+  const payload = await apiGet(`/products${qs ? `?${qs}` : ""}`);
+  if (!Array.isArray(payload?.data)) throw new Error("Ürün listesi alınamadı.");
+  return payload.data;
+}
+
+export async function getProductCategories() {
+  const payload = await apiGet("/products/categories");
+  if (!Array.isArray(payload?.data)) throw new Error("Kategori listesi alınamadı.");
+  return payload.data;
+}
+
+export async function getProductById(productId) {
+  const payload = await apiGet(`/products/${encodeURIComponent(productId)}`);
+  if (typeof payload?.data !== "object" || payload.data === null || Array.isArray(payload.data)) {
+    throw new Error("Ürün bilgisi alınamadı.");
+  }
+  return payload.data;
+}
+
+export async function createProduct(input) {
+  const payload = await apiRequest("/products", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return ensureMutationResult(payload, "Ürün oluşturulamadı.");
+}
+
+export async function updateProduct(productId, patch) {
+  const payload = await apiRequest(`/products/${encodeURIComponent(productId)}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+  return ensureMutationResult(payload, "Ürün güncellenemedi.");
+}
+
+export async function archiveProduct(productId) {
+  const payload = await apiRequest(`/products/${encodeURIComponent(productId)}/archive`, {
+    method: "POST",
+  });
+  return ensureMutationResult(payload, "Ürün arşivlenemedi.");
+}
+
+export async function unarchiveProduct(productId) {
+  const payload = await apiRequest(`/products/${encodeURIComponent(productId)}/unarchive`, {
+    method: "POST",
+  });
+  return ensureMutationResult(payload, "Ürün arşivden çıkarılamadı.");
+}
+
+export async function bulkArchiveProducts(ids) {
+  const payload = await apiRequest("/products/bulk/archive", {
+    method: "POST",
+    body: JSON.stringify({ ids }),
+  });
+  return ensureMutationResult(payload, "Toplu arşivleme başarısız.");
+}
+
+export async function bulkUnarchiveProducts(ids) {
+  const payload = await apiRequest("/products/bulk/unarchive", {
+    method: "POST",
+    body: JSON.stringify({ ids }),
+  });
+  return ensureMutationResult(payload, "Toplu arşivden çıkarma başarısız.");
+}
+
+// category=null veya '' gönderildiğinde seçili ürünlerin kategorisi temizlenir.
+export async function bulkSetProductCategory(ids, category) {
+  const payload = await apiRequest("/products/bulk/category", {
+    method: "POST",
+    body: JSON.stringify({ ids, category: category ?? null }),
+  });
+  return ensureMutationResult(payload, "Toplu kategori değişimi başarısız.");
+}
+
+// mode: 'set' | 'add' | 'multiply'
+//   set: value = yeni sabit fiyat (₺)
+//   add: value = ekle/çıkar (negatif olabilir, ₺)
+//   multiply: value = yüzde delta (10 = +%10, -5 = -%5)
+export async function bulkUpdateProductPrice(ids, mode, value) {
+  const payload = await apiRequest("/products/bulk/price", {
+    method: "POST",
+    body: JSON.stringify({ ids, mode, value }),
+  });
+  return ensureMutationResult(payload, "Toplu fiyat güncellemesi başarısız.");
+}
+
+// from'a sahip tüm ürünlerin category alanını to ile değiştirir. to=null → temizler.
+export async function renameProductCategory(from, to) {
+  const payload = await apiRequest("/products/categories/rename", {
+    method: "POST",
+    body: JSON.stringify({ from, to: to ?? null }),
+  });
+  return ensureMutationResult(payload, "Kategori yeniden adlandırılamadı.");
 }
 
 export async function uncompleteLesson(lessonId) {

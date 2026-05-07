@@ -10,6 +10,7 @@ import { StudentsPage } from './students';
 import { StudentProfilePage } from './student-profile';
 import { SettingsPage } from './settings';
 import { CatalogPage } from './catalog';
+import { ProductsPage } from './products';
 import { LoginPage } from './login';
 import { getSettings, getMe, logout as apiLogout } from './api';
 import { useIsMobile } from './mobile/useIsMobile';
@@ -86,6 +87,7 @@ function App({ currentUser, onLogout }) {
           studentDetailId={studentDetailId}
           setStudentDetailId={setStudentDetailId}
           currentUser={currentUser}
+          onLogout={onLogout}
         />
       </div>
     );
@@ -107,6 +109,7 @@ function App({ currentUser, onLogout }) {
               : <StudentsPage onOpenStudent={setStudentDetailId} />
           )}
           {page === "catalog" && <CatalogPage />}
+          {page === "products" && <ProductsPage />}
           {page === "settings" && <SettingsPage />}
         </main>
       </div>

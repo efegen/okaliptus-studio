@@ -29,7 +29,7 @@ function getWeekStart(date) {
   return monday;
 }
 
-export function MobileWeekCalendar() {
+export function MobileWeekCalendar({ selectedISO: controlledISO, onSelect }) {
   const today = useMemo(getIstanbulToday, []);
   const todayISO = toISODate(today);
 
@@ -46,7 +46,9 @@ export function MobileWeekCalendar() {
     });
   }, [today]);
 
-  const [selectedISO, setSelectedISO] = useState(todayISO);
+  const [internalISO, setInternalISO] = useState(todayISO);
+  const selectedISO = controlledISO ?? internalISO;
+  const handleSelect = onSelect ?? setInternalISO;
 
   return (
     <section className="mobile-week-calendar" aria-label="Haftalık takvim">
@@ -58,7 +60,7 @@ export function MobileWeekCalendar() {
             key={day.iso}
             type="button"
             className={`mobile-week-day${isSelected ? ' selected' : ''}${isToday ? ' today' : ''}`}
-            onClick={() => setSelectedISO(day.iso)}
+            onClick={() => handleSelect(day.iso)}
             aria-pressed={isSelected}
           >
             <span className="mobile-week-day-label">{day.label}</span>

@@ -1,4 +1,12 @@
 // Ref: §3.4, §2.1
+//
+// v1.6: Sepet (cart) desteği. createProductSale artık opsiyonel `items` dizisi
+// kabul eder. items verildiğinde:
+//   - total_amount server-side hesaplanır (SUM(line_total))
+//   - product_sale_items tablosuna her kalem yazılır
+//   - Katalog ürünü için name/unit_price snapshot alınır (rapor immutable)
+// items verilmediğinde eski davranış: client'ın gönderdiği totalAmount + note.
+// Ders tamamlama akışı (lessons.service.ts) hâlâ totalAmount-only modda çalışır.
 
 import type { PoolClient } from "pg";
 
@@ -13,9 +21,12 @@ import {
   toServiceError,
 } from "./errors.js";
 import {
+  centsToMoney,
   insertAuditLog,
+  moneyToCents,
   normalizeMoneyInput,
   normalizeOptionalText,
+  normalizeRequiredText,
   rollbackQuietly,
   type EntityId,
   type MoneyInput,
@@ -45,6 +56,21 @@ type ProductSaleBalanceRow = {
   remaining_receivable: string;
 };
 
+export type ProductSaleItemRow = {
+  id: string;
+  sale_id: string;
+  product_id: string | null;
+  name_snapshot: string;
+  unit_price_snapshot: string;
+  quantity: number;
+  line_total: string;
+  created_at: string;
+};
+
+export type ProductSaleWithItems = ProductSaleBalanceRow & {
+  items: ProductSaleItemRow[];
+};
+
 type StudentRow = {
   id: string;
   currency: string;
@@ -57,10 +83,25 @@ type LessonOwnershipRow = {
   deleted_at: string | null;
 };
 
+type ProductCatalogRow = {
+  id: string;
+  name: string;
+  price: string;
+  archived_at: string | null;
+};
+
+export type CreateProductSaleItemInput = {
+  productId?: EntityId | null;
+  name?: string | null;
+  unitPrice?: MoneyInput;
+  quantity: number;
+};
+
 export type CreateProductSaleInput = {
   studentId: EntityId;
   soldAt: string;
-  totalAmount: MoneyInput;
+  totalAmount?: MoneyInput;
+  items?: CreateProductSaleItemInput[];
   note?: string | null;
   // Opsiyonel: ders tamamlama akışında verilen sale'i o derse bağlar.
   // NULL bırakılırsa standalone (ders dışı) satıştır.
@@ -76,7 +117,7 @@ export type UpdateProductSaleInput = {
 
 export async function getProductSaleById(
   productSaleId: EntityId,
-): Promise<ProductSaleBalanceRow> {
+): Promise<ProductSaleWithItems> {
   const result = await pool.query<ProductSaleBalanceRow>(
     `SELECT * FROM v_product_sale_balances WHERE product_sale_id = $1`,
     [productSaleId],
@@ -84,19 +125,143 @@ export async function getProductSaleById(
 
   const sale = result.rows[0];
   if (!sale) throw new ProductSaleNotFoundError();
-  return sale;
+
+  const items = await fetchSaleItems([sale.product_sale_id]);
+  return { ...sale, items: items.get(sale.product_sale_id) ?? [] };
 }
 
 export async function listProductSalesForStudent(
   studentId: EntityId,
-): Promise<ProductSaleBalanceRow[]> {
+): Promise<ProductSaleWithItems[]> {
   const result = await pool.query<ProductSaleBalanceRow>(
     `SELECT * FROM v_product_sale_balances
      WHERE student_id = $1
      ORDER BY sold_at DESC, product_sale_id DESC`,
     [studentId],
   );
-  return result.rows;
+  if (result.rows.length === 0) return [];
+
+  const ids = result.rows.map(r => r.product_sale_id);
+  const items = await fetchSaleItems(ids);
+  return result.rows.map(row => ({
+    ...row,
+    items: items.get(row.product_sale_id) ?? [],
+  }));
+}
+
+async function fetchSaleItems(
+  saleIds: string[],
+): Promise<Map<string, ProductSaleItemRow[]>> {
+  const map = new Map<string, ProductSaleItemRow[]>();
+  if (saleIds.length === 0) return map;
+
+  const result = await pool.query<ProductSaleItemRow>(
+    `SELECT id, sale_id, product_id, name_snapshot, unit_price_snapshot, quantity, line_total, created_at
+       FROM product_sale_items
+      WHERE sale_id = ANY($1::bigint[])
+      ORDER BY id ASC`,
+    [saleIds],
+  );
+
+  for (const row of result.rows) {
+    const list = map.get(row.sale_id);
+    if (list) list.push(row);
+    else map.set(row.sale_id, [row]);
+  }
+  return map;
+}
+
+// Sepet kalemlerini normalize eder, katalog ürünleri için snapshot alır,
+// hem total amount'u (string) hem de DB insert için hazır kalemleri döner.
+type ResolvedItem = {
+  productId: string | null;
+  nameSnapshot: string;
+  unitPriceSnapshot: string;
+  quantity: number;
+  lineTotal: string;
+};
+
+async function resolveItems(
+  client: PoolClient,
+  items: CreateProductSaleItemInput[],
+): Promise<{ resolved: ResolvedItem[]; total: string }> {
+  if (items.length === 0) {
+    throw new ValidationError("En az bir ürün kalemi gerekli.");
+  }
+
+  const productIds = items
+    .map(it => it.productId)
+    .filter((id): id is EntityId => id !== undefined && id !== null && id !== "");
+
+  const productMap = new Map<string, ProductCatalogRow>();
+  if (productIds.length > 0) {
+    const result = await client.query<ProductCatalogRow>(
+      `SELECT id, name, price, archived_at
+         FROM products
+        WHERE id = ANY($1::bigint[])
+        FOR SHARE`,
+      [productIds],
+    );
+    for (const row of result.rows) productMap.set(row.id, row);
+  }
+
+  const resolved: ResolvedItem[] = [];
+  let totalCents = 0n;
+
+  for (const item of items) {
+    if (!Number.isInteger(item.quantity) || item.quantity <= 0) {
+      throw new ValidationError("Adet pozitif tam sayı olmalı.");
+    }
+
+    let productId: string | null = null;
+    let name: string;
+    let unitPrice: string;
+
+    if (item.productId !== undefined && item.productId !== null && item.productId !== "") {
+      const product = productMap.get(String(item.productId));
+      if (!product) {
+        throw new ValidationError(`Ürün bulunamadı (id=${item.productId}).`);
+      }
+      if (product.archived_at !== null) {
+        throw new ValidationError(`Arşivlenmiş ürün satılamaz: ${product.name}`);
+      }
+      productId = product.id;
+      name = product.name;
+      unitPrice = product.price;
+    } else {
+      // Serbest kalem (katalog dışı) — name + unitPrice client'tan zorunlu.
+      if (item.name === undefined || item.name === null) {
+        throw new ValidationError("Katalog dışı kalem için isim zorunlu.");
+      }
+      if (item.unitPrice === undefined || item.unitPrice === null) {
+        throw new ValidationError("Katalog dışı kalem için birim fiyat zorunlu.");
+      }
+      name = normalizeRequiredText(String(item.name), "name");
+      unitPrice = normalizeMoneyInput(item.unitPrice, "unitPrice");
+    }
+
+    const unitCents = moneyToCents(unitPrice, "unitPrice");
+    const lineCents = unitCents * BigInt(item.quantity);
+    if (lineCents <= 0n) {
+      throw new ValidationError("Satır toplamı sıfırdan büyük olmalı.");
+    }
+    const lineTotal = centsToMoney(lineCents);
+    totalCents += lineCents;
+
+    resolved.push({
+      productId,
+      nameSnapshot: name,
+      unitPriceSnapshot: centsToMoney(unitCents),
+      quantity: item.quantity,
+      lineTotal,
+    });
+  }
+
+  if (totalCents <= 0n) {
+    throw new ValidationError("Toplam tutar sıfırdan büyük olmalı.");
+  }
+
+  return { resolved, total: centsToMoney(totalCents) };
 }
 
 // Halihazırda açık bir transaction içinden çağrılır (örn. completeLesson). Kendi
@@ -106,8 +271,6 @@ export async function createProductSaleWithClient(
   client: PoolClient,
   input: CreateProductSaleInput,
 ): Promise<ProductSaleRow> {
-  const totalAmount = normalizeMoneyInput(input.totalAmount, "totalAmount");
-
   const studentResult = await client.query<StudentRow>(
     `SELECT id, currency, deleted_at FROM students WHERE id = $1 FOR UPDATE`,
     [input.studentId],
@@ -135,6 +298,22 @@ export async function createProductSaleWithClient(
     lessonIdParam = String(lesson.id);
   }
 
+  // İki mod: (a) items[] verildi → server-side hesapla, kalemler insert. (b) Geriye
+  // dönük uyum: items yok, totalAmount geldi → tek satır toplam, kalem yok.
+  let resolvedItems: ResolvedItem[] = [];
+  let totalAmount: string;
+
+  if (input.items && input.items.length > 0) {
+    const result = await resolveItems(client, input.items);
+    resolvedItems = result.resolved;
+    totalAmount = result.total;
+  } else {
+    if (input.totalAmount === undefined || input.totalAmount === null) {
+      throw new ValidationError("totalAmount veya items[] gerekli.");
+    }
+    totalAmount = normalizeMoneyInput(input.totalAmount, "totalAmount");
+  }
+
   const insertResult = await client.query<ProductSaleRow>(
     `INSERT INTO product_sales (student_id, lesson_id, sold_at, total_amount, currency, note)
      VALUES ($1, $2, $3, $4, $5, $6)
@@ -150,11 +329,27 @@ export async function createProductSaleWithClient(
   );
   const sale = insertResult.rows[0];
 
+  for (const item of resolvedItems) {
+    await client.query(
+      `INSERT INTO product_sale_items (
+         sale_id, product_id, name_snapshot, unit_price_snapshot, quantity, line_total
+       ) VALUES ($1, $2, $3, $4, $5, $6)`,
+      [
+        sale.id,
+        item.productId,
+        item.nameSnapshot,
+        item.unitPriceSnapshot,
+        item.quantity,
+        item.lineTotal,
+      ],
+    );
+  }
+
   await insertAuditLog(client, {
     action: "product_sale_created",
     entityType: "product_sale",
     entityId: sale.id,
-    after: sale,
+    after: { ...sale, items: resolvedItems },
     actorUserId: input.actorUserId ?? null,
   });
 

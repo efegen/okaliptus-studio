@@ -1,6 +1,6 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
-import { createStudent } from '../api';
+import { useUpdateStudent } from '../hooks/useStudent';
 import { formatPhoneTr, todayIso, previewInitials } from './shared/studentMeta';
 
 function getMobilePaletteRoot() {
@@ -11,13 +11,7 @@ function getMobilePaletteRoot() {
 function ChevronLeftIcon({ size = 22 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path
-        d="M15 6l-6 6 6 6"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+      <path d="M15 6l-6 6 6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -34,12 +28,7 @@ function PersonIcon({ size = 28 }) {
 function OnsiteIcon({ size = 14 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <path
-        d="M2.5 7L8 2l5.5 5v6.5h-3.5V9.5h-4V13.5H2.5V7z"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        strokeLinejoin="round"
-      />
+      <path d="M2.5 7L8 2l5.5 5v6.5h-3.5V9.5h-4V13.5H2.5V7z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -57,12 +46,7 @@ function UnsetIcon({ size = 14 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true">
       <circle cx="8" cy="8" r="5.5" stroke="currentColor" strokeWidth="1.4" />
-      <path
-        d="M6 7c.2-1.3 1-2 2-2 1.2 0 2 .7 2 1.8 0 1-.5 1.5-1.5 2M8 10.8v.2"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        strokeLinecap="round"
-      />
+      <path d="M6 7c.2-1.3 1-2 2-2 1.2 0 2 .7 2 1.8 0 1-.5 1.5-1.5 2M8 10.8v.2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
     </svg>
   );
 }
@@ -108,15 +92,17 @@ function Row({ label, children, last }) {
   );
 }
 
-export function MobileCreateStudentPage({ onClose, onCreated }) {
-  const [fullName, setFullName] = React.useState('');
-  const [nickname, setNickname] = React.useState('');
-  const [phone, setPhone] = React.useState('');
-  const [email, setEmail] = React.useState('');
-  const [birthday, setBirthday] = React.useState('');
-  const [joinedAt, setJoinedAt] = React.useState(todayIso());
-  const [preferredMode, setPreferredMode] = React.useState(null);
-  const [note, setNote] = React.useState('');
+export function MobileEditStudentPage({ student, onClose, onSaved }) {
+  const updateMutation = useUpdateStudent(student.id);
+
+  const [fullName, setFullName] = React.useState(student.full_name || '');
+  const [nickname, setNickname] = React.useState(student.nickname || '');
+  const [phone, setPhone] = React.useState(student.phone ? formatPhoneTr(student.phone) : '');
+  const [email, setEmail] = React.useState(student.email || '');
+  const [birthday, setBirthday] = React.useState(student.birthday || '');
+  const [joinedAt, setJoinedAt] = React.useState(student.joined_at || '');
+  const [preferredMode, setPreferredMode] = React.useState(student.preferred_mode ?? null);
+  const [note, setNote] = React.useState(student.note || '');
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState(null);
   const [nameTouched, setNameTouched] = React.useState(false);
@@ -150,7 +136,7 @@ export function MobileCreateStudentPage({ onClose, onCreated }) {
     setSubmitting(true);
     setError(null);
     try {
-      const created = await createStudent({
+      await updateMutation.mutateAsync({
         fullName: trimmedName,
         nickname: trimmedNickname || null,
         preferredMode,
@@ -160,9 +146,9 @@ export function MobileCreateStudentPage({ onClose, onCreated }) {
         joinedAt: joinedAt || null,
         note: note.trim() || null,
       });
-      await onCreated(created);
+      onSaved?.();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Öğrenci oluşturulamadı.');
+      setError(err instanceof Error ? err.message : 'Güncellenemedi.');
       setSubmitting(false);
     }
   }
@@ -170,7 +156,7 @@ export function MobileCreateStudentPage({ onClose, onCreated }) {
   const portalRoot = getMobilePaletteRoot();
 
   const content = (
-    <div className="mobile-cstudent-page" role="dialog" aria-modal="true" aria-labelledby="cstudent-title">
+    <div className="mobile-cstudent-page" role="dialog" aria-modal="true" aria-labelledby="estudent-title">
       <header className="mobile-cstudent-topbar">
         <button
           type="button"
@@ -181,7 +167,7 @@ export function MobileCreateStudentPage({ onClose, onCreated }) {
         >
           <ChevronLeftIcon />
         </button>
-        <h1 id="cstudent-title" className="mobile-cstudent-topbar-title">Yeni öğrenci</h1>
+        <h1 id="estudent-title" className="mobile-cstudent-topbar-title">Öğrenciyi düzenle</h1>
         <div className="mobile-cstudent-topbar-spacer" />
       </header>
 
@@ -294,7 +280,7 @@ export function MobileCreateStudentPage({ onClose, onCreated }) {
             className="mobile-cstudent-btn-primary"
             disabled={!canSubmit}
           >
-            {submitting ? 'Ekleniyor…' : 'Öğrenciyi ekle'}
+            {submitting ? 'Kaydediliyor…' : 'Değişiklikleri kaydet'}
           </button>
         </footer>
       </form>
