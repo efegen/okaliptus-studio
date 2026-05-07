@@ -12,7 +12,8 @@
     "smoke": "tsx scripts/smoke/run-all.ts",
     "smoke:single": "tsx scripts/smoke/run-all.ts --only",
     "smoke:reset": "tsx scripts/reset_db.ts && tsx src/db/migrate.ts && tsx scripts/bootstrap.ts && tsx scripts/smoke/run-all.ts",
-    "import:trendyol": "tsx scripts/import-trendyol-products.ts"
+    "import:trendyol": "tsx scripts/import-trendyol-products.ts",
+    "archive:zero-stock": "tsx scripts/archive-zero-stock.ts"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

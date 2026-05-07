@@ -37,47 +37,6 @@ function NumInput({ value, onChange, min = 0, max, unit }) {
   );
 }
 
-function ModeToggle({ value, onChange }) {
-  return (
-    <div className="mode-seg">
-      <button
-        type="button"
-        className={'mode-btn' + (value === 'onsite' ? ' is-on' : '')}
-        onClick={() => onChange('onsite')}
-      >
-        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-          <path d="M2.5 7L8 2l5.5 5v6.5h-3.5V9.5h-4V13.5H2.5V7z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/>
-        </svg>
-        Yüzyüze
-      </button>
-      <button
-        type="button"
-        className={'mode-btn' + (value === 'online' ? ' is-on' : '')}
-        onClick={() => onChange('online')}
-      >
-        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-          <rect x="1.5" y="3" width="13" height="8.5" rx="1.5" stroke="currentColor" strokeWidth="1.4"/>
-          <path d="M5.5 14h5M8 11.5V14" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
-        </svg>
-        Online
-      </button>
-    </div>
-  );
-}
-
-function CheckToggle({ checked, onChange, label }) {
-  return (
-    <label className="stg-check">
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={e => onChange(e.target.checked)}
-      />
-      <span>{label}</span>
-    </label>
-  );
-}
-
 function SettingRow({ label, children, info, top }) {
   return (
     <div className={'stg-row' + (top ? ' stg-row-top' : '')}>
@@ -189,9 +148,6 @@ export function SettingsPage() {
       form.weeklyCapacity !== saved.weeklyCapacity ||
       form.calendarStartHour !== saved.calendarStartHour ||
       form.calendarEndHour !== saved.calendarEndHour ||
-      form.defaultLessonMode !== saved.defaultLessonMode ||
-      form.paymentMethodCash !== saved.paymentMethodCash ||
-      form.paymentMethodIban !== saved.paymentMethodIban ||
       form.lessonColorSaturation !== saved.lessonColorSaturation
     );
   }, [saved, form]);
@@ -216,9 +172,6 @@ export function SettingsPage() {
         weeklyCapacity: form.weeklyCapacity,
         calendarStartHour: form.calendarStartHour,
         calendarEndHour: form.calendarEndHour,
-        defaultLessonMode: form.defaultLessonMode,
-        paymentMethodCash: form.paymentMethodCash,
-        paymentMethodIban: form.paymentMethodIban,
         lessonColorSaturation: form.lessonColorSaturation,
       });
       savedSatRef.current = updated.lessonColorSaturation ?? 1;
@@ -316,15 +269,6 @@ export function SettingsPage() {
           </SettingRow>
         </Section>
 
-        <Section title="Dersler">
-          <SettingRow label="Varsayılan ders modu">
-            <ModeToggle
-              value={form.defaultLessonMode}
-              onChange={v => set('defaultLessonMode', v)}
-            />
-          </SettingRow>
-        </Section>
-
         <Section title="Görünüm">
           <SettingRow label="Ders rengi doygunluğu" top>
             <SatSlider
@@ -332,26 +276,6 @@ export function SettingsPage() {
               onChange={v => set('lessonColorSaturation', v)}
               onReset={() => set('lessonColorSaturation', 1)}
             />
-          </SettingRow>
-        </Section>
-
-        <Section title="Finans">
-          <SettingRow label="Para birimi" info="TRY · v1 sabit">
-          </SettingRow>
-
-          <SettingRow label="Aktif ödeme yöntemleri">
-            <div className="stg-checks">
-              <CheckToggle
-                checked={form.paymentMethodCash}
-                onChange={v => set('paymentMethodCash', v)}
-                label="Nakit"
-              />
-              <CheckToggle
-                checked={form.paymentMethodIban}
-                onChange={v => set('paymentMethodIban', v)}
-                label="IBAN"
-              />
-            </div>
           </SettingRow>
         </Section>
 

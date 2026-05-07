@@ -93,6 +93,12 @@ input, select { font-family: inherit; }
   top: 0;
   height: 100vh;
   align-items: center;
+  /* sticky already creates a stacking context but with z-index:auto the
+     sidebar paints below later siblings (the main content) — so .nav-tip
+     tooltips that extend into the main column got covered by KPI cards.
+     Explicit z-index lifts the whole sidebar context above main without
+     reaching the header (z:30) or popovers (z:100+). */
+  z-index: 20;
 }
 .brand-mark {
   width: 40px; height: 40px;
@@ -5068,6 +5074,16 @@ input, select { font-family: inherit; }
   align-items: center;
   flex-wrap: wrap;
 }
+
+/* Search lives in the toolbar (next to the category/sort dropdowns) instead
+   of the page head. Slightly tighter than the default .page-search so its
+   height visually matches the .prod-select dropdowns beside it. */
+.prod-toolbar-search {
+  min-width: 260px;
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+.prod-toolbar-search input { font-size: 12.5px; }
 
 .prod-tr-group {
   background: color-mix(in oklch, var(--accent-2) 20%, var(--surface));

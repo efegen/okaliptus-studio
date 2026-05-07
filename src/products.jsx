@@ -1376,15 +1376,6 @@ export function ProductsPage() {
           </div>
         </div>
         <div className="head-actions">
-          <label className="page-search">
-            <Icon.Search width="15" height="15" />
-            <input
-              value={query}
-              onChange={e => setQuery(e.target.value)}
-              placeholder="Ad, model kodu, barkod, varyant, not..."
-              aria-label="Ürün ara"
-            />
-          </label>
           <button className="btn btn-primary" onClick={() => setModal('new')}>
             <Icon.Plus width="14" height="14" />
             Yeni ürün
@@ -1411,6 +1402,15 @@ export function ProductsPage() {
           ))}
         </div>
         <div className="prod-toolbar-right">
+          <label className="page-search prod-toolbar-search">
+            <Icon.Search width="14" height="14" />
+            <input
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              placeholder="Ad, model kodu, barkod, varyant, not..."
+              aria-label="Ürün ara"
+            />
+          </label>
           {categories.length > 0 && (
             <div className="prod-select" role="group">
               <span className="prod-select-icon" aria-hidden="true">
