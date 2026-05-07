@@ -4485,7 +4485,9 @@
 .mobile-psale-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
+  grid-auto-rows: 1fr;
   gap: 12px;
+  align-items: stretch;
 }
 .mobile-psale-grid-cell {
   display: flex;
@@ -4583,6 +4585,7 @@
   font-weight: 600;
   line-height: 1.25;
   color: var(--ink);
+  min-height: 2.5em;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -5015,14 +5018,360 @@
   min-height: 50px;
   border: 0;
   border-radius: 12px;
-  background: var(--accent);
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-hover) 100%);
   color: var(--surface);
   font-size: 16px;
   font-weight: 600;
+  box-shadow: 0 1px 2px oklch(0.2 0.02 60 / 0.08), 0 0 0 1px oklch(1 0 0 / 0.06) inset;
+  letter-spacing: 0.01em;
   cursor: pointer;
 }
 .mobile-psale-co-submit:disabled {
-  opacity: 0.45;
+  background: var(--surface-2);
+  color: var(--ink-3);
+  box-shadow: none;
+  opacity: 1;
   cursor: not-allowed;
+}
+
+/* ─── Confirm sheet (mobile) ────────────────────────────────────────────── */
+
+.mobile-psale-confirm-content {
+  background: var(--surface);
+}
+
+.mobile-psale-confirm-head {
+  flex: 0 0 auto;
+  padding: 4px 18px 16px;
+  text-align: center;
+  border-bottom: 1px solid var(--line);
+}
+.mobile-psale-confirm-sub {
+  margin-top: 6px;
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+.mobile-psale-confirm-dot { color: var(--ink-4); }
+.mobile-psale-confirm-sub-total {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--accent-ink);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+.mobile-psale-confirm-body {
+  flex: 0 0 auto;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mobile-psale-confirm-option {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 14px 14px;
+  border: 1px solid var(--ink-4);
+  border-radius: 14px;
+  background: var(--surface);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 100ms ease, background 100ms ease, transform 80ms ease;
+}
+.mobile-psale-confirm-option:active:not(:disabled) {
+  transform: scale(0.99);
+  background: var(--accent-2);
+  border-color: var(--accent);
+}
+.mobile-psale-confirm-option:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.mobile-psale-confirm-option-icon {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--ink-2);
+  flex-shrink: 0;
+}
+.mobile-psale-confirm-option-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.mobile-psale-confirm-option-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.mobile-psale-confirm-option-sub {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.mobile-psale-confirm-footer {
+  flex: 0 0 auto;
+  padding: 12px 16px calc(16px + env(safe-area-inset-bottom));
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  border-top: 1px solid var(--line);
+  background: var(--bg);
+}
+.mobile-psale-confirm-footer-back {
+  justify-content: flex-start;
+}
+.mobile-psale-confirm-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Payment form */
+.mobile-psale-pay-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.mobile-psale-pay-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+  color: var(--ink-3);
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.mobile-psale-pay-label-hint {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 500;
+  font-size: 11px;
+  color: var(--ink-4);
+}
+.mobile-psale-pay-source {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 4px;
+  background: var(--surface-2);
+  border-radius: 12px;
+}
+.mobile-psale-pay-source-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 40px;
+  border: none;
+  background: transparent;
+  border-radius: 9px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-3);
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, box-shadow 120ms ease;
+}
+.mobile-psale-pay-source-btn.is-active {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 1px 2px oklch(0.2 0.02 60 / 0.08);
+}
+.mobile-psale-pay-amount-wrap {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+}
+.mobile-psale-pay-amount {
+  flex: 1;
+  border: 1px solid var(--ink-4);
+  border-radius: 12px;
+  padding: 14px 40px 14px 16px;
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--ink);
+  background: var(--surface);
+  outline: none;
+  letter-spacing: -0.01em;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+.mobile-psale-pay-amount:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-2);
+}
+.mobile-psale-pay-amount::-webkit-outer-spin-button,
+.mobile-psale-pay-amount::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.mobile-psale-pay-amount-suffix {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink-3);
+  pointer-events: none;
+}
+.mobile-psale-pay-hint {
+  font-size: 12px;
+  color: var(--ink-3);
+  font-style: italic;
+}
+
+/* States: submitting / success / error */
+.mobile-psale-confirm-state {
+  flex: 0 0 auto;
+  padding: 28px 20px calc(24px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+}
+
+.mobile-psale-confirm-spinner {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 3px solid var(--line);
+  border-top-color: var(--accent);
+  animation: mobile-psale-spin 0.8s linear infinite;
+}
+@keyframes mobile-psale-spin {
+  to { transform: rotate(360deg); }
+}
+.mobile-psale-confirm-state-msg {
+  margin: 0;
+  font-size: 14px;
+  color: var(--ink-3);
+}
+
+.mobile-psale-confirm-success { padding-top: 22px; }
+.mobile-psale-confirm-check {
+  color: var(--accent);
+  width: 64px;
+  height: 64px;
+  display: grid;
+  place-items: center;
+}
+.mobile-psale-confirm-check-circle {
+  stroke-dasharray: 152;
+  stroke-dashoffset: 152;
+  animation: mobile-psale-stroke 0.5s ease-out forwards;
+}
+.mobile-psale-confirm-check-tick {
+  stroke-dasharray: 50;
+  stroke-dashoffset: 50;
+  animation: mobile-psale-stroke 0.4s ease-out 0.4s forwards;
+}
+@keyframes mobile-psale-stroke {
+  to { stroke-dashoffset: 0; }
+}
+
+.mobile-psale-confirm-success-meta {
+  margin: 4px 0 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+.mobile-psale-confirm-success-meta strong {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+}
+
+.mobile-psale-confirm-status {
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  margin-top: 4px;
+}
+.mobile-psale-confirm-status.is-paid {
+  background: var(--accent-2);
+  color: var(--accent-ink);
+}
+.mobile-psale-confirm-status.is-partial {
+  background: oklch(0.94 0.06 80);
+  color: oklch(0.4 0.1 75);
+}
+.mobile-psale-confirm-status.is-debt {
+  background: var(--surface-2);
+  color: var(--ink-2);
+}
+
+.mobile-psale-confirm-done {
+  margin-top: 14px;
+  width: 100%;
+  min-height: 50px;
+  border: 0;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-hover) 100%);
+  color: var(--surface);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  box-shadow: 0 1px 2px oklch(0.2 0.02 60 / 0.08), 0 0 0 1px oklch(1 0 0 / 0.06) inset;
+  cursor: pointer;
+  transition: filter 120ms ease;
+}
+.mobile-psale-confirm-done:hover:not(:disabled) { filter: brightness(1.05); }
+.mobile-psale-confirm-done:disabled {
+  background: var(--surface-2);
+  color: var(--ink-3);
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+.mobile-psale-confirm-error-icon {
+  width: 56px;
+  height: 56px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: color-mix(in oklch, var(--warn, #c44) 12%, transparent);
+  color: var(--warn, #c44);
+  font-size: 30px;
+  font-weight: 700;
+}
+.mobile-psale-confirm-error-msg {
+  margin: 0;
+  font-size: 13px;
+  padding: 10px 12px;
+  background: color-mix(in oklch, var(--warn, #c44) 12%, transparent);
+  color: var(--warn, #c44);
+  border-radius: 10px;
+  max-width: 100%;
+}
+.mobile-psale-confirm-retry {
+  flex: 1 1 auto;
+  min-height: 46px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--ink);
+  color: var(--surface);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
 }
 

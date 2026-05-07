@@ -274,7 +274,7 @@ function buildActivity({ lessons, packages, productSales }) {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
-export function StudentProfilePage({ studentId, onBack }) {
+export function StudentProfilePage({ studentId, onBack, onOpenSale }) {
   const [loading, setLoading] = React.useState(true);
   const [err, setErr] = React.useState(null);
   const [student, setStudent] = React.useState(null);
@@ -347,6 +347,7 @@ export function StudentProfilePage({ studentId, onBack }) {
       <ProfileHeader
         student={student}
         onPayment={() => setPaymentOpen(true)}
+        onOpenSale={onOpenSale ? () => onOpenSale(student) : undefined}
       />
 
       <FinanceStrip fin={fin} />
@@ -395,7 +396,7 @@ function ProfileBackLink({ onBack }) {
 
 // ─── Identity header ──────────────────────────────────────────────────────────
 
-function ProfileHeader({ student, onPayment }) {
+function ProfileHeader({ student, onPayment, onOpenSale }) {
   const modeMeta = student.preferred_mode === 'onsite'
     ? { icon: ModeIcon.Onsite, text: 'Yüzyüze tercih' }
     : student.preferred_mode === 'online'
@@ -458,7 +459,14 @@ function ProfileHeader({ student, onPayment }) {
             <Icon.ChevronDown width="14" height="14" />
           </button>
           <div className="sp-more-menu">
-            <button type="button" className="sp-more-item">Ürün satışı ekle</button>
+            <button
+              type="button"
+              className="sp-more-item"
+              onClick={onOpenSale}
+              disabled={!onOpenSale}
+            >
+              Ürün satışı ekle
+            </button>
             <button type="button" className="sp-more-item">Paket oluştur</button>
             <button type="button" className="sp-more-item">Düzenle</button>
             <button type="button" className="sp-more-item sp-more-item-warn">

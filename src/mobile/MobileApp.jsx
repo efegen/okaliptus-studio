@@ -122,11 +122,20 @@ export function MobileApp({
     setPage(studentDetailId ? 'students' : 'home');
   }
 
-  function handleProductSaleCompleted({ count, total }) {
+  function handleProductSaleCompleted({ count, total, paidAmount = 0 }) {
     resetProductSaleState();
     invalidateAfterMutation('sale');
     setPage(studentDetailId ? 'students' : 'home');
-    setToast(`${count} ürün · ${fmtTL(total)} kaydedildi`);
+    const remaining = Math.max(0, total - paidAmount);
+    let toastMsg;
+    if (paidAmount > 0 && remaining <= 0.001) {
+      toastMsg = `Satış kaydedildi · ${fmtTL(total)} tahsil edildi`;
+    } else if (paidAmount > 0) {
+      toastMsg = `Satış kaydedildi · ${fmtTL(paidAmount)} tahsil, ${fmtTL(remaining)} borç`;
+    } else {
+      toastMsg = `Satış kaydedildi · ${fmtTL(total)} borç eklendi`;
+    }
+    setToast(toastMsg);
   }
 
   function invalidateAfterMutation(kind) {

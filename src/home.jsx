@@ -4,7 +4,7 @@ import React from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from './hooks/queryKeys';
 import {
-  STUDENTS, WEEK_SESSIONS, DEBTS, INCOME_HISTORY,
+  STUDENTS, WEEK_SESSIONS, INCOME_HISTORY,
   DAYS_TR, DAYS_TR_SHORT,
   getStudent, fmtTL,
 } from './data';
@@ -12,7 +12,7 @@ import { Icon, Avatar } from './layout';
 import {
   getWeeklyKpi, getWeekLessons, getStudents, getSettings,
   createLesson, completeLessonApi, changeLessonStatusApi, deleteLessonApi,
-  createProductSaleApi, updateProductSaleApi, deleteProductSaleApi, createCashPayment,
+  createCashPayment,
   getInstructors, getLessonTypes,
   getDebtors, getStudentLessons, getStudentProductSales,
 } from './api';
@@ -933,230 +933,6 @@ function StandaloneCreateLessonModal({ onClose, onCreated, defaultMode = 'onsite
               disabled={!selectedStudent || submitting || metaLoading || !instructorId || !lessonTypeId || !dateStr}
             >
               {submitting ? 'Ekleniyor…' : 'Ekle'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-// ─── Quick Sale Modal ────────────────────────────────────────────────────────
-
-function toLocalDatetimeValue(date) {
-  const pad = n => String(n).padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
-
-function QuickSaleModal({ onClose, onCreated }) {
-  const [students, setStudents] = React.useState([]);
-  const [selectedStudent, setSelectedStudent] = React.useState(null);
-  const [query, setQuery] = React.useState('');
-  const [comboOpen, setComboOpen] = React.useState(false);
-  const [comboHighlight, setComboHighlight] = React.useState(0);
-  const [amount, setAmount] = React.useState('');
-  const [saleNote, setSaleNote] = React.useState('');
-  const [soldAt, setSoldAt] = React.useState(() => toLocalDatetimeValue(new Date()));
-  const [submitting, setSubmitting] = React.useState(false);
-  const [fetchError, setFetchError] = React.useState(null);
-  const [submitError, setSubmitError] = React.useState(null);
-  const inputRef = React.useRef(null);
-  const comboRootRef = React.useRef(null);
-
-  React.useEffect(() => {
-    let cancelled = false;
-    getStudents()
-      .then(data => { if (!cancelled) setStudents(data); })
-      .catch(() => { if (!cancelled) setFetchError('Öğrenci listesi alınamadı.'); });
-    return () => { cancelled = true; };
-  }, []);
-
-  React.useEffect(() => {
-    if (!comboOpen) return;
-    function onDocClick(e) {
-      if (comboRootRef.current && !comboRootRef.current.contains(e.target)) setComboOpen(false);
-    }
-    document.addEventListener('mousedown', onDocClick);
-    return () => document.removeEventListener('mousedown', onDocClick);
-  }, [comboOpen]);
-
-  React.useEffect(() => {
-    function onKey(e) { if (e.key === 'Escape' && !submitting) onClose(); }
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [onClose, submitting]);
-
-  const filtered = React.useMemo(() => {
-    if (!query.trim()) return students;
-    const q = query.toLowerCase();
-    const qd = query.replace(/\D/g, '');
-    return students.filter(s =>
-      s.full_name.toLowerCase().includes(q) ||
-      (s.nickname && s.nickname.toLowerCase().includes(q)) ||
-      (qd.length > 0 && s.phone && s.phone.replace(/\D/g, '').includes(qd))
-    );
-  }, [students, query]);
-
-  function selectStudent(s) {
-    setSelectedStudent(s);
-    setQuery('');
-    setComboOpen(false);
-  }
-
-  function clearStudent() {
-    setSelectedStudent(null);
-    setQuery('');
-    setTimeout(() => inputRef.current?.focus(), 0);
-  }
-
-  function handleComboKey(e) {
-    const opts = filtered.slice(0, 8);
-    if (!comboOpen) {
-      if (e.key === 'ArrowDown' || e.key === 'Enter') { e.preventDefault(); setComboOpen(true); setComboHighlight(0); }
-      return;
-    }
-    if (e.key === 'ArrowDown') { e.preventDefault(); setComboHighlight(h => Math.min(h + 1, opts.length - 1)); }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); setComboHighlight(h => Math.max(h - 1, 0)); }
-    else if (e.key === 'Enter') { e.preventDefault(); if (opts[comboHighlight]) selectStudent(opts[comboHighlight]); }
-    else if (e.key === 'Escape') { setComboOpen(false); }
-  }
-
-  async function handleSubmit(e) {
-    e.preventDefault();
-    if (!selectedStudent || !amount || parseFloat(amount) <= 0) return;
-    setSubmitting(true);
-    setSubmitError(null);
-    try {
-      await createProductSaleApi({
-        studentId: Number(selectedStudent.id),
-        soldAt: new Date(soldAt).toISOString(),
-        totalAmount: parseFloat(amount),
-        note: saleNote.trim() || null,
-      });
-      onCreated();
-    } catch (err) {
-      setSubmitError(err.message || 'Ürün satışı kaydedilemedi.');
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal modal-create-lesson" onClick={e => e.stopPropagation()}>
-        <div className="mcl-head">
-          <div className="mcl-title-row">
-            <h3>Ürün satışı</h3>
-            <button type="button" className="mcl-close" onClick={onClose} aria-label="Kapat">
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 2l10 10M12 2L2 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
-            </button>
-          </div>
-        </div>
-
-        {fetchError && <div className="mcl-banner mcl-banner-error">{fetchError}</div>}
-
-        <form onSubmit={handleSubmit} className="mcl-form">
-
-          <div className="form-row">
-            <label>Öğrenci</label>
-            <div className="combo-root" ref={comboRootRef}>
-              {selectedStudent ? (
-                <div className="combo-chosen">
-                  <Avatar name={selectedStudent.full_name} size="xs" soft />
-                  <span className="combo-chosen-name">{selectedStudent.full_name}{selectedStudent.nickname && <span className="combo-opt-nick"> ({selectedStudent.nickname})</span>}</span>
-                  <button type="button" className="combo-clear" onClick={clearStudent} aria-label="Seçimi temizle">
-                    <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M1.5 1.5l8 8M9.5 1.5l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
-                  </button>
-                </div>
-              ) : (
-                <div className="combo-field">
-                  <svg width="13" height="13" viewBox="0 0 16 16" fill="none" className="combo-icon" aria-hidden="true">
-                    <circle cx="6.5" cy="6.5" r="4" stroke="currentColor" strokeWidth="1.35"/>
-                    <path d="M9.5 9.5L13.5 13.5" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round"/>
-                  </svg>
-                  <input
-                    ref={inputRef}
-                    type="text"
-                    className="combo-input"
-                    placeholder="İsim veya telefon ara…"
-                    value={query}
-                    onChange={e => { setQuery(e.target.value); setComboOpen(true); setComboHighlight(0); }}
-                    onFocus={() => setComboOpen(true)}
-                    onKeyDown={handleComboKey}
-                    autoComplete="off"
-                    spellCheck={false}
-                  />
-                </div>
-              )}
-              {comboOpen && !selectedStudent && (
-                <div className="combo-drop">
-                  {students.length === 0 ? (
-                    <div className="combo-hint">Öğrenciler yükleniyor…</div>
-                  ) : filtered.length === 0 ? (
-                    <div className="combo-hint">Sonuç bulunamadı.</div>
-                  ) : (
-                    filtered.slice(0, 8).map((s, i) => (
-                      <button
-                        key={s.id}
-                        type="button"
-                        className={"combo-opt" + (i === comboHighlight ? " is-hi" : "")}
-                        onMouseEnter={() => setComboHighlight(i)}
-                        onMouseDown={e => { e.preventDefault(); selectStudent(s); }}
-                      >
-                        <Avatar name={s.full_name} size="xs" soft />
-                        <span className="combo-opt-name">{s.full_name}{s.nickname && <span className="combo-opt-nick"> ({s.nickname})</span>}</span>
-                      </button>
-                    ))
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="form-row">
-            <label>Tutar (₺)</label>
-            <input
-              type="number"
-              min="0"
-              step="1"
-              value={amount}
-              onChange={e => setAmount(e.target.value)}
-              placeholder="0"
-              required
-            />
-          </div>
-
-          <div className="form-row">
-            <label>Satış tarihi ve saati</label>
-            <input
-              type="datetime-local"
-              value={soldAt}
-              onChange={e => setSoldAt(e.target.value)}
-              required
-            />
-          </div>
-
-          <div className="form-row mcl-note-row">
-            <label>Not <span className="mcl-opt">(opsiyonel)</span></label>
-            <input
-              type="text"
-              value={saleNote}
-              onChange={e => setSaleNote(e.target.value)}
-              placeholder="Ürün adı veya açıklama…"
-            />
-          </div>
-
-          {submitError && (
-            <div className="mcl-banner mcl-banner-error" style={{ marginBottom: 4 }}>{submitError}</div>
-          )}
-
-          <div className="modal-actions">
-            <button type="button" className="btn btn-ghost" onClick={onClose}>Vazgeç</button>
-            <button
-              type="submit"
-              className="btn btn-primary"
-              disabled={!selectedStudent || !amount || parseFloat(amount) <= 0 || submitting}
-            >
-              {submitting ? 'Kaydediliyor…' : 'Kaydet'}
             </button>
           </div>
         </form>
@@ -2533,50 +2309,42 @@ function UpcomingEventsCard() {
     let next = new Date(today.getFullYear(), b.getMonth(), b.getDate());
     if (next < today) next = new Date(today.getFullYear() + 1, b.getMonth(), b.getDate());
     const days = Math.round((next - today) / 86400000);
-    return { student: s, days };
-  }).filter(x => x.days <= 14).sort((a, b) => a.days - b.days);
-
-  const staleDebts = DEBTS.filter(d => {
-    const ref = d.lastContact ? new Date(d.lastContact) : new Date(d.since);
-    return Math.round((today - ref) / 86400000) >= 14;
-  }).slice(0, 2);
-
-  const total = birthdays.length + staleDebts.length;
+    return { student: s, days, next };
+  }).filter(x => x.days <= 15).sort((a, b) => a.days - b.days);
 
   return (
     <div className="card">
       <div className="card-head">
-        <h3 className="card-title">Yaklaşan</h3>
-        {total > 0 && <span className="pill pill-accent">{total} öğe</span>}
+        <h3 className="card-title">Yaklaşan Doğum Günleri</h3>
+        {birthdays.length > 0 && <span className="pill pill-accent">{birthdays.length} kişi</span>}
       </div>
-      {total === 0 ? (
-        <p className="empty">Bu hafta öne çıkan bir şey yok.</p>
+      {birthdays.length === 0 ? (
+        <p className="empty">Önümüzdeki 15 gün içinde doğum günü yok.</p>
       ) : (
-        <div className="events-list">
-          {birthdays.map(({ student: s, days }) => (
-            <div key={s.id} className="event-item">
-              <div className="event-dot event-dot-gold"></div>
-              <div className="event-body">
-                <div className="event-title">{s.name}</div>
-                <div className="event-sub">
-                  {days === 0 ? "Bugün doğum günü!" : `Doğum günü · ${days} gün sonra`}
-                </div>
-              </div>
-              {days <= 3 && <span className="pill pill-warn">yakında</span>}
-            </div>
-          ))}
-          {staleDebts.map((d, i) => {
-            const st = getStudent(d.studentId);
-            const ref = d.lastContact ? new Date(d.lastContact) : new Date(d.since);
-            const daysSince = Math.round((today - ref) / 86400000);
+        <div className="bday-list">
+          {birthdays.map(({ student: s, days, next }) => {
+            const dateLabel = next.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' });
+            const isToday = days === 0;
+            const isTomorrow = days === 1;
+            const pillLabel = isToday ? 'Bugün' : isTomorrow ? 'Yarın' : `${days} gün`;
+            const pillClass = isToday
+              ? 'bday-pill bday-pill-today'
+              : days <= 3 ? 'bday-pill bday-pill-soon' : 'bday-pill';
             return (
-              <div key={i} className="event-item">
-                <div className="event-dot event-dot-warn"></div>
-                <div className="event-body">
-                  <div className="event-title">{st.name}</div>
-                  <div className="event-sub">{fmtTL(d.amount)} · {daysSince}g iletişim yok</div>
+              <div key={s.id} className="bday-item">
+                <div className="bday-icon" aria-hidden="true">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                    <path d="M8 2.2v1.6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+                    <circle cx="8" cy="1.9" r="0.7" fill="currentColor"/>
+                    <rect x="2.5" y="6.5" width="11" height="6.5" rx="1.3" stroke="currentColor" strokeWidth="1.3"/>
+                    <path d="M2.5 9.4c1.1.9 2 .9 3 0s2-.9 3 0 1.9.9 3 0 1-.4 1-.4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
                 </div>
-                <button className="event-action">Ara</button>
+                <div className="bday-body">
+                  <div className="bday-name">{s.name}</div>
+                  <div className="bday-date">{dateLabel}</div>
+                </div>
+                <span className={pillClass}>{pillLabel}</span>
               </div>
             );
           })}
@@ -2607,7 +2375,7 @@ function QuickActions({ defaultLessonMode = 'onsite', activePaymentMethods = { c
         </div>
       </button>
 
-      <button className="qa-btn qa-btn-gold" onClick={() => setModal('sale')}>
+      <button className="qa-btn qa-btn-gold" onClick={() => onNavigate?.('product-sale')}>
         <div className="qa-icon">
           <svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden="true">
             <path d="M1.5 2h2.2l2.3 7h6l1.5-4.5H5.5" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round"/>
@@ -2655,12 +2423,6 @@ function QuickActions({ defaultLessonMode = 'onsite', activePaymentMethods = { c
           defaultMode={defaultLessonMode}
           onClose={() => setModal(null)}
           onCreated={() => { setModal(null); queryClient.invalidateQueries({ queryKey: queryKeys.weekLessons() }); }}
-        />
-      )}
-      {modal === 'sale' && (
-        <QuickSaleModal
-          onClose={() => setModal(null)}
-          onCreated={() => setModal(null)}
         />
       )}
       {modal === 'pay' && (

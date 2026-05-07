@@ -1,6 +1,5 @@
-// Mobile satış sayfası için ürün gruplama yardımcısı.
-// Aynı `parent_product_code`'a sahip ürünler model grubu, geri kalanlar tek
-// ürün. Tek varyantlı grup `single`'a düşürülür.
+// Ürün gruplama yardımcısı. Aynı parent_product_code'a sahip ürünler model
+// grubu, geri kalanlar tek ürün. Tek varyantlı grup `single`'a düşürülür.
 
 function deriveGroupName(variants) {
   const names = variants.map(v => v.name || '');

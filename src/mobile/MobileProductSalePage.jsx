@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { getProducts } from '../api';
 import { queryKeys } from '../hooks/queryKeys';
 import { fmtTL } from '../data';
-import { groupByParent } from './productSale/groupByParent';
+import { groupByParent } from '../productSale/groupByParent';
 import { ProductSaleCard } from './productSale/ProductSaleCard';
 import { ProductSaleCategoryChips } from './productSale/ProductSaleCategoryChips';
 import { ProductSaleCartBar } from './productSale/ProductSaleCartBar';

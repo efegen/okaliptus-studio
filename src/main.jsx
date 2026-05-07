@@ -1,6 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import { queryClient } from './queryClient';
 import './styles.css';
 import './mobile/styles.css';
@@ -12,7 +12,11 @@ import { SettingsPage } from './settings';
 import { CatalogPage } from './catalog';
 import { ProductsPage } from './products';
 import { LoginPage } from './login';
+import { ProductSalePage } from './ProductSalePage';
+import { Toast } from './Toast';
 import { getSettings, getMe, logout as apiLogout } from './api';
+import { fmtTL } from './data';
+import { queryKeys } from './hooks/queryKeys';
 import { useIsMobile } from './mobile/useIsMobile';
 import { MobileApp } from './mobile/MobileApp';
 
@@ -31,7 +35,12 @@ function App({ currentUser, onLogout }) {
   const [studentDetailId, setStudentDetailId] = React.useState(null);
   const [tweaks, setTweaks] = React.useState(TWEAK_DEFAULTS);
   const [tweaksOpen, setTweaksOpen] = React.useState(false);
+  const [productSaleCart, setProductSaleCart] = React.useState(() => new Map());
+  const [productSaleStudent, setProductSaleStudent] = React.useState(null);
+  const [productSaleNote, setProductSaleNote] = React.useState('');
+  const [toast, setToast] = React.useState('');
   const isMobile = useIsMobile();
+  const qc = useQueryClient();
 
   React.useEffect(() => {
     localStorage.setItem("okaliptus-page", page);
@@ -67,6 +76,59 @@ function App({ currentUser, onLogout }) {
   function openStudent(studentId) {
     setStudentDetailId(studentId);
     setPage('students');
+  }
+
+  function resetProductSaleState() {
+    setProductSaleCart(new Map());
+    setProductSaleStudent(null);
+    setProductSaleNote('');
+  }
+
+  function handleProfileSale(student) {
+    setProductSaleStudent(student);
+    setStudentDetailId(null);
+    setPage('product-sale');
+  }
+
+  function handleProductSaleClose() {
+    if (productSaleCart.size > 0) {
+      const ok = window.confirm('Sepeti boşaltıp çıkmak istediğine emin misin?');
+      if (!ok) return;
+    }
+    const returnStudent = productSaleStudent;
+    resetProductSaleState();
+    if (returnStudent) {
+      setStudentDetailId(Number(returnStudent.id));
+      setPage('students');
+    } else {
+      setPage('home');
+    }
+  }
+
+  function handleProductSaleCompleted({ count, total, paidAmount = 0 }) {
+    qc.invalidateQueries({ queryKey: queryKeys.weeklyKpi() });
+    qc.invalidateQueries({ queryKey: queryKeys.weekLessons() });
+    qc.invalidateQueries({ queryKey: queryKeys.studentsKpi() });
+    qc.invalidateQueries({ queryKey: queryKeys.debtors() });
+    qc.invalidateQueries({ queryKey: ['student'] });
+    const remaining = Math.max(0, total - paidAmount);
+    let toastMsg;
+    if (paidAmount > 0 && remaining <= 0.001) {
+      toastMsg = `Satış kaydedildi · ${fmtTL(total)} tahsil edildi`;
+    } else if (paidAmount > 0) {
+      toastMsg = `Satış kaydedildi · ${fmtTL(paidAmount)} tahsil, ${fmtTL(remaining)} borç`;
+    } else {
+      toastMsg = `Satış kaydedildi · ${fmtTL(total)} borç eklendi`;
+    }
+    setToast(toastMsg);
+    const returnStudent = productSaleStudent;
+    resetProductSaleState();
+    if (returnStudent) {
+      setStudentDetailId(Number(returnStudent.id));
+      setPage('students');
+    } else {
+      setPage('home');
+    }
   }
 
   React.useEffect(() => {
@@ -124,13 +186,28 @@ function App({ currentUser, onLogout }) {
               ? <StudentProfilePage
                   studentId={studentDetailId}
                   onBack={() => setStudentDetailId(null)}
+                  onOpenSale={handleProfileSale}
                 />
               : <StudentsPage onOpenStudent={setStudentDetailId} />
           )}
           {page === "catalog" && <CatalogPage />}
           {page === "products" && <ProductsPage />}
           {page === "settings" && <SettingsPage />}
+          {page === "product-sale" && (
+            <ProductSalePage
+              cart={productSaleCart}
+              setCart={setProductSaleCart}
+              student={productSaleStudent}
+              setStudent={setProductSaleStudent}
+              note={productSaleNote}
+              setNote={setProductSaleNote}
+              onClose={handleProductSaleClose}
+              onCompleted={handleProductSaleCompleted}
+              onNavigateToProducts={() => navigate('products')}
+            />
+          )}
         </main>
+        <Toast message={toast} onDismiss={() => setToast('')} />
       </div>
 
       {tweaksOpen && (

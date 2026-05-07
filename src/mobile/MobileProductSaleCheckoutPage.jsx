@@ -1,12 +1,13 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
-import { useQuery, useMutation } from '@tanstack/react-query';
-import { getStudents, createProductSaleApi } from '../api';
+import { useQuery } from '@tanstack/react-query';
+import { getStudents } from '../api';
 import { queryKeys } from '../hooks/queryKeys';
 import { fmtTL } from '../data';
 import { MobileStudentCombobox } from './shared/MobileStudentCombobox';
 import { MobileCreateStudentPage } from './MobileCreateStudentPage';
 import { ProductSaleThumb } from './productSale/ProductSaleCard';
+import { MobileProductSaleConfirmSheet } from './productSale/MobileProductSaleConfirmSheet';
 
 function getMobilePaletteRoot() {
   if (typeof document === 'undefined') return null;
@@ -38,8 +39,8 @@ export function MobileProductSaleCheckoutPage({
     enabled: !student,
   });
 
-  const [error, setError] = React.useState(null);
   const [showCreateStudent, setShowCreateStudent] = React.useState(false);
+  const [confirmOpen, setConfirmOpen] = React.useState(false);
 
   const cartItems = React.useMemo(() => Array.from(cart.values()), [cart]);
   const cartCount = cartItems.reduce((acc, it) => acc + it.quantity, 0);
@@ -50,27 +51,16 @@ export function MobileProductSaleCheckoutPage({
 
   // Cart boşalırsa otomatik katalog'a dön — kullanıcı tüm satırları silmiş demektir.
   React.useEffect(() => {
-    if (cartItems.length === 0) onBack();
-  }, [cartItems.length, onBack]);
+    if (cartItems.length === 0 && !confirmOpen) onBack();
+  }, [cartItems.length, confirmOpen, onBack]);
 
   React.useEffect(() => {
     function onKeyDown(e) {
-      if (e.key === 'Escape' && !showCreateStudent && !saleMutation.isPending) onBack();
+      if (e.key === 'Escape' && !showCreateStudent && !confirmOpen) onBack();
     }
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onBack, showCreateStudent]);
-
-  const saleMutation = useMutation({
-    mutationFn: createProductSaleApi,
-    onSuccess: () => {
-      onCompleted({ count: cartCount, total: cartTotal });
-    },
-    onError: (err) => {
-      setError(err?.message || 'Ürün satışı kaydedilemedi.');
-    },
-  });
+  }, [onBack, showCreateStudent, confirmOpen]);
 
   function setQuantity(productId, quantity) {
     setCart(prev => {
@@ -94,23 +84,9 @@ export function MobileProductSaleCheckoutPage({
   }
 
   function handleSubmit() {
-    if (!student) {
-      setError('Müşteri seçilmedi.');
-      return;
-    }
+    if (!student) return;
     if (cartItems.length === 0) return;
-    setError(null);
-    const items = cartItems.map(it => ({
-      productId: Number(it.product.id),
-      quantity: it.quantity,
-    }));
-    saleMutation.mutate({
-      studentId: Number(student.id),
-      soldAt: new Date().toISOString(),
-      items,
-      note: note.trim() || null,
-      lessonId: null,
-    });
+    setConfirmOpen(true);
   }
 
   function handleStudentCreated(created) {
@@ -118,8 +94,7 @@ export function MobileProductSaleCheckoutPage({
     setShowCreateStudent(false);
   }
 
-  const submitting = saleMutation.isPending;
-  const canSubmit = !submitting && !!student && cartItems.length > 0;
+  const canSubmit = !!student && cartItems.length > 0;
 
   const portalRoot = getMobilePaletteRoot();
 
@@ -130,7 +105,7 @@ export function MobileProductSaleCheckoutPage({
           type="button"
           className="mobile-psale-iconbtn"
           onClick={onBack}
-          disabled={submitting}
+          disabled={false}
           aria-label="Geri"
         >
           <ChevronLeftIcon />
@@ -163,7 +138,7 @@ export function MobileProductSaleCheckoutPage({
                     className="mobile-psale-qty-btn"
                     onClick={() => setQuantity(it.product.id, it.quantity - 1)}
                     aria-label="Adet azalt"
-                    disabled={submitting}
+                    disabled={false}
                   >
                     −
                   </button>
@@ -173,7 +148,7 @@ export function MobileProductSaleCheckoutPage({
                     className="mobile-psale-qty-btn"
                     onClick={() => setQuantity(it.product.id, it.quantity + 1)}
                     aria-label="Adet artır"
-                    disabled={submitting}
+                    disabled={false}
                   >
                     +
                   </button>
@@ -183,7 +158,7 @@ export function MobileProductSaleCheckoutPage({
                   className="mobile-psale-co-row-remove"
                   onClick={() => removeItem(it.product.id)}
                   aria-label={`${it.product.name} sepetten kaldır`}
-                  disabled={submitting}
+                  disabled={false}
                 >
                   ×
                 </button>
@@ -208,7 +183,7 @@ export function MobileProductSaleCheckoutPage({
                 type="button"
                 className="mobile-psale-co-newstudent"
                 onClick={() => setShowCreateStudent(true)}
-                disabled={submitting}
+                disabled={false}
               >
                 + Yeni öğrenci ekle
               </button>
@@ -224,7 +199,7 @@ export function MobileProductSaleCheckoutPage({
             onChange={e => setNote(e.target.value)}
             placeholder="Açıklama, iade, özel istek…"
             maxLength={500}
-            disabled={submitting}
+            disabled={false}
           />
         </div>
 
@@ -232,12 +207,6 @@ export function MobileProductSaleCheckoutPage({
           <span>Toplam</span>
           <span className="mobile-psale-co-total-val">{fmtTL(cartTotal)}</span>
         </div>
-
-        {error && (
-          <div className="mobile-psale-error" role="alert">
-            {error}
-          </div>
-        )}
       </div>
 
       <footer className="mobile-psale-co-actions">
@@ -247,11 +216,9 @@ export function MobileProductSaleCheckoutPage({
           onClick={handleSubmit}
           disabled={!canSubmit}
         >
-          {submitting
-            ? 'Kaydediliyor…'
-            : student
-              ? `Satışı tamamla · ${fmtTL(cartTotal)}`
-              : 'Müşteri seç'}
+          {student
+            ? `Satışı tamamla · ${fmtTL(cartTotal)}`
+            : 'Müşteri seç'}
         </button>
       </footer>
 
@@ -259,6 +226,21 @@ export function MobileProductSaleCheckoutPage({
         <MobileCreateStudentPage
           onClose={() => setShowCreateStudent(false)}
           onCreated={handleStudentCreated}
+        />
+      )}
+
+      {confirmOpen && (
+        <MobileProductSaleConfirmSheet
+          cart={cart}
+          student={student}
+          note={note}
+          total={cartTotal}
+          count={cartCount}
+          onClose={() => setConfirmOpen(false)}
+          onCompleted={(payload) => {
+            setConfirmOpen(false);
+            onCompleted(payload);
+          }}
         />
       )}
     </div>
