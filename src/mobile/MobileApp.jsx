@@ -85,10 +85,6 @@ export function MobileApp({
     setQuickAddOpen(true);
   }
 
-  function handleCreateLesson() {
-    setQuickFlow('lesson');
-  }
-
   function handleQuickPick(actionId) {
     setQuickAddOpen(false);
     if (actionId === 'sale') {
@@ -188,7 +184,7 @@ export function MobileApp({
 
   let body;
   if (page === 'home') {
-    body = <MobileHome user={currentUser} onLogout={onLogout} onCreateLesson={handleCreateLesson} />;
+    body = <MobileHome user={currentUser} onLogout={onLogout} />;
   } else if (page === 'students') {
     body = studentDetailId ? (
       <MobileStudentProfilePage

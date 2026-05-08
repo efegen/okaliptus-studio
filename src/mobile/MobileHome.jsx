@@ -17,13 +17,13 @@ function getIstanbulTodayISO() {
   return `${y}-${m}-${d}`;
 }
 
-export function MobileHome({ user, onLogout, onCreateLesson }) {
+export function MobileHome({ user, onLogout }) {
   const [selectedISO, setSelectedISO] = React.useState(getIstanbulTodayISO);
 
   return (
     <div className="mobile-home">
       <MobileGreetingHeader user={user} onLogout={onLogout} />
-      <MobileHeroLessonCard onCreateLesson={onCreateLesson} />
+      <MobileHeroLessonCard />
       <MobileFinanceSummary />
       <MobileWeekStrip selectedISO={selectedISO} onSelect={setSelectedISO} />
       <MobileDayLessons selectedISO={selectedISO} />

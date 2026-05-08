@@ -54,7 +54,7 @@ function formatWhen(startsAtIso, today) {
   }).format(new Date(startsAtIso));
 }
 
-export function MobileHeroLessonCard({ onCreateLesson }) {
+export function MobileHeroLessonCard() {
   const queryClient = useQueryClient();
   const today = React.useMemo(getIstanbulToday, []);
   const todayDayIndex = (today.getDay() + 6) % 7;
@@ -150,17 +150,5 @@ export function MobileHeroLessonCard({ onCreateLesson }) {
     );
   }
 
-  return (
-    <section className="mobile-hero-lesson" aria-label="Ders ekle">
-      <button
-        type="button"
-        className="mobile-hero-lesson-card empty-cta"
-        onClick={onCreateLesson}
-      >
-        <span className="mobile-hero-lesson-cta-icon" aria-hidden>+</span>
-        <p className="mobile-hero-lesson-cta-title">Yeni ders ekle</p>
-        <p className="mobile-hero-lesson-cta-sub">Önümüzdeki haftalarda planlanmış ders yok</p>
-      </button>
-    </section>
-  );
+  return null;
 }
