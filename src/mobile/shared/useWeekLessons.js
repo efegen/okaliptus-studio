@@ -41,15 +41,6 @@ function normalizeLesson(l) {
   const gross = Number(l.price_snapshot) || 0;
   const discount = Number(l.discount_amount) || 0;
   const price = Number(l.net_amount ?? (gross - discount)) || 0;
-  const productSales = Array.isArray(l.product_sales)
-    ? l.product_sales.map(sale => ({
-        id: String(sale.id),
-        totalAmount: Number(sale.total_amount) || 0,
-        paidAmount: Number(sale.paid_amount) || 0,
-        remaining: Number(sale.remaining) || 0,
-        note: sale.note || null,
-      }))
-    : [];
   return {
     id: l.id,
     studentName: l.student_name,
@@ -68,7 +59,6 @@ function normalizeLesson(l) {
     paymentMethod: l.payment_source || null,
     note: l.note || null,
     lessonState: deriveLessonState(l.status, paid, price),
-    productSales,
   };
 }
 

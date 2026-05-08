@@ -323,39 +323,9 @@ export async function createProductSaleApi({ studentId, soldAt, totalAmount, not
   return ensureMutationResult(payload, "Ürün satışı oluşturulamadı.");
 }
 
-export async function updateProductSaleApi(saleId, fields = {}) {
-  const body = {};
-  if (fields.totalAmount !== undefined) body.totalAmount = fields.totalAmount;
-  if (fields.note !== undefined) body.note = fields.note;
-  if (fields.soldAt !== undefined) body.soldAt = fields.soldAt;
-  const payload = await apiRequest(`/product-sales/${encodeURIComponent(saleId)}`, {
-    method: "PATCH",
-    body: JSON.stringify(body),
-  });
-  return ensureMutationResult(payload, "Ürün satışı güncellenemedi.");
-}
-
-export async function deleteProductSaleApi(saleId) {
-  await apiRequest(`/product-sales/${encodeURIComponent(saleId)}`, {
-    method: "DELETE",
-  });
-}
-
-// productSale opsiyoneldir: { totalAmount, note? }. Verildiğinde ders tamamlanırken
-// aynı transaction içinde derse bağlı bir satış oluşturulur. Tahsilat ayrı bir
-// adım — kısmi/çoklu kaynaklı ödemelerin tek noktada zorlanmaması için.
-export async function completeLessonApi(lessonId, options = {}) {
-  const body = options.productSale
-    ? JSON.stringify({
-        productSale: {
-          totalAmount: options.productSale.totalAmount,
-          note: options.productSale.note ?? null,
-        },
-      })
-    : undefined;
+export async function completeLessonApi(lessonId) {
   const payload = await apiRequest(`/lessons/${lessonId}/complete`, {
     method: "POST",
-    body,
   });
   return ensureMutationResult(payload, "Ders tamamlanamadı.");
 }

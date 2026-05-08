@@ -71,39 +71,12 @@ lessonsRouter.get("/:id", async (req, res) => {
 
 // POST /lessons/:id/complete
 // Spec §10: only this route triggers completeLesson() (credit allocation).
-// 0221: opsiyonel `productSale` body alanı geçilebilir — atomik olarak ders
-// tamamlanır + satış o derse bağlı borç olarak oluşturulur. Tahsilat ayrı
-// /payments/cash endpoint'i üzerinden yapılır.
+// Body alanı yok — ders tamamlama saf bir status geçişidir; ürün satışı v2
+// modülünden ayrı yapılır.
 lessonsRouter.post("/:id/complete", async (req, res) => {
   try {
     const id = parseId(req.params.id);
-    const body = (req.body ?? {}) as Record<string, unknown>;
-
-    let productSaleInput: {
-      totalAmount: string | number;
-      note: string | null;
-    } | undefined;
-
-    if (body.productSale !== undefined && body.productSale !== null) {
-      if (typeof body.productSale !== "object" || Array.isArray(body.productSale)) {
-        throw new ValidationError("productSale must be an object.");
-      }
-      const ps = body.productSale as Record<string, unknown>;
-      if (ps.totalAmount === undefined || ps.totalAmount === null) {
-        throw new ValidationError("productSale.totalAmount is required.");
-      }
-
-      productSaleInput = {
-        totalAmount: ps.totalAmount as string | number,
-        note: ps.note != null ? String(ps.note) : null,
-      };
-    }
-
-    const data = await completeLesson(
-      id,
-      productSaleInput ? { productSale: productSaleInput } : {},
-      req.currentUser.id,
-    );
+    const data = await completeLesson(id, req.currentUser.id);
     res.json({ data });
   } catch (err) {
     sendError(res, err);

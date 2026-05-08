@@ -65,31 +65,6 @@ function formatWeekRange(weekStart) {
   return `${s} ${weekStart.toLocaleDateString('tr-TR', { month: 'short' })} – ${e} ${sunday.toLocaleDateString('tr-TR', { month: 'short' })}`;
 }
 
-function ShoppingBagIcon({ size = 10 }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 16 16"
-      fill="none"
-      aria-hidden="true"
-    >
-      <path
-        d="M3.5 5.5h9l-0.7 8.2a1 1 0 0 1-1 0.9H5.2a1 1 0 0 1-1-0.9L3.5 5.5z"
-        stroke="currentColor"
-        strokeWidth="1.3"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M5.5 5.5V4a2.5 2.5 0 1 1 5 0v1.5"
-        stroke="currentColor"
-        strokeWidth="1.3"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
 function WeekNavBar({ weekStart, onPrev, onNext, onToday }) {
   return (
     <div className="mobile-cal-weeknav">
@@ -126,7 +101,6 @@ function LessonBlock({ session, onSelect }) {
   if (startMinutes < 0) return null;
   const top = (startMinutes / 60) * HOUR_PX;
   const height = (session.durationMinutes / 60) * HOUR_PX;
-  const hasSale = Array.isArray(session.productSales) && session.productSales.length > 0;
   const remaining = session.price - session.paid;
   const showRemaining = session.lessonState === 'partial' && remaining > 0;
 
@@ -148,11 +122,6 @@ function LessonBlock({ session, onSelect }) {
     >
       <div className="mobile-cal-block-top">
         <span className="mobile-cal-block-time">{session.time}</span>
-        {hasSale && (
-          <span className="mobile-cal-block-sale" aria-label="Ürün satışı">
-            <ShoppingBagIcon size={10} />
-          </span>
-        )}
         {session.mode === 'online' && (
           <span className="mobile-cal-block-mode" aria-label="Online ders">🌐</span>
         )}

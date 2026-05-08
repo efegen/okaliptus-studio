@@ -1,5 +1,5 @@
 /**
- * SMOKE 11 — Uncomplete Lesson (v1.4, §5.7b)
+ * SMOKE 11 — Uncomplete Lesson (v1.6, §5.7b)
  *
  * Senaryolar:
  *   A. Happy: ödemesiz/paketsiz completed lesson → uncomplete → scheduled,
@@ -8,9 +8,12 @@
  *   C. Reject: aktif ödeme varken uncomplete denemesi.
  *   D. Reject: 24 saatten eski (Direct SQL ile completed_at backdate).
  *   E. Reject: zaten scheduled olan ders.
- *   F. Bağlı satış (ödemesiz) — uncomplete sonrası satış soft-delete edilir.
- *   G. Reject: bağlı satışın ödemesi varken uncomplete.
  *   H. Paket kredisi iadesi (KRİTİK): paket dersinde uncomplete → kredi geri gelir.
+ *
+ * Not: v1.6'da ders↔ürün satışı doğrudan bağı kaldırıldı. Eski F/G senaryoları
+ * (bağlı satış soft-delete, bağlı satış ödemesi reddi) artık geçersiz; satışlar
+ * v2 modülünden bağımsız oluşturulduğu için ders uncomplete'i satış lifecycle'ını
+ * etkilemez.
  *
  * ÇALIŞTIRMA:
  *   cd backend && npx tsx scripts/smoke/11-uncomplete-lesson.ts
@@ -30,9 +33,7 @@ import { createPrepaidPackage } from "../../src/services/packages.service.js";
 import { pool } from "../../src/db/connection.js";
 import {
   section,
-  step,
   info,
-  assert,
   assertEqual,
   assertMoney,
   assertRejects,
@@ -190,83 +191,6 @@ async function run(): Promise<void> {
     );
 
     // ─────────────────────────────────────────────────────────────────────────
-    // F. Bağlı ürün satışı (ödemesiz) — uncomplete sonrası soft-delete
-    // ─────────────────────────────────────────────────────────────────────────
-    section("F — Bağlı ürün satışı (ödemesiz) → uncomplete satışı soft-deletes");
-
-    const studentF = await createStudent({ fullName: "SMOKE11_F" });
-    studentIds.push(studentF.id);
-    const lessonF = await createLesson({
-      studentId: studentF.id,
-      startsAt: nextSlotIso(),
-      mode: "onsite",
-    });
-    const completeF = await completeLesson(
-      lessonF.id,
-      { productSale: { totalAmount: "150", note: "SMOKE11_F sale" } },
-      ACTOR_USER_ID,
-    );
-    assert(completeF.product_sale_id !== null, "F: completeLesson product_sale_id döndü");
-    info("F: product_sale_id", completeF.product_sale_id);
-
-    await uncompleteLesson(lessonF.id, ACTOR_USER_ID);
-
-    const fSaleState = await pool.query<{ deleted_at: string | null }>(
-      `SELECT deleted_at FROM product_sales WHERE id = $1`,
-      [completeF.product_sale_id!],
-    );
-    assert(
-      fSaleState.rows[0].deleted_at !== null,
-      "F: bağlı product_sale soft-delete edilmiş (deleted_at != null)",
-    );
-
-    const fLessonState = await pool.query<{ status: string }>(
-      `SELECT status FROM lessons WHERE id = $1`,
-      [lessonF.id],
-    );
-    assertEqual(fLessonState.rows[0].status, "scheduled", "F: lesson scheduled'a döndü");
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // G. Reject — bağlı satışın ödemesi var
-    // ─────────────────────────────────────────────────────────────────────────
-    section("G — Bağlı satışın ödemesi varken uncomplete reddedilir");
-
-    const studentG = await createStudent({ fullName: "SMOKE11_G" });
-    studentIds.push(studentG.id);
-    const lessonG = await createLesson({
-      studentId: studentG.id,
-      startsAt: nextSlotIso(),
-      mode: "onsite",
-    });
-    const completeG = await completeLesson(
-      lessonG.id,
-      { productSale: { totalAmount: "200", note: "SMOKE11_G sale" } },
-      ACTOR_USER_ID,
-    );
-    // Satışa ödeme yap
-    const payG = await createCashPayment({
-      targetType: "product_sale",
-      targetId: completeG.product_sale_id!,
-      amount: "200",
-      source: "cash",
-      paidAt: isoNow(),
-    });
-    await assertRejects(
-      () => uncompleteLesson(lessonG.id, ACTOR_USER_ID),
-      "INVALID_STATUS_TRANSITION",
-      "G: bağlı satış ödemeli iken uncomplete reddedilir",
-    );
-    // State korundu
-    const gLesson = await pool.query<{ status: string }>(
-      `SELECT status FROM lessons WHERE id = $1`,
-      [lessonG.id],
-    );
-    assertEqual(gLesson.rows[0].status, "completed", "G: lesson hâlâ completed");
-
-    // Cleanup için ödemeyi sil
-    await deletePayment(payG.payment.id);
-
-    // ─────────────────────────────────────────────────────────────────────────
     // H. Paket kredisi iadesi (KRİTİK) — uncomplete sonrası kredi geri gelir
     // ─────────────────────────────────────────────────────────────────────────
     section("H — Paket dersinde uncomplete: kredi geri yüklenir");
@@ -290,7 +214,7 @@ async function run(): Promise<void> {
       startsAt: nextSlotIso(),
       mode: "onsite",
     });
-    const completedH = await completeLesson(lessonH.id, {}, ACTOR_USER_ID);
+    const completedH = await completeLesson(lessonH.id, ACTOR_USER_ID);
     assertEqual(
       completedH.lesson.prepaid_package_id,
       pkgH.prepaidPackage.id,

@@ -10,7 +10,6 @@ import {
   ValidationError,
   toServiceError,
 } from "./errors.js";
-import { createProductSaleWithClient } from "./product-sales.service.js";
 import {
   centsToMoney,
   insertAuditLog,
@@ -128,21 +127,12 @@ export async function listLessonsForStudent(studentId: EntityId): Promise<Lesson
   return result.rows;
 }
 
-export type LessonProductSaleSummary = {
-  id: string;
-  total_amount: string;
-  paid_amount: string;
-  remaining: string;
-  note: string | null;
-};
-
 export type LessonWithStudentRow = LessonRow & {
   student_name: string;
   student_nickname: string | null;
   net_amount: string;
   paid_amount: string;
   payment_source: 'cash' | 'iban' | null;
-  product_sales: LessonProductSaleSummary[];
 };
 
 export async function listLessonsInRange(
@@ -159,9 +149,9 @@ export async function listLessonsInRange(
     throw new ValidationError("to must be after from.");
   }
 
-  // sales: derse bağlı (lesson_id NOT NULL) ve silinmemiş satışları json_agg ile
-  // ders satırına iliştiriyoruz. product_sales boş ise NULL gelir, COALESCE ile
-  // boş array'e çeviriyoruz; frontend her zaman bir array görür.
+  // v1.6: ders bloğu yalnızca derse ait verileri döndürür. Ürün satışı
+  // (lesson_id'siz veya aynı gün/öğrenci) artık takvimde gösterilmiyor —
+  // satışlar ürün satış modülünden ve öğrenci profilinden takip edilir.
   const result = await pool.query<LessonWithStudentRow>(
     `
       SELECT
@@ -170,8 +160,7 @@ export async function listLessonsInRange(
         s.nickname AS student_nickname,
         (l.price_snapshot - l.discount_amount) AS net_amount,
         COALESCE(pay.paid_sum, 0) AS paid_amount,
-        pay.source AS payment_source,
-        COALESCE(sales.items, '[]'::json) AS product_sales
+        pay.source AS payment_source
       FROM lessons l
       JOIN students s ON s.id = l.student_id
       LEFT JOIN (
@@ -180,29 +169,6 @@ export async function listLessonsInRange(
         WHERE lesson_id IS NOT NULL AND deleted_at IS NULL
         GROUP BY lesson_id
       ) pay ON pay.lesson_id = l.id
-      LEFT JOIN (
-        SELECT
-          ps.lesson_id,
-          json_agg(
-            json_build_object(
-              'id', ps.id::text,
-              'total_amount', ps.total_amount::text,
-              'paid_amount', COALESCE(sp.paid_sum, 0)::text,
-              'remaining', GREATEST(0, ps.total_amount - COALESCE(sp.paid_sum, 0))::text,
-              'note', ps.note
-            )
-            ORDER BY ps.sold_at ASC, ps.id ASC
-          ) AS items
-        FROM product_sales ps
-        LEFT JOIN (
-          SELECT product_sale_id, SUM(amount) AS paid_sum
-          FROM payments
-          WHERE product_sale_id IS NOT NULL AND deleted_at IS NULL
-          GROUP BY product_sale_id
-        ) sp ON sp.product_sale_id = ps.id
-        WHERE ps.lesson_id IS NOT NULL AND ps.deleted_at IS NULL
-        GROUP BY ps.lesson_id
-      ) sales ON sales.lesson_id = l.id
       WHERE l.deleted_at IS NULL
         AND l.starts_at >= $1
         AND l.starts_at <  $2
@@ -404,29 +370,16 @@ export async function createLesson(input: CreateLessonInput): Promise<LessonRow>
   }
 }
 
-// Ders tamamlama akışında opsiyonel olarak ürün satışı da aynı atomik
-// transaction içinde oluşturulur. Modal'daki "Bu derste ürün satışı yapıldı mı?"
-// → Evet/Hayır akışını destekler. Tahsilat ayrı bir adım — kısmi ya da çoklu
-// kaynaklı (kısmen nakit + sonra IBAN gibi) ödemeler standart payment akışıyla
-// ayrı kayıtlar olarak tutulduğu için bu adımda tek bir ödeme yöntemine zorlanmaz.
-//
-//   productSale verilirse: o derse bağlı bir product_sale yaratılır (borç).
-//   herhangi bir adım fail ederse hepsi rollback olur — ders 'completed'a geçmez.
-export type CompleteLessonInput = {
-  productSale?: {
-    totalAmount: MoneyInput;
-    note?: string | null;
-  };
-};
-
+// Ders tamamlama: sadece status geçişi + paket kredisi tahsisi. Ürün satışı
+// artık bu akışta yaratılmıyor — v2 ürün satış modülü ayrı. Ders bloğu üzerinde
+// gösterilen satışlar listLessonsInRange içinde aynı gün/öğrenci eşleşmesi ile
+// bulunur (DB'de doğrudan bağ yok).
 export type CompleteLessonResult = {
   lesson: LessonRow;
-  product_sale_id: string | null;
 };
 
 export async function completeLesson(
   lessonId: EntityId,
-  input: CompleteLessonInput = {},
   actorUserId?: number | string | null,
 ): Promise<CompleteLessonResult> {
   const client = await pool.connect();
@@ -514,22 +467,8 @@ export async function completeLesson(
       actorUserId: actorUserId ?? null,
     });
 
-    let productSaleId: string | null = null;
-
-    if (input.productSale) {
-      const sale = await createProductSaleWithClient(client, {
-        studentId: completedLesson.student_id,
-        soldAt: new Date().toISOString(),
-        totalAmount: input.productSale.totalAmount,
-        note: input.productSale.note ?? null,
-        lessonId: completedLesson.id,
-        actorUserId: actorUserId ?? null,
-      });
-      productSaleId = sale.id;
-    }
-
     await client.query("COMMIT");
-    return { lesson: completedLesson, product_sale_id: productSaleId };
+    return { lesson: completedLesson };
   } catch (error) {
     await rollbackQuietly(client);
     throw toServiceError(error);
@@ -592,37 +531,6 @@ export async function uncompleteLesson(
     if (paymentResult.rows[0]) {
       throw new InvalidStatusTransitionError(
         "Dersin aktif ödemeleri var. Geri almadan önce ödemeleri silin.",
-      );
-    }
-
-    // Derse bağlı aktif ürün satışları: varsa ödeme var mı kontrol et, yoksa sil
-    const linkedSalesResult = await client.query<{ id: string }>(
-      `
-        SELECT id FROM product_sales
-        WHERE lesson_id = $1 AND deleted_at IS NULL
-      `,
-      [lessonId],
-    );
-
-    for (const sale of linkedSalesResult.rows) {
-      const salePaymentResult = await client.query<{ id: string }>(
-        `
-          SELECT id FROM payments
-          WHERE product_sale_id = $1 AND deleted_at IS NULL
-          LIMIT 1
-        `,
-        [sale.id],
-      );
-
-      if (salePaymentResult.rows[0]) {
-        throw new InvalidStatusTransitionError(
-          "Derse bağlı ürün satışının ödemesi var. Geri almadan önce ilgili ödemeleri silin.",
-        );
-      }
-
-      await client.query(
-        `UPDATE product_sales SET deleted_at = now() WHERE id = $1`,
-        [sale.id],
       );
     }
 
@@ -904,25 +812,6 @@ export async function softDeleteLesson(
     if (activePaymentResult.rows[0]) {
       throw new DeleteConflictError(
         "Lesson has active payments. Delete those payments before soft-deleting the lesson.",
-      );
-    }
-
-    // 0221: derse bağlı aktif ürün satışı varsa silmeyi reddet — silinirse takvimde
-    // satışın izi kaybolur ama sale ortada kalır, audit/finans tutarsız hale gelir.
-    const linkedSaleResult = await client.query<{ id: string }>(
-      `
-        SELECT id
-        FROM product_sales
-        WHERE lesson_id = $1
-          AND deleted_at IS NULL
-        LIMIT 1
-      `,
-      [lessonId],
-    );
-
-    if (linkedSaleResult.rows[0]) {
-      throw new DeleteConflictError(
-        "Lesson has linked product sales. Delete those product sales before soft-deleting the lesson.",
       );
     }
 

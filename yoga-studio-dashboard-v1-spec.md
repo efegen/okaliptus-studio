@@ -21,7 +21,7 @@ V1 üretim sistemidir, "logging-only observation mode" gibi ara aşama yoktur. T
 
 **v1 multi-entity + discount altyapısı:** `instructors` ve `lesson_types` tabloları + `lessons.instructor_id / lesson_type_id / duration_minutes / discount_amount` kolonları + `prepaid_packages.lesson_type_id` (nullable) kolonu eklenmiştir. v1 deployment'ında tek aktif eğitmen + tek aktif ders tipi seed edilir; isim/etiket gibi operasyonel veriler bootstrap aşamasında doldurulur (§10 "Bootstrap" bölümü). Ders tipi v1 deployment'ı için sabit varsayılan: **"Yoga & Meditasyon" (60 dk)**. v1.2'den itibaren UI eğitmen/ders tipi seçimine açık: `CreateLessonModal` aktif eğitmen ve aktif ders türlerini select olarak sunar; tek aktif kayıt varsa otomatik dolu gelir. Ayrıca `LessonTypesPage` ders türü CRUD ekranını sağlar (yeni tip oluşturma, fiyat/süre/aktiflik düzenleme); `InstructorsPage` read-only listedir. Servis seçim gönderilmediğinde aktif tek seed'i otomatik atamaya devam eder (geriye dönük uyum). Ders indirimi (net tutar = `price_snapshot - discount_amount`) ayrı endpoint ile yönetilir. Detay: §2.12 (indirim), §2.13 (duration + multi-entity UI), §3.10/§3.11 (yeni tablolar), §5.8 (set discount), §10 (endpoint listesi + hata sınıfları + bootstrap).
 
-**v1 ürün satışı ↔ ders bağı (v1.2):** `product_sales.lesson_id` (nullable) kolonu eklendi. Ders tamamlama akışı opsiyonel olarak aynı transaction'da bir product_sale ve (varsa) tam ödemesini oluşturur. Bağımsız (ders dışı) satışlar `lesson_id IS NULL` ile devam eder. Detay: §3.4 (kolon), §5.2 (genişletilmiş complete akışı), §8.4 (takvim göstergesi).
+**v1 ürün satışı ↔ ders bağı (v1.2 → v1.6):** `product_sales.lesson_id` (nullable) kolonu v1.2'de eklenmişti; ders tamamlama akışı opsiyonel olarak aynı transaction'da satış oluştururdu. v1.6'da bu kavram tamamen kaldırıldı: tüm satışlar v2 ürün satış modülünden (kalem bazlı, ürün katalogundan) bağımsız olarak (lesson_id NULL) yaratılır ve ders bloğu/modal'ı ile **hiçbir görsel ya da veri ilişkisi taşımaz**. Migration 0233 mevcut bağları temizler. Ders bloğu yalnız ders verilerini gösterir; ürün satışı operatör tarafından öğrenci profilinden ya da ürün satış modülünden takip edilir. Kolon ve FK constraint geriye dönük olarak korunur ama yeni satırlarda doldurulmaz.
 
 **v1 takvim etkileşimi (v1.2):** Önceki revizyonun "ders bloğu tıklanmaz" kuralı kaldırıldı. Bloklar artık `LessonModal`'ı açar; modal içinden tamamlama, iptal, kısmi/tam ödeme ve indirim akışları çalışır. Detay: §8.4.
 
@@ -365,13 +365,13 @@ CREATE INDEX idx_product_sales_lesson_id
 
 **`lesson_id` semantiği (v1.2):**
 - `NULL` = standalone satış (öğrenci sadece alışveriş yaptı, derse bağlı değil).
-- `NOT NULL` = bir derse bağlı satış. Tipik kullanım: ders tamamlama akışı (§5.2) içinde "Bu derste ürün satışı yapıldı mı?" sorusuna evet denirse, satış aynı transaction'da o derse bağlı oluşturulur.
-- **Tutarlılık kuralı (servis-level):** `lesson.student_id` ile `product_sale.student_id` eşleşmelidir; servis (`createProductSaleWithClient`) bunu doğrular. DB-level CHECK ile ifade edilemez (cross-table).
+- `NOT NULL` = bir derse bağlı satış. **v1.6 itibarıyla deprecated**: ders tamamlama akışı satış yaratmaz, ürün satış modülü her satışı `lesson_id NULL` yazar. Mevcut bağlar 0233 migration'ı ile temizlendi. Kolon korunur (FK + index) ancak takvim/ders modal hiçbir noktada bu alanı kullanmaz.
+- **Tutarlılık kuralı (servis-level):** `lesson.student_id` ile `product_sale.student_id` eşleşmelidir; servis (`createProductSaleWithClient`) bunu doğrular. DB-level CHECK ile ifade edilemez (cross-table). v1.6'da çağrılmıyor (kalan koruma katmanı).
 - **Silme korumaları:**
-  - `softDeleteLesson` derse bağlı aktif (silinmemiş) bir `product_sale` varsa `DeleteConflictError` ile reddeder. Önce satış silinmeli.
+  - v1.6: `softDeleteLesson` artık derse bağlı satış kontrolü yapmaz — yeni satışlar lesson_id yazmadığı ve eski bağlar 0233 ile temizlendiği için kontrol gereksizdir.
   - `softDeleteProductSale` aktif payment kontrolü **yapmaz**: payment hâlâ DB'de kalır ama parent silindiği için view'larda gözükmez. Bu bilinçli bir hafif tutarsızlıktır; düzeltme akışında payment'ı önce manuel silmek operatöre bırakılmıştır.
 - **FK davranışı:** `ON DELETE RESTRICT` — hard delete'lere karşı koruma. Soft delete app-layer'da yönetilir.
-- **Takvim görselleştirmesi:** `lesson_id IS NOT NULL` satışlar takvim ders bloğunda küçük çanta ikonu ile gösterilir (§8.4); ders modalında ayrı `DebtCard` olarak listelenir.
+- **Takvim görselleştirmesi:** v1.6 itibarıyla yok. Ders bloğu ve ders modali yalnız ders bilgilerini gösterir; ürün satışları öğrenci profilinde ve ürün satış modülünde görülür.
 
 ### 3.5 prepaid_packages
 
@@ -707,8 +707,9 @@ Multi-entity + discount altyapısı (0210+, canlı öncesi):
   0219_students_drop_default_lesson_price.sql  (students.default_lesson_price kolonu drop)
   0220_studio_settings_drop_default_lesson_price.sql (studio_settings.default_lesson_price kolonu drop)
 
-Ürün satışı ↔ ders bağı (v1.2):
-  0221_product_sales_lesson_link.sql           (product_sales.lesson_id nullable kolon + index + v_product_sale_balances recreate)
+Ürün satışı ↔ ders bağı (v1.2 → v1.6):
+  0221_product_sales_lesson_link.sql           (v1.2: product_sales.lesson_id nullable kolon + index + v_product_sale_balances recreate)
+  0233_clear_product_sales_lesson_link.sql     (v1.6: tüm lesson_id değerleri NULL — display-side eşleştirmeye geçiş; kolon korunur)
 
 Auth + audit genişletmesi (v1.3 → v1.4):
   0222_users_sessions.sql                      (users + sessions tabloları; admin user'lar bootstrap aşamasında yaratılır — PII migration içinde tutulmaz)
@@ -1177,13 +1178,10 @@ create_lesson(p_student_id, p_starts_at, p_mode):
 ### 5.2 Lesson Complete
 
 ```
-complete_lesson(p_lesson_id, p_product_sale?):
-  -- p_product_sale opsiyoneldir (v1.2). Şekli:
-  --   { totalAmount: numeric, note?: text, paymentSource?: 'cash' | 'iban' }
-  -- Verilirse aynı transaction'da bir product_sale (lesson_id = p_lesson_id) ve
-  -- paymentSource verilmişse satışın TAMAMI için bir payment yaratılır.
-  -- Kısmi ödeme istenirse productSale'i sadece amount + note ile gönder, sonra
-  -- standart payment akışını (§5.3) ayrı çağrı ile kullan.
+complete_lesson(p_lesson_id):
+  -- Saf bir status geçişi: ders 'completed'a alınır ve uygunsa paket
+  -- kredisi tahsis edilir. v1.6: ürün satışı bu akıştan kaldırıldı; satışlar
+  -- yalnız ürün satış modülünden (§5.x) bağımsız oluşturulur.
 
   BEGIN TRANSACTION
     lesson = SELECT * FROM lessons WHERE id = p_lesson_id FOR UPDATE
@@ -1225,46 +1223,21 @@ complete_lesson(p_lesson_id, p_product_sale?):
 
     INSERT INTO audit_logs (action, entity_type, entity_id, before, after)
     VALUES ('lesson_status_change', 'lesson', p_lesson_id, before, after)
-
-    -- Opsiyonel ürün satışı + ödeme (v1.2)
-    IF p_product_sale IS NOT NULL:
-      sale = create_product_sale(
-        student_id = lesson.student_id,
-        sold_at    = now(),
-        total_amount = p_product_sale.totalAmount,
-        note       = p_product_sale.note,
-        lesson_id  = p_lesson_id          -- aynı transaction, aynı öğrenci
-      )
-
-      IF p_product_sale.paymentSource IS NOT NULL:
-        ASSERT p_product_sale.paymentSource IN ('cash', 'iban')
-        create_cash_payment(
-          target_type = 'product_sale',
-          target_id   = sale.id,
-          amount      = sale.total_amount,    -- tam tutar; kısmi istenirse ayrı çağrı
-          source      = p_product_sale.paymentSource,
-          paid_at     = now()
-        )
-
-    -- Herhangi bir adım fail ederse hepsi rollback olur — ders 'completed'a geçmez,
-    -- satış oluşmaz, ödeme yazılmaz.
   COMMIT
 
-  RETURN { lesson, product_sale_id?, payment_id? }
+  RETURN { lesson }
 ```
 
-**Return shape (v1.4 hizalaması):** `complete_lesson` çağrısı **`{ lesson, product_sale_id }` objesi** döndürür — düz `LessonRow` değil. Tüm caller'lar destructure etmek zorundadır:
+**Return shape:** `complete_lesson` çağrısı **`{ lesson }` objesi** döndürür — düz `LessonRow` değil. Tüm caller'lar destructure eder:
 
 ```ts
 const { lesson: completed } = await completeLesson(lessonId);
 // completed.status, completed.prepaid_package_id, completed.price_snapshot ...
 ```
 
-v1.2 ile birlikte opsiyonel ürün satışı parametresi eklendiğinde return shape genişledi; bazı eski caller'lar (mevcut smoke test'leri 01/04/05/06/08/10 dahil) düz `LessonRow` varsaymaya devam ediyordu. v1.4'te tüm call site'lar destructure formatına hizalandı (§11 "Smoke test bulguları" notu).
+**v1.6 değişikliği:** Eski `p_product_sale` parametresi ve `product_sale_id` return alanı kaldırıldı. v1.2'de eklenen "ders tamamlama akışında opsiyonel ürün satışı oluşturma" kavramı, v2 ürün satış modülü (gerçek ürün seçimli, kalemli satış) ile gereksizleşti. Ders bloğunda gösterilen satışlar artık aynı gün + aynı öğrenci eşleşmesi ile listelenir (§8.4).
 
 **Advisory lock mantığı:** `student_prepaid_<id>` anahtarı sayesinde aynı öğrenci için paralel `complete_lesson` çağrıları seri işlenir; iki completed ders aynı paketin son kredisini görüp ikisi de tüketmeye çalışamaz.
-
-**Atomiklik (v1.2):** Ders tamamlama, ürün satışı yaratma ve ödeme yazma tek transaction'dadır. Kredi tahsisi race condition koruması (advisory lock) sale/payment oluşturulmadan önce alındığı için sale insert'inin trigger validasyonları tutarlı bir lesson satırı görür.
 
 ### 5.3 Cash/IBAN Payment (fazla ödeme reddi)
 
@@ -1481,11 +1454,8 @@ uncomplete_lesson(p_lesson_id, p_actor_user_id):
     IF EXISTS (SELECT 1 FROM payments WHERE lesson_id = p_lesson_id AND deleted_at IS NULL):
       RAISE InvalidStatusTransitionError "Dersin aktif ödemeleri var; önce ödemeleri silin."
 
-    -- Bağlı aktif ürün satışlarını işle: ödemesi olan satış varsa reddet, yoksa soft-delete
-    FOR sale IN (SELECT id FROM product_sales WHERE lesson_id = p_lesson_id AND deleted_at IS NULL):
-      IF EXISTS (SELECT 1 FROM payments WHERE product_sale_id = sale.id AND deleted_at IS NULL):
-        RAISE InvalidStatusTransitionError "Derse bağlı satışın ödemesi var; önce ödemeleri silin."
-      UPDATE product_sales SET deleted_at = now() WHERE id = sale.id
+    -- v1.6: ürün satışı bağlı kontrolü kaldırıldı (lesson_id artık doldurulmuyor;
+    -- mevcut bağlar 0233 ile temizlendi).
 
     before = row_to_json(lesson)
 
@@ -1504,7 +1474,7 @@ uncomplete_lesson(p_lesson_id, p_actor_user_id):
 
 **Etkiler:**
 - Kredi-karşılanmış ders ise `prepaid_package_id` NULL'a çekilir → paket kredisi otomatik geri yüklenir (`v_prepaid_package_status.remaining_credits` türev hesabı). `discount_amount` zaten 0'dı (paket dersinde indirim yasak); değişmez.
-- Bağlı aktif ürün satışları otomatik soft-delete edilir. Bu satışlardan biri ödenmişse akış reddedilir → operatör önce ödemeyi siler.
+- v1.6: Ürün satışları artık derse bağlı değil; uncomplete satış lifecycle'ını etkilemez (eski "bağlı satış soft-delete" davranışı kaldırıldı).
 - `price_snapshot` korunur (§2.3 — completed olsa olmasa snapshot dokunulmazdır; uncomplete sonrası ders aynı fiyatla scheduled'a döner).
 
 **Audit:** `lesson_uncompleted` action (migration 0225 ile CHECK listesine eklendi). `before/after` tüm satırı içerir (paket bağı kopuşu izlenebilir).
@@ -1827,13 +1797,13 @@ Takvim, ana sayfada `WeekCalendar` bileşeni ile gösterilir. Ayrı bir "Program
 
 | Ders durumu | Modal davranışı |
 |---|---|
-| **scheduled (planlı)** | Detay görünümü + "Tamamla" / "İptal" butonları. Tamamla akışı: "Bu derste ürün satışı yapıldı mı?" sorusuna Evet/Hayır zorunlu cevap; Evet ise satış tutarı + opsiyonel not alınır ve `complete_lesson` opsiyonel `productSale` akışıyla atomik olarak yaratılır (§5.2). İptal akışı iki seçenek sunar: "Öğrenci iptal etti" → `changeLessonStatus(cancelled)`; "Yanlışlıkla eklendi" → `softDeleteLesson` (ders ve geçmişten kaldırılır). |
-| **completed (paid / partial / unpaid)** | Detay görünümü ders ücreti + bağlı ürün satışları için ayrı `DebtCard` listesi. Her açık borç kaleminde "Tahsil" butonu ile pay fazına geçilir; kalan tutar otomatik dolu gelir, operatör düzenleyebilir. Tamamı net üzerinden hesaplanır (§2.12). Discount inline aksiyonu sadece ders kaleminde + completed + non-prepaid + paket-dışı durumda görünür (§8.2). |
+| **scheduled (planlı)** | Detay görünümü + "Tamamla" / "İptal" butonları. v1.6: Tamamla akışı tek tıkla biter — ürün satışı sorusu kaldırıldı; satış olacaksa operatör ürün satış modülünü açıp ayrı yapar. İptal akışı iki seçenek sunar: "Öğrenci iptal etti" → `changeLessonStatus(cancelled)`; "Yanlışlıkla eklendi" → `softDeleteLesson` (ders ve geçmişten kaldırılır). |
+| **completed (paid / partial / unpaid)** | Detay görünümü yalnız ders ücreti `DebtCard`'ını gösterir. v1.6: Ürün satışları ders modal'ında listelenmez — operatör onları öğrenci profilinden ya da ürün satış modülünden takip eder. Ders kaleminde "Tahsil" butonu ile pay fazına geçilir; kalan tutar otomatik dolu gelir, operatör düzenleyebilir. Tamamı net üzerinden hesaplanır (§2.12). Discount inline aksiyonu sadece completed + non-prepaid + paket-dışı durumda görünür (§8.2). |
 | **cancelled / no_show** | Modal açılır ama aksiyonu yoktur — sadece detay/durum gösterilir. |
 
 **Bloğun görsel bilgisi:**
 - `lessonState`: planned / unpaid / partial / paid / cancelled (CSS sınıfı + renk).
-- Üst-sağ köşede `online` rozeti (mode), bağlı ürün satışı varsa küçük çanta ikonu, partial ise eksi-tutarlı kalan etiketi.
+- Üst-sağ köşede `online` rozeti (mode) ve partial ise eksi-tutarlı kalan etiketi. v1.6: Ürün satışı sepet ikonu kaldırıldı; ders bloğu yalnız derse ait verilerle ilgilidir.
 - Alt satırda öğrencinin nickname'i (varsa) yoksa full_name.
 
 **Gün-grubu başlığı (örn. "09–12"):** daraltılmış band ise tıklamayla açılır/kapanır.
@@ -1939,13 +1909,13 @@ V1 kapsamı dışında kalan özellikler:
 9. **API disiplini — endpoint listesi:**
 
    **Lessons:**
-   - `GET /lessons?from=&to=` → `[from, to)` aralığındaki dersleri öğrenci adı + bağlı ürün satışları + payment summary ile döner (takvim için).
+   - `GET /lessons?from=&to=` → `[from, to)` aralığındaki dersleri öğrenci adı + payment summary ile döner (takvim için). v1.6: Yanıttan `product_sales` alanı kaldırıldı — ders bloğu artık satış göstermiyor.
    - `POST /lessons` → `create_lesson()` (§5.1). Body: `{ studentId, startsAt, mode, note?, instructorId?, lessonTypeId? }`. instructor/lesson_type opsiyonel; gönderilmezse aktif tek seed otomatik atanır (§2.13). Aktif olmayan id gönderilirse `ValidationError`.
    - `GET /lessons/:id` → tek ders.
-   - `POST /lessons/:id/complete` → `complete_lesson()` (§5.2). Body opsiyonel: `{ productSale?: { totalAmount, note?, paymentSource? } }`. Kredi tahsisi sadece bu yoldan yapılır. Atomik: ders + (varsa) satış + (varsa) tam ödeme.
+   - `POST /lessons/:id/complete` → `complete_lesson()` (§5.2). Body yok. Kredi tahsisi sadece bu yoldan yapılır. v1.6: Eski opsiyonel `productSale` alanı kaldırıldı; satış ürün satış modülünden ayrı yapılır.
    - `PATCH /lessons/:id/status` (generic) → yalnızca `{scheduled, cancelled, no_show}` hedeflerini kabul eder. `completed` reddedilir (409 `INVALID_STATUS_TRANSITION`). Generic update route kredi tahsisini bypass edemez.
    - `PATCH /lessons/:id/discount` → `set_lesson_discount()` (§5.8). Body: `{ discountAmount: number, note?: string }`. Idempotent set; 0 indirimi kaldırır.
-   - `DELETE /lessons/:id` → soft delete. Aktif payment veya bağlı aktif `product_sale` varsa `DELETE_CONFLICT` (409).
+   - `DELETE /lessons/:id` → soft delete. Aktif payment varsa `DELETE_CONFLICT` (409). v1.6: Bağlı satış kontrolü kaldırıldı (lesson_id artık doldurulmuyor).
 
    **Payments:**
    - `POST /payments/cash` → `create_cash_payment()` (§5.3). Body: `{ targetType: 'lesson'|'product_sale', targetId, amount, source, paidAt, note? }`. Paket hedefi reddedilir.
@@ -1956,7 +1926,7 @@ V1 kapsamı dışında kalan özellikler:
    - `GET /packages/:id`, `DELETE /packages/:id` → §5.6b özel akış.
 
    **Product sales:**
-   - `POST /product-sales` → standalone satış (lessonId opsiyonel, §3.4). Aynı zamanda completeLesson akışı içinden de çağrılır.
+   - `POST /product-sales` → satış oluşturma (her satış lessonId NULL — v1.6). Body kalemli (items[]) veya legacy total amount (geriye dönük). Detay §3.4.
    - `GET /product-sales/:id`, `PATCH /product-sales/:id`, `DELETE /product-sales/:id`.
 
    **Students:**

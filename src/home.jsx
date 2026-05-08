@@ -199,15 +199,6 @@ function normalizeApiLesson(l) {
   const discount = Number(l.discount_amount) || 0;
   // Karar 7: takvim ve ödeme karşılaştırmaları net tutar üzerinden yürür.
   const price = Number(l.net_amount ?? (gross - discount)) || 0;
-  const productSales = Array.isArray(l.product_sales)
-    ? l.product_sales.map(sale => ({
-        id: String(sale.id),
-        totalAmount: Number(sale.total_amount) || 0,
-        paidAmount: Number(sale.paid_amount) || 0,
-        remaining: Number(sale.remaining) || 0,
-        note: sale.note || null,
-      }))
-    : [];
   return {
     id: l.id,
     studentId: l.student_id,
@@ -225,7 +216,6 @@ function normalizeApiLesson(l) {
     status: l.status,
     startsAt: l.starts_at,
     lessonState: getLessonState(l.status, paid, price),
-    productSales,
   };
 }
 
@@ -1138,32 +1128,6 @@ const LESSON_STATE_META = {
   paid:    { label: 'Ödendi',                 cls: 'lm-pill-paid' },
 };
 
-function ShoppingBagIcon({ size = 11 }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 16 16"
-      fill="none"
-      aria-hidden="true"
-      className="ic-bag"
-    >
-      <path
-        d="M3.5 5.5h9l-0.7 8.2a1 1 0 0 1-1 0.9H5.2a1 1 0 0 1-1-0.9L3.5 5.5z"
-        stroke="currentColor"
-        strokeWidth="1.3"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M5.5 5.5V4a2.5 2.5 0 1 1 5 0v1.5"
-        stroke="currentColor"
-        strokeWidth="1.3"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
 function debtStateFor(paid, total) {
   if (total <= 0) return 'empty';
   if (paid >= total) return 'paid';
@@ -1174,7 +1138,7 @@ function debtStateFor(paid, total) {
 // Borç kartı — açık borç durumunda kalan rakamı baskın (BÜYÜK + renkli),
 // gross küçük ve sakin durur. Tahsil edildikten sonra sade görünüme döner.
 // Sol kenar şeridi durumu tek bakışta okunur kılar.
-function DebtCard({ label, icon, total, paid, remaining, paymentMethod, onCollect, onEdit, disabled }) {
+function DebtCard({ label, icon, total, paid, remaining, paymentMethod, onCollect, disabled }) {
   const state = debtStateFor(paid, total);
   const headline = state === 'partial' ? 'kalan' : 'borç';
   return (
@@ -1183,21 +1147,6 @@ function DebtCard({ label, icon, total, paid, remaining, paymentMethod, onCollec
         <span className="lm-debt-label">
           {icon}
           <span className="lm-debt-label-text">{label}</span>
-          {onEdit && (
-            <button
-              type="button"
-              className="lm-debt-edit"
-              onClick={onEdit}
-              disabled={disabled}
-              aria-label="Düzenle"
-              title="Düzenle"
-            >
-              <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                <path d="M11.5 2.5l2 2-8 8H3.5v-2l8-8z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/>
-                <path d="M10 4l2 2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
-              </svg>
-            </button>
-          )}
         </span>
         {(state === 'paid' || state === 'empty') && (
           <span className="lm-debt-gross">{state === 'empty' ? '—' : fmtTL(total)}</span>
@@ -1240,27 +1189,16 @@ function DebtCard({ label, icon, total, paid, remaining, paymentMethod, onCollec
 }
 
 function LessonModal({ session, onClose, onUpdated, activePaymentMethods = { cash: true, iban: true } }) {
-  const { complete, cancel, addPayment, updateSale, deleteSale } = useLessonActions();
-  // phase: 'detail' | 'complete' | 'cancel' | 'pay' | 'edit-sale'
+  const { complete, cancel, addPayment } = useLessonActions();
+  // phase: 'detail' | 'complete' | 'cancel' | 'pay'
   const [phase, setPhase] = React.useState('detail');
-  // saleChoice: null (henüz seçilmedi) | 'no' (ürün satışı yok) | 'yes' (var, form açık)
-  const [saleChoice, setSaleChoice] = React.useState(null);
-  const [saleAmount, setSaleAmount] = React.useState('');
-  const [saleNote, setSaleNote] = React.useState('');
   const [cancelReason, setCancelReason] = React.useState(null); // 'student' | 'mistake'
   const [paySource, setPaySource] = React.useState(activePaymentMethods.cash ? 'cash' : 'iban');
   const [payAmount, setPayAmount] = React.useState('');
   const [payNote, setPayNote] = React.useState('');
   // payTarget pay fazının hangi borç kalemine yöneldiğini taşır.
-  // { type: 'lesson' | 'product_sale', id, label, total, paid, remaining }
+  // { type: 'lesson', id, label, total, paid, remaining }
   const [payTarget, setPayTarget] = React.useState(null);
-  // edit-sale fazı: hangi ürün satışının düzenlendiği + form değerleri.
-  // { id, paid, originalTotal, originalNote }
-  const [editSaleTarget, setEditSaleTarget] = React.useState(null);
-  const [editSaleAmount, setEditSaleAmount] = React.useState('');
-  const [editSaleNote, setEditSaleNote] = React.useState('');
-  // Düzenleme penceresinde "Bu satışı sil" basıldıktan sonraki onay alt-adımı.
-  const [confirmingDeleteSale, setConfirmingDeleteSale] = React.useState(false);
   const [error, setError] = React.useState(null);
   const [submitting, setSubmitting] = React.useState(false);
 
@@ -1277,14 +1215,6 @@ function LessonModal({ session, onClose, onUpdated, activePaymentMethods = { cas
   const price = Number(session.price) || 0;
   const paid = Number(session.paid) || 0;
   const remaining = Math.max(0, price - paid);
-  const productSales = Array.isArray(session.productSales) ? session.productSales : [];
-  // Toplam kalan = ders kalanı + tüm bağlı ürün satışlarının kalan tutarları.
-  // Bu satır kullanıcıyı yalnızca ders borcunu görüp diğerini atlamaktan korur.
-  const productSalesRemaining = productSales.reduce(
-    (sum, s) => sum + (Number(s.remaining) || 0),
-    0,
-  );
-  const totalRemaining = remaining + productSalesRemaining;
 
   const dateLabel = session.startsAt
     ? new Date(session.startsAt).toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' })
@@ -1293,36 +1223,12 @@ function LessonModal({ session, onClose, onUpdated, activePaymentMethods = { cas
 
   function resetToDetail() {
     setPhase('detail');
-    setSaleChoice(null);
-    setSaleAmount('');
-    setSaleNote('');
     setCancelReason(null);
     setPayAmount('');
     setPayNote('');
     setPaySource(activePaymentMethods.cash ? 'cash' : 'iban');
     setPayTarget(null);
-    setEditSaleTarget(null);
-    setEditSaleAmount('');
-    setEditSaleNote('');
-    setConfirmingDeleteSale(false);
     setError(null);
-  }
-
-  // Ürün satışını düzenleme fazını açar. Yanlış girilen tutar ya da nota
-  // düzeltme imkanı sağlar; tahsil edilmiş kısım varsa yeni tutar ondan
-  // küçük olamaz (aşağı doğru düzenlemede submit'te validate edilir).
-  function openEditSalePhase(sale) {
-    setEditSaleTarget({
-      id: sale.id,
-      paid: Number(sale.paidAmount) || 0,
-      originalTotal: Number(sale.totalAmount) || 0,
-      originalNote: sale.note || '',
-    });
-    setEditSaleAmount(String(Number(sale.totalAmount) || 0));
-    setEditSaleNote(sale.note || '');
-    setConfirmingDeleteSale(false);
-    setError(null);
-    setPhase('edit-sale');
   }
 
   // Bir borç kaleminin "Tahsil" butonuna basıldığında çağrılır. Pay fazını
@@ -1342,18 +1248,7 @@ function LessonModal({ session, onClose, onUpdated, activePaymentMethods = { cas
     setSubmitting(true);
     setError(null);
     try {
-      // Tamamlama yalnızca dersi + (varsa) satışı kaydeder. Tahsilat ayrı bir
-      // adım — detay görünümünde her açık borç için Tahsil butonu var. Bu sayede
-      // kısmi/çoklu kaynaklı ödemeler (ör. kısmi nakit + sonra IBAN) doğal akışla
-      // ayrı payment kayıtları olarak tutulabiliyor.
-      const productSale =
-        saleChoice === 'yes' && saleAmount && parseFloat(saleAmount) > 0
-          ? {
-              totalAmount: parseFloat(saleAmount),
-              note: saleNote || null,
-            }
-          : null;
-      await complete(session.id, productSale ? { productSale } : {});
+      await complete(session.id);
       onUpdated();
     } catch (err) {
       setError(err.message || 'Bir hata oluştu.');
@@ -1395,60 +1290,7 @@ function LessonModal({ session, onClose, onUpdated, activePaymentMethods = { cas
     }
   }
 
-  async function handleEditSaleSubmit(e) {
-    e.preventDefault();
-    if (!editSaleTarget) return;
-    const newAmount = parseFloat(editSaleAmount);
-    if (!Number.isFinite(newAmount) || newAmount <= 0) {
-      setError('Geçerli bir tutar gir.');
-      return;
-    }
-    if (newAmount < editSaleTarget.paid) {
-      setError(`Yeni tutar ödenmiş ${fmtTL(editSaleTarget.paid)} miktarından düşük olamaz.`);
-      return;
-    }
-    const trimmedNote = editSaleNote.trim();
-    const fields = {};
-    if (newAmount !== editSaleTarget.originalTotal) fields.totalAmount = newAmount;
-    if (trimmedNote !== (editSaleTarget.originalNote || '')) {
-      fields.note = trimmedNote === '' ? null : trimmedNote;
-    }
-    if (Object.keys(fields).length === 0) {
-      resetToDetail();
-      return;
-    }
-    setSubmitting(true);
-    setError(null);
-    try {
-      await updateSale(editSaleTarget.id, fields);
-      onUpdated();
-    } catch (err) {
-      setError(err.message || 'Ürün satışı güncellenemedi.');
-      setSubmitting(false);
-    }
-  }
-
-  async function handleDeleteSale() {
-    if (!editSaleTarget) return;
-    setSubmitting(true);
-    setError(null);
-    try {
-      await deleteSale(editSaleTarget.id);
-      onUpdated();
-    } catch (err) {
-      setError(err.message || 'Ürün satışı silinemedi.');
-      setSubmitting(false);
-    }
-  }
-
-  // Tamamla butonu için kurallar:
-  //  - submit oluyorsa pasif
-  //  - "Bu derste ürün satışı yapıldı mı?" sorusuna henüz cevap verilmediyse pasif (atlama önlenir)
-  //  - "Evet" seçildiyse tutar zorunlu, > 0 olmalı
-  const completeDisabled =
-    submitting ||
-    saleChoice === null ||
-    (saleChoice === 'yes' && (!saleAmount || parseFloat(saleAmount) <= 0));
+  const completeDisabled = submitting;
 
   return (
     <div className="modal-backdrop" onClick={() => { if (!submitting) onClose(); }}>
@@ -1524,45 +1366,6 @@ function LessonModal({ session, onClose, onUpdated, activePaymentMethods = { cas
                 })}
               />
 
-              {productSales.map(sale => {
-                const saleLabel = (sale.note && sale.note.trim()) || 'Ürün satışı';
-                return (
-                  <DebtCard
-                    key={sale.id}
-                    label={saleLabel}
-                    icon={<ShoppingBagIcon size={11} />}
-                    total={sale.totalAmount}
-                    paid={sale.paidAmount}
-                    remaining={sale.remaining}
-                    paymentMethod={null}
-                    disabled={submitting}
-                    onCollect={() => openPayPhase({
-                      type: 'product_sale',
-                      id: sale.id,
-                      label: `Ürün satışı${sale.note && sale.note.trim() ? ` · ${sale.note.trim()}` : ''}`,
-                      total: sale.totalAmount,
-                      paid: sale.paidAmount,
-                      remaining: sale.remaining,
-                    })}
-                    onEdit={() => openEditSalePhase(sale)}
-                  />
-                );
-              })}
-
-              {/* Toplam kalan — bağlı satış yoksa gizli (tek kart zaten kendisi
-                  toplam) ; varsa baskın koyu şerit ile öne çıkar. */}
-              {productSales.length > 0 && totalRemaining > 0 && (
-                <div className="lm-total-line">
-                  <span className="lm-total-label">Toplam kalan</span>
-                  <span className="lm-total-amt">{fmtTL(totalRemaining)}</span>
-                </div>
-              )}
-              {productSales.length > 0 && totalRemaining === 0 && (
-                <div className="lm-total-line is-cleared">
-                  <span className="lm-total-label">Tüm tahsilatlar tamamlandı</span>
-                </div>
-              )}
-
               {session.note && (
                 <div className="lm-note">
                   <span className="lm-note-label">Not</span>
@@ -1579,61 +1382,9 @@ function LessonModal({ session, onClose, onUpdated, activePaymentMethods = { cas
               <div className="lm-step-intro">
                 <div className="lm-step-title">Dersi tamamla</div>
                 <div className="lm-step-sub">
-                  Ders tamamlandı olarak işaretlenecek. Ödeme detayını bu adımda ya da sonradan girebilirsin.
+                  Ders tamamlandı olarak işaretlenecek. Ödeme detayını sonradan Tahsil butonu ile girebilirsin.
                 </div>
               </div>
-
-              {/* Ürün satışı sorgusu — bilinçli karar için zorunlu Evet/Hayır */}
-              <div className="lm-sale-q">
-                <div className="lm-sale-q-label">Bu derste ürün satışı yapıldı mı?</div>
-                <div className="lm-sale-q-choices">
-                  <button
-                    type="button"
-                    className={"lm-sale-choice" + (saleChoice === 'no' ? ' is-sel' : '')}
-                    onClick={() => {
-                      setSaleChoice('no');
-                      setSaleAmount('');
-                      setSaleNote('');
-                      setSalePaySource(null);
-                    }}
-                  >Hayır</button>
-                  <button
-                    type="button"
-                    className={"lm-sale-choice" + (saleChoice === 'yes' ? ' is-sel' : '')}
-                    onClick={() => setSaleChoice('yes')}
-                  >Evet, var</button>
-                </div>
-              </div>
-
-              {saleChoice === 'yes' && (
-                <div className="lm-sale-card">
-                  <div className="lm-sale-head">
-                    <span>Ürün satışı</span>
-                  </div>
-                  <div className="form-row">
-                    <label>Satış tutarı (₺)</label>
-                    <input
-                      type="number" min="0" step="1"
-                      value={saleAmount}
-                      onChange={e => setSaleAmount(e.target.value)}
-                      placeholder="0"
-                      autoFocus
-                    />
-                  </div>
-                  <div className="form-row lm-last-field">
-                    <label>Not <span className="lm-opt">(opsiyonel)</span></label>
-                    <input
-                      type="text"
-                      value={saleNote}
-                      onChange={e => setSaleNote(e.target.value)}
-                      placeholder="Ürün adı veya açıklama…"
-                    />
-                  </div>
-                  <div className="lm-sale-hint">
-                    Satış borç olarak kaydedilir. Tahsilatı bu ekrandan sonra Tahsil butonu ile yapabilirsin (kısmi ya da farklı yöntemlerle).
-                  </div>
-                </div>
-              )}
               {error && <div className="lm-error">{error}</div>}
             </>
           )}
@@ -1743,67 +1494,6 @@ function LessonModal({ session, onClose, onUpdated, activePaymentMethods = { cas
             </form>
           )}
 
-          {/* EDIT SALE — yanlış girilen ürün satışını düzeltmek için. Kısmi
-              tahsilat yapılmışsa yeni tutar ödenenden küçük olamaz. Aynı
-              ekrandan satışı tamamen iptal edip silebilirsin (tahsilat varsa
-              backend reddeder). */}
-          {phase === 'edit-sale' && editSaleTarget && !confirmingDeleteSale && (
-            <form id="lm-edit-sale-form" onSubmit={handleEditSaleSubmit}>
-              <div className="lm-step-intro">
-                <div className="lm-step-title">Ürün satışını düzenle</div>
-                <div className="lm-step-sub">
-                  Yanlış girdiğin tutarı veya notu düzeltebilir, ya da satışı tamamen iptal edebilirsin.
-                  {editSaleTarget.paid > 0 && ` Bu satıştan ${fmtTL(editSaleTarget.paid)} tahsil edilmiş; yeni tutar bundan düşük olamaz ve tahsilat geri alınmadan silinemez.`}
-                </div>
-              </div>
-              <div className="lm-pay-fields">
-                <div className="form-row">
-                  <label>Satış tutarı (₺)</label>
-                  <input
-                    type="number" min="0" step="1"
-                    value={editSaleAmount}
-                    onChange={e => setEditSaleAmount(e.target.value)}
-                    placeholder="0"
-                    required
-                    autoFocus
-                  />
-                </div>
-                <div className="form-row lm-last-field">
-                  <label>Not <span className="lm-opt">(opsiyonel)</span></label>
-                  <input
-                    type="text"
-                    value={editSaleNote}
-                    onChange={e => setEditSaleNote(e.target.value)}
-                    placeholder="Ürün adı veya açıklama…"
-                  />
-                </div>
-              </div>
-              {error && <div className="lm-error">{error}</div>}
-              <div className="lm-edit-sale-danger">
-                <button
-                  type="button"
-                  className="lm-edit-sale-delete"
-                  onClick={() => { setError(null); setConfirmingDeleteSale(true); }}
-                  disabled={submitting || editSaleTarget.paid > 0}
-                  title={editSaleTarget.paid > 0
-                    ? 'Bu satıştan tahsilat yapılmış, silinemez.'
-                    : 'Bu satışı sil'}
-                >Bu satışı sil</button>
-              </div>
-            </form>
-          )}
-
-          {phase === 'edit-sale' && editSaleTarget && confirmingDeleteSale && (
-            <div className="lm-step-intro">
-              <div className="lm-step-title">Bu satışı silmek istediğine emin misin?</div>
-              <div className="lm-step-sub">
-                {fmtTL(editSaleTarget.originalTotal)} tutarındaki ürün satışı kaldırılacak.
-                Bu işlem geri alınamaz; sadece geçmiş hareketler arasında iz olarak görünür.
-              </div>
-              {error && <div className="lm-error">{error}</div>}
-            </div>
-          )}
-
         </div>
 
         {/* ── Footer ── */}
@@ -1854,33 +1544,6 @@ function LessonModal({ session, onClose, onUpdated, activePaymentMethods = { cas
                 className="btn btn-primary"
                 disabled={!payAmount || submitting}
               >{submitting ? 'Kaydediliyor…' : 'Ödemeyi kaydet'}</button>
-            </>
-          )}
-          {phase === 'edit-sale' && !confirmingDeleteSale && (
-            <>
-              <button type="button" className="btn btn-ghost" onClick={resetToDetail} disabled={submitting}>Geri</button>
-              <button
-                type="submit"
-                form="lm-edit-sale-form"
-                className="btn btn-primary"
-                disabled={!editSaleAmount || submitting}
-              >{submitting ? 'Kaydediliyor…' : 'Kaydet'}</button>
-            </>
-          )}
-          {phase === 'edit-sale' && confirmingDeleteSale && (
-            <>
-              <button
-                type="button"
-                className="btn btn-ghost"
-                onClick={() => { setError(null); setConfirmingDeleteSale(false); }}
-                disabled={submitting}
-              >Vazgeç</button>
-              <button
-                type="button"
-                className="btn btn-primary lm-btn-danger"
-                onClick={handleDeleteSale}
-                disabled={submitting}
-              >{submitting ? 'Siliniyor…' : 'Evet, sil'}</button>
             </>
           )}
         </div>
@@ -2103,14 +1766,6 @@ export function WeekCalendar({ weekStart, variant = "detailed", onSessionClick, 
                     >
                       <div className="wk-sess-top">
                         <span className="wk-sess-time">{s.time}</span>
-                        {Array.isArray(s.productSales) && s.productSales.length > 0 && (
-                          <span
-                            className="wk-sess-sale"
-                            title={`Ürün satışı: ${s.productSales.length} kalem`}
-                          >
-                            <ShoppingBagIcon size={10} />
-                          </span>
-                        )}
                         {s.mode === "online" && <span className="wk-sess-mode">ONLINE</span>}
                       </div>
                       <div className="wk-sess-name-row">

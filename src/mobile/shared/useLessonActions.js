@@ -5,17 +5,14 @@ import {
   changeLessonStatusApi,
   deleteLessonApi,
   createCashPayment,
-  updateProductSaleApi,
-  deleteProductSaleApi,
 } from '../../api';
 
 // Ders aksiyonlarını gruplayan stateless hook. Hem desktop LessonModal hem mobil
 // MobileLessonModal aynı backend kontratını paylaşsın diye API katmanını
 // ortaklaştırır. Submitting/error UI state'i çağıran komponentte kalır.
 export function useLessonActions() {
-  // completeLessonApi(id, { productSale? }) — ürün satışı complete ile birleşik
   const complete = useCallback(
-    (lessonId, options = {}) => completeLessonApi(lessonId, options),
+    (lessonId) => completeLessonApi(lessonId),
     []
   );
 
@@ -36,15 +33,5 @@ export function useLessonActions() {
     []
   );
 
-  const updateSale = useCallback(
-    (saleId, fields) => updateProductSaleApi(saleId, fields),
-    []
-  );
-
-  const deleteSale = useCallback(
-    (saleId) => deleteProductSaleApi(saleId),
-    []
-  );
-
-  return { complete, uncomplete, cancel, addPayment, updateSale, deleteSale };
+  return { complete, uncomplete, cancel, addPayment };
 }
