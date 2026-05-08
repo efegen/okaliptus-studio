@@ -123,7 +123,10 @@ function LessonBlock({ session, onSelect }) {
       <div className="mobile-cal-block-top">
         <span className="mobile-cal-block-time">{session.time}</span>
         {session.mode === 'online' && (
-          <span className="mobile-cal-block-mode" aria-label="Online ders">🌐</span>
+          <>
+            <span className="mobile-cal-block-sep" aria-hidden>–</span>
+            <span className="mobile-cal-block-mode">Online</span>
+          </>
         )}
       </div>
       <div className="mobile-cal-block-name-row">

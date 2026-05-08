@@ -838,9 +838,9 @@ input, select { font-family: inherit; }
   border-left-color: oklch(0.48 calc(0.22 * var(--ls-sat)) 245);
 }
 .wk-sess-unpaid {
-  background: oklch(0.90 calc(0.11 * var(--ls-sat)) 20);
+  background: oklch(0.90 calc(0.15 * var(--ls-sat)) 20);
   color: oklch(0.28 calc(0.18 * var(--ls-sat)) 20);
-  border-color: oklch(0.76 calc(0.15 * var(--ls-sat)) 20);
+  border-color: oklch(0.76 calc(0.18 * var(--ls-sat)) 20);
   border-left-color: oklch(0.48 calc(0.24 * var(--ls-sat)) 20);
 }
 .wk-sess-partial {
@@ -891,7 +891,7 @@ input, select { font-family: inherit; }
 .leg { display: inline-flex; align-items: center; gap: 6px; }
 .leg-sw { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
 .leg-sw.ls-planned  { background: oklch(0.88 calc(0.13 * var(--ls-sat)) 245); border: 1px solid oklch(0.48 calc(0.22 * var(--ls-sat)) 245); }
-.leg-sw.ls-unpaid   { background: oklch(0.90 calc(0.11 * var(--ls-sat)) 20);  border: 1px solid oklch(0.48 calc(0.24 * var(--ls-sat)) 20); }
+.leg-sw.ls-unpaid   { background: oklch(0.90 calc(0.15 * var(--ls-sat)) 20);  border: 1px solid oklch(0.48 calc(0.24 * var(--ls-sat)) 20); }
 .leg-sw.ls-partial  { background: oklch(0.90 calc(0.13 * var(--ls-sat)) 65);  border: 1px solid oklch(0.52 calc(0.24 * var(--ls-sat)) 60); }
 .leg-sw.ls-paid     { background: oklch(0.88 calc(0.12 * var(--ls-sat)) 145); border: 1px solid oklch(0.38 calc(0.22 * var(--ls-sat)) 145); }
 

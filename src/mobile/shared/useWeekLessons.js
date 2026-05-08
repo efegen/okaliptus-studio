@@ -66,17 +66,19 @@ function selectSessions(data) {
   return (data || []).map(normalizeLesson).filter(s => s.lessonState !== 'cancelled');
 }
 
-export function useWeekLessons(weekStart) {
+export function useWeekLessons(weekStart, options = {}) {
+  const enabled = options.enabled !== false;
   const weekStartMs = weekStart.getTime();
   const { data: sessions, error, isLoading } = useQuery({
     queryKey: queryKeys.weekLessons(weekStartMs),
     queryFn: () => getWeekLessons(weekStart),
     select: selectSessions,
     staleTime: 60 * 1000,
+    enabled,
   });
   return {
     sessions: sessions ?? null,
     error: error?.message ?? null,
-    isLoading,
+    isLoading: enabled ? isLoading : false,
   };
 }

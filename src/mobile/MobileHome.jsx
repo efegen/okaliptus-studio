@@ -1,7 +1,8 @@
 import React from 'react';
 import { MobileGreetingHeader } from './MobileGreetingHeader';
-import { MobileKpiSection } from './MobileKpiSection';
-import { MobileWeekCalendar } from './MobileWeekCalendar';
+import { MobileHeroLessonCard } from './home/MobileHeroLessonCard';
+import { MobileFinanceSummary } from './home/MobileFinanceSummary';
+import { MobileWeekStrip } from './home/MobileWeekStrip';
 import { MobileDayLessons } from './MobileDayLessons';
 
 function getIstanbulTodayISO() {
@@ -16,14 +17,15 @@ function getIstanbulTodayISO() {
   return `${y}-${m}-${d}`;
 }
 
-export function MobileHome({ user, onLogout }) {
+export function MobileHome({ user, onLogout, onCreateLesson }) {
   const [selectedISO, setSelectedISO] = React.useState(getIstanbulTodayISO);
 
   return (
     <div className="mobile-home">
       <MobileGreetingHeader user={user} onLogout={onLogout} />
-      <MobileKpiSection />
-      <MobileWeekCalendar selectedISO={selectedISO} onSelect={setSelectedISO} />
+      <MobileHeroLessonCard onCreateLesson={onCreateLesson} />
+      <MobileFinanceSummary />
+      <MobileWeekStrip selectedISO={selectedISO} onSelect={setSelectedISO} />
       <MobileDayLessons selectedISO={selectedISO} />
     </div>
   );

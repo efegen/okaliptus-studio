@@ -29,7 +29,7 @@ function getWeekStart(date) {
   return monday;
 }
 
-export function MobileWeekCalendar({ selectedISO: controlledISO, onSelect }) {
+export function MobileWeekCalendar({ selectedISO: controlledISO, onSelect, dotsByISO }) {
   const today = useMemo(getIstanbulToday, []);
   const todayISO = toISODate(today);
 
@@ -55,6 +55,7 @@ export function MobileWeekCalendar({ selectedISO: controlledISO, onSelect }) {
       {days.map((day) => {
         const isSelected = day.iso === selectedISO;
         const isToday = day.iso === todayISO;
+        const dotCount = dotsByISO ? Math.min(3, dotsByISO[day.iso] || 0) : 0;
         return (
           <button
             key={day.iso}
@@ -65,6 +66,13 @@ export function MobileWeekCalendar({ selectedISO: controlledISO, onSelect }) {
           >
             <span className="mobile-week-day-label">{day.label}</span>
             <span className="mobile-week-day-num">{day.dayNum}</span>
+            {dotsByISO && (
+              <span className="mobile-week-day-dots" aria-hidden>
+                {Array.from({ length: dotCount }).map((_, i) => (
+                  <span key={i} className="mobile-week-day-dot" />
+                ))}
+              </span>
+            )}
           </button>
         );
       })}
