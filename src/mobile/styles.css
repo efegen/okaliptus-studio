@@ -2196,9 +2196,11 @@
     cursor: pointer;
   }
   .mobile-csheet-mode-btn.is-on {
-    background: color-mix(in oklch, var(--accent) 10%, var(--bg));
+    background: var(--accent);
     border-color: var(--accent);
-    color: var(--accent);
+    color: var(--surface);
+    font-weight: 700;
+    box-shadow: 0 1px 2px color-mix(in oklch, var(--accent) 35%, transparent);
   }
 
   .mobile-csheet-input {
@@ -2477,30 +2479,105 @@
     font-weight: 700;
   }
 
-  .mobile-qpay-debt-list {
+  .mobile-qpay-subhead {
+    display: inline-flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 4px;
+    font-variant-numeric: tabular-nums;
+  }
+  .mobile-qpay-subhead strong {
+    color: var(--ink);
+    font-weight: 600;
+  }
+  .mobile-qpay-subhead-sep {
+    color: var(--ink-4);
+  }
+
+  .mobile-qpay-mode-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: color-mix(in oklch, var(--accent) 12%, var(--surface));
+    border: 1px solid color-mix(in oklch, var(--accent) 30%, var(--surface));
+    font-size: 12px;
+    color: var(--ink);
+  }
+  .mobile-qpay-mode-banner-text {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .mobile-qpay-mode-banner-text strong { font-weight: 600; }
+  .mobile-qpay-mode-banner-btn {
+    flex: 0 0 auto;
+    background: transparent;
+    border: 1px solid color-mix(in oklch, var(--accent) 40%, var(--surface));
+    border-radius: 999px;
+    padding: 4px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ink);
+    cursor: pointer;
+  }
+  .mobile-qpay-mode-banner-btn:active {
+    background: color-mix(in oklch, var(--accent) 18%, var(--surface));
+  }
+  .mobile-qpay-mode-banner-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .mobile-qpay-allocations {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 4px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    border: 1px solid var(--ink-4);
+    background: var(--surface);
   }
-  .mobile-qpay-debt-list .mobile-csheet-label { margin-bottom: 2px; }
+  .mobile-qpay-allocations-head {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ink-2);
+    margin-bottom: 4px;
+  }
+  .mobile-qpay-allocations-hint {
+    color: var(--ink-3);
+    font-weight: 400;
+  }
+  .mobile-qpay-allocations-tip {
+    font-size: 11px;
+    color: var(--ink-3);
+    margin: -2px 0 4px;
+  }
 
-  .mobile-qpay-debt-card {
+  .mobile-qpay-alloc-row {
     display: flex;
     align-items: center;
     gap: 10px;
     width: 100%;
-    min-height: 64px;
-    padding: 12px 14px;
-    border: 1px solid var(--ink-4);
-    border-radius: 12px;
-    background: var(--surface);
-    color: var(--ink);
+    padding: 10px 8px;
+    margin: 0 -8px;
+    background: transparent;
+    border: none;
+    border-radius: 8px;
     text-align: left;
+    color: var(--ink);
+  }
+  .mobile-qpay-alloc-row + .mobile-qpay-alloc-row {
+    border-top: 1px solid color-mix(in oklch, var(--ink-4) 50%, transparent);
+  }
+  .mobile-qpay-alloc-row.is-clickable {
     cursor: pointer;
   }
-  .mobile-qpay-debt-card:active { background: var(--surface-2); }
+  .mobile-qpay-alloc-row.is-clickable:active {
+    background: var(--surface-2);
+  }
 
-  .mobile-qpay-debt-main {
+  .mobile-qpay-alloc-main {
     flex: 1 1 auto;
     min-width: 0;
     display: flex;
@@ -2508,7 +2585,7 @@
     gap: 2px;
     overflow: hidden;
   }
-  .mobile-qpay-debt-title {
+  .mobile-qpay-alloc-title {
     font-size: 14px;
     font-weight: 600;
     color: var(--ink);
@@ -2516,72 +2593,37 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .mobile-qpay-debt-sub {
+  .mobile-qpay-alloc-sub {
     font-size: 12px;
     color: var(--ink-3);
     font-variant-numeric: tabular-nums;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
-  .mobile-qpay-debt-amt {
+  .mobile-qpay-alloc-amount {
     flex: 0 0 auto;
     display: flex;
     flex-direction: column;
     align-items: flex-end;
-    gap: 2px;
+    gap: 1px;
   }
-  .mobile-qpay-debt-remaining {
+  .mobile-qpay-alloc-portion {
     font-size: 15px;
-    font-weight: 600;
+    font-weight: 700;
     color: var(--ink);
     font-variant-numeric: tabular-nums;
   }
-  .mobile-qpay-debt-meta {
-    font-size: 11px;
+  .mobile-qpay-alloc-partial {
+    font-size: 10px;
+    font-weight: 500;
     color: var(--ink-3);
-    font-variant-numeric: tabular-nums;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
   }
-  .mobile-qpay-debt-chev {
+  .mobile-qpay-alloc-chev {
     flex: 0 0 auto;
     color: var(--ink-3);
-  }
-
-  .mobile-qpay-summary {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    padding: 12px 14px;
-    border: 1px solid var(--ink-4);
-    border-radius: 12px;
-    background: var(--surface);
-  }
-  .mobile-qpay-summary-row {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 12px;
-    font-size: 13px;
-  }
-  .mobile-qpay-summary-row-emph {
-    padding-top: 8px;
-    border-top: 1px solid var(--ink-4);
-    font-size: 14px;
-  }
-  .mobile-qpay-summary-label {
-    color: var(--ink-3);
-    flex: 0 0 auto;
-  }
-  .mobile-qpay-summary-value {
-    flex: 1 1 auto;
-    text-align: right;
-    color: var(--ink);
-    font-weight: 600;
-    font-variant-numeric: tabular-nums;
-  }
-  .mobile-qpay-summary-meta {
-    color: var(--ink-3);
-    font-weight: 400;
-  }
-  .mobile-qpay-summary-row-emph .mobile-qpay-summary-value {
-    color: var(--accent);
   }
 
   /* ---------- Create student page (Faz D.3) — full-screen ---------- */

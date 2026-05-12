@@ -9,6 +9,7 @@ import {
 } from '../api';
 import { queryKeys } from '../hooks/queryKeys';
 import { fmtTL } from '../data';
+import { allocateFifo } from '../students';
 import { MobileStudentCombobox } from './shared/MobileStudentCombobox';
 
 const ACTIVE_PAYMENT_METHODS = { cash: true, iban: true };
@@ -55,9 +56,10 @@ export function MobileQuickPaymentSheet({ open, onClose, onCompleted, preselecte
     enabled: open && !preselectedStudent,
   });
 
-  const [phase, setPhase] = React.useState(preselectedStudent ? 'pickDebt' : 'pickStudent');
+  const [phase, setPhase] = React.useState(preselectedStudent ? 'pay' : 'pickStudent');
   const [selectedStudent, setSelectedStudent] = React.useState(preselectedStudent);
-  const [selectedDebt, setSelectedDebt] = React.useState(null);
+  const [mode, setMode] = React.useState('auto'); // 'auto' | 'single'
+  const [selectedTargetKey, setSelectedTargetKey] = React.useState(null);
   const [amount, setAmount] = React.useState('');
   const [source, setSource] = React.useState('cash');
   const [note, setNote] = React.useState('');
@@ -90,12 +92,12 @@ export function MobileQuickPaymentSheet({ open, onClose, onCompleted, preselecte
         key: `lesson-${l.id}`,
         targetType: 'lesson',
         targetId: l.id,
-        sortAt: l.starts_at,
+        dateIso: l.starts_at,
         title: 'Ders',
         subtitle: `${formatLessonDate(l.starts_at)} · ${formatLessonTime(l.starts_at)}`,
         total,
         paid,
-        remaining,
+        remainingAmount: remaining,
       });
     }
     const sales = salesQuery.data ?? [];
@@ -108,29 +110,62 @@ export function MobileQuickPaymentSheet({ open, onClose, onCompleted, preselecte
         key: `sale-${s.product_sale_id}`,
         targetType: 'product_sale',
         targetId: s.product_sale_id,
-        sortAt: s.sold_at,
+        dateIso: s.sold_at,
         title: (s.note && String(s.note).trim()) || 'Ürün satışı',
         subtitle: formatLessonDate(s.sold_at),
         total,
         paid,
-        remaining,
+        remainingAmount: remaining,
       });
     }
     items.sort((a, b) => {
-      const ta = a.sortAt ? new Date(a.sortAt).getTime() : 0;
-      const tb = b.sortAt ? new Date(b.sortAt).getTime() : 0;
-      return ta - tb; // oldest first — pay older debts first
+      const ta = a.dateIso ? new Date(a.dateIso).getTime() : 0;
+      const tb = b.dateIso ? new Date(b.dateIso).getTime() : 0;
+      return ta - tb; // en eski önce — FIFO için
     });
     return items;
   }, [lessonsQuery.data, salesQuery.data]);
 
   const debtsLoading = !!selectedStudent && (lessonsQuery.isLoading || salesQuery.isLoading);
   const debtsError = (lessonsQuery.error || salesQuery.error)?.message || null;
+  const totalRemaining = debts.reduce((s, d) => s + d.remainingAmount, 0);
+
+  const selectedItem = mode === 'single'
+    ? (debts.find(d => d.key === selectedTargetKey) ?? null)
+    : null;
+
+  const parsedAmount = parseFloat(amount) || 0;
+  const maxAmount = selectedItem ? selectedItem.remainingAmount : totalRemaining;
+  const isOverDebt = parsedAmount > maxAmount + 0.001;
+  const isMultiItem = debts.length > 1;
+  const rowsClickable = mode === 'auto' && isMultiItem && !submitting;
+
+  const allocations = React.useMemo(() => {
+    if (parsedAmount <= 0 || isOverDebt) return [];
+    if (mode === 'single' && selectedItem) {
+      return [{ item: selectedItem, portion: parsedAmount }];
+    }
+    return allocateFifo(debts, parsedAmount);
+  }, [mode, selectedItem, debts, parsedAmount, isOverDebt]);
+
+  const listItems = React.useMemo(() => {
+    if (allocations.length > 0) {
+      return allocations.map(a => ({ ...a, planned: true }));
+    }
+    if (mode === 'single' && selectedItem) {
+      return [{ item: selectedItem, portion: selectedItem.remainingAmount, planned: false }];
+    }
+    return debts.map(d => ({ item: d, portion: d.remainingAmount, planned: false }));
+  }, [allocations, mode, selectedItem, debts]);
+
+  const canSubmit =
+    parsedAmount > 0 && !isOverDebt && !submitting && allocations.length > 0;
 
   function reset() {
-    setPhase(preselectedStudent ? 'pickDebt' : 'pickStudent');
+    setPhase(preselectedStudent ? 'pay' : 'pickStudent');
     setSelectedStudent(preselectedStudent);
-    setSelectedDebt(null);
+    setMode('auto');
+    setSelectedTargetKey(null);
     setAmount('');
     setSource('cash');
     setNote('');
@@ -138,65 +173,91 @@ export function MobileQuickPaymentSheet({ open, onClose, onCompleted, preselecte
     setError(null);
   }
 
+  // Drawer her açılışında/kapanışında veya preselectedStudent değişiminde
+  // state'i baştan kur — profilden gelen öğrenci, sheet ilk açıldığında
+  // henüz state'e set edilmemiş olabilir.
   React.useEffect(() => {
-    if (!open) reset();
+    reset();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, preselectedStudent]);
 
   function handleSelectStudent(s) {
     setSelectedStudent(s);
-    setPhase('pickDebt');
+    setPhase('pay');
   }
 
   function handleClearStudent() {
     if (preselectedStudent) {
-      // Profilden açıldığında öğrenci sabit — close ve geri dön.
       onClose();
       return;
     }
     setSelectedStudent(null);
-    setSelectedDebt(null);
+    setMode('auto');
+    setSelectedTargetKey(null);
+    setAmount('');
+    setError(null);
     setPhase('pickStudent');
   }
 
-  function handlePickDebt(debt) {
-    setSelectedDebt(debt);
-    setAmount(String(debt.remaining));
-    setSource(ACTIVE_PAYMENT_METHODS.cash ? 'cash' : 'iban');
-    setNote('');
+  function handlePickItem(item) {
+    setMode('single');
+    setSelectedTargetKey(item.key);
     setError(null);
-    setPhase('enterAmount');
+    // Tutar otomatik doldurulmaz — kullanıcı kendi belirler.
   }
 
-  function handleBackToDebts() {
-    setSelectedDebt(null);
+  function handleBackToAuto() {
+    setMode('auto');
+    setSelectedTargetKey(null);
     setError(null);
-    setPhase('pickDebt');
   }
 
   async function handleSubmit() {
-    if (!selectedDebt) return;
-    const amt = parseFloat(amount);
-    if (!Number.isFinite(amt) || amt <= 0) return;
+    if (allocations.length === 0) { setError('Tahsil edilecek kalem yok.'); return; }
+    if (parsedAmount <= 0) { setError('Tutar sıfırdan büyük olmalı.'); return; }
+    if (isOverDebt) {
+      setError(mode === 'single'
+        ? 'Tutar bu kalemin kalanından fazla olamaz.'
+        : 'Tutar açık borç toplamından fazla olamaz.');
+      return;
+    }
     setSubmitting(true);
     setError(null);
+
+    const paidAtIso = new Date().toISOString();
+    const noteValue = note.trim() || null;
+    let succeeded = 0;
+
     try {
-      await createCashPayment({
-        targetType: selectedDebt.targetType,
-        targetId: selectedDebt.targetId,
-        amount: amt,
-        source,
-        paidAt: new Date().toISOString(),
-        note: note.trim() || null,
-      });
-      const remainingAfter = Math.max(0, selectedDebt.remaining - amt);
-      const message = remainingAfter <= 0
-        ? `${fmtTL(amt)} tahsil edildi · ${selectedStudent.full_name}`
-        : `${fmtTL(amt)} kaydedildi · ${fmtTL(remainingAfter)} kalan`;
+      for (const { item, portion } of allocations) {
+        await createCashPayment({
+          targetType: item.targetType,
+          targetId: item.targetId,
+          amount: portion.toFixed(2),
+          source,
+          paidAt: paidAtIso,
+          note: noteValue,
+        });
+        succeeded += 1;
+      }
+      const remainingAfter = Math.max(0, totalRemaining - parsedAmount);
+      const message = remainingAfter <= 0.005
+        ? `${fmtTL(parsedAmount)} tahsil edildi · ${selectedStudent.full_name}`
+        : `${fmtTL(parsedAmount)} kaydedildi · ${fmtTL(remainingAfter)} kalan`;
       onCompleted(message);
     } catch (err) {
-      setError(err.message || 'Tahsilat kaydedilemedi.');
+      const baseMsg = err?.message || 'Tahsilat kaydedilemedi.';
+      const tail = succeeded > 0 ? ` (${succeeded}/${allocations.length} kalem kaydedildi)` : '';
+      setError(baseMsg + tail);
       setSubmitting(false);
+      if (succeeded > 0) {
+        // Yarısı geçti — listeyi tazele, kullanıcı kalan için tekrar deneyebilsin
+        lessonsQuery.refetch();
+        salesQuery.refetch();
+        setMode('auto');
+        setSelectedTargetKey(null);
+        setAmount('');
+      }
     }
   }
 
@@ -219,8 +280,19 @@ export function MobileQuickPaymentSheet({ open, onClose, onCompleted, preselecte
               <Drawer.Title className="mobile-csheet-title">Ödeme al</Drawer.Title>
               <div className="mobile-csheet-meta">
                 {phase === 'pickStudent' && 'Önce öğrenciyi seç'}
-                {phase === 'pickDebt' && (selectedStudent?.full_name || '')}
-                {phase === 'enterAmount' && (selectedDebt?.title || '')}
+                {phase === 'pay' && selectedStudent && (
+                  <span className="mobile-qpay-subhead">
+                    <strong>{selectedStudent.full_name}</strong>
+                    {debts.length > 0 && (
+                      <>
+                        <span className="mobile-qpay-subhead-sep" aria-hidden="true"> · </span>
+                        Açık borç: <strong>{fmtTL(totalRemaining)}</strong>
+                        <span className="mobile-qpay-subhead-sep" aria-hidden="true"> · </span>
+                        {debts.length} kalem
+                      </>
+                    )}
+                  </span>
+                )}
               </div>
             </header>
 
@@ -238,17 +310,37 @@ export function MobileQuickPaymentSheet({ open, onClose, onCompleted, preselecte
                 </FormRow>
               )}
 
-              {phase === 'pickDebt' && selectedStudent && (
+              {phase === 'pay' && selectedStudent && (
                 <>
-                  <FormRow label="Öğrenci">
-                    <MobileStudentCombobox
-                      students={students}
-                      selected={selectedStudent}
-                      onSelect={() => {}}
-                      onClear={handleClearStudent}
-                      loading={false}
-                    />
-                  </FormRow>
+                  {!preselectedStudent && (
+                    <FormRow label="Öğrenci">
+                      <MobileStudentCombobox
+                        students={students}
+                        selected={selectedStudent}
+                        onSelect={() => {}}
+                        onClear={handleClearStudent}
+                        loading={false}
+                      />
+                    </FormRow>
+                  )}
+
+                  {mode === 'single' && selectedItem && (
+                    <div className="mobile-qpay-mode-banner">
+                      <span className="mobile-qpay-mode-banner-text">
+                        <strong>Sadece bu kaleme:</strong> {selectedItem.title}
+                        {selectedItem.subtitle && ` · ${selectedItem.subtitle}`}
+                        {' · '}{fmtTL(selectedItem.remainingAmount)} kalan
+                      </span>
+                      <button
+                        type="button"
+                        className="mobile-qpay-mode-banner-btn"
+                        onClick={handleBackToAuto}
+                        disabled={submitting}
+                      >
+                        Tüm borçlar
+                      </button>
+                    </div>
+                  )}
 
                   {debtsLoading && (
                     <div className="mobile-qpay-empty">Borçlar yükleniyor…</div>
@@ -264,171 +356,138 @@ export function MobileQuickPaymentSheet({ open, onClose, onCompleted, preselecte
                   )}
 
                   {!debtsLoading && debts.length > 0 && (
-                    <div className="mobile-qpay-debt-list">
-                      <div className="mobile-csheet-label">Açık borçlar</div>
-                      {debts.map(d => (
-                        <button
-                          key={d.key}
-                          type="button"
-                          className="mobile-qpay-debt-card"
-                          onClick={() => handlePickDebt(d)}
-                        >
-                          <span className="mobile-qpay-debt-main">
-                            <span className="mobile-qpay-debt-title">{d.title}</span>
-                            <span className="mobile-qpay-debt-sub">{d.subtitle}</span>
-                          </span>
-                          <span className="mobile-qpay-debt-amt">
-                            <span className="mobile-qpay-debt-remaining">{fmtTL(d.remaining)}</span>
-                            {d.paid > 0 && (
-                              <span className="mobile-qpay-debt-meta">
-                                {fmtTL(d.paid)} / {fmtTL(d.total)} ödendi
-                              </span>
-                            )}
-                            {d.paid === 0 && (
-                              <span className="mobile-qpay-debt-meta">{fmtTL(d.total)} toplam</span>
-                            )}
-                          </span>
-                          <span className="mobile-qpay-debt-chev" aria-hidden="true">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="M9 6l6 6-6 6" />
-                            </svg>
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </>
-              )}
+                    <>
+                      <FormRow label="Tutar (₺)">
+                        <input
+                          type="number"
+                          inputMode="decimal"
+                          min="0.01"
+                          step="0.01"
+                          className="mobile-csheet-input"
+                          value={amount}
+                          onChange={e => setAmount(e.target.value)}
+                          placeholder="0,00"
+                          autoFocus
+                        />
+                      </FormRow>
 
-              {phase === 'enterAmount' && selectedDebt && (
-                <>
-                  <div className="mobile-qpay-summary">
-                    <div className="mobile-qpay-summary-row">
-                      <span className="mobile-qpay-summary-label">Öğrenci</span>
-                      <span className="mobile-qpay-summary-value">{selectedStudent.full_name}</span>
-                    </div>
-                    <div className="mobile-qpay-summary-row">
-                      <span className="mobile-qpay-summary-label">Borç</span>
-                      <span className="mobile-qpay-summary-value">
-                        {selectedDebt.title}
-                        {selectedDebt.subtitle && (
-                          <span className="mobile-qpay-summary-meta"> · {selectedDebt.subtitle}</span>
-                        )}
-                      </span>
-                    </div>
-                    <div className="mobile-qpay-summary-row mobile-qpay-summary-row-emph">
-                      <span className="mobile-qpay-summary-label">Kalan</span>
-                      <span className="mobile-qpay-summary-value">{fmtTL(selectedDebt.remaining)}</span>
-                    </div>
-                  </div>
-
-                  <FormRow label="Tutar (₺)">
-                    <div className="mobile-lsheet-pay-amount-row">
-                      <input
-                        type="number"
-                        inputMode="decimal"
-                        min="0"
-                        step="1"
-                        className="mobile-csheet-input"
-                        value={amount}
-                        onChange={e => setAmount(e.target.value)}
-                        autoFocus
-                      />
-                      {selectedDebt.remaining > 0 && amount !== String(selectedDebt.remaining) && (
-                        <button
-                          type="button"
-                          className="mobile-lsheet-pay-fill-btn"
-                          onClick={() => setAmount(String(selectedDebt.remaining))}
-                        >
-                          Tümü
-                        </button>
+                      {ACTIVE_PAYMENT_METHODS.cash && ACTIVE_PAYMENT_METHODS.iban && (
+                        <FormRow label="Yöntem">
+                          <div className="mobile-csheet-mode">
+                            <button
+                              type="button"
+                              className={'mobile-csheet-mode-btn' + (source === 'cash' ? ' is-on' : '')}
+                              onClick={() => setSource('cash')}
+                            >
+                              Nakit
+                            </button>
+                            <button
+                              type="button"
+                              className={'mobile-csheet-mode-btn' + (source === 'iban' ? ' is-on' : '')}
+                              onClick={() => setSource('iban')}
+                            >
+                              IBAN
+                            </button>
+                          </div>
+                        </FormRow>
                       )}
-                    </div>
-                  </FormRow>
 
-                  {ACTIVE_PAYMENT_METHODS.cash && ACTIVE_PAYMENT_METHODS.iban && (
-                    <FormRow label="Yöntem">
-                      <div className="mobile-csheet-mode">
-                        <button
-                          type="button"
-                          className={'mobile-csheet-mode-btn' + (source === 'cash' ? ' is-on' : '')}
-                          onClick={() => setSource('cash')}
-                        >
-                          Nakit
-                        </button>
-                        <button
-                          type="button"
-                          className={'mobile-csheet-mode-btn' + (source === 'iban' ? ' is-on' : '')}
-                          onClick={() => setSource('iban')}
-                        >
-                          IBAN
-                        </button>
+                      <FormRow label="Not (opsiyonel)">
+                        <input
+                          type="text"
+                          className="mobile-csheet-input"
+                          value={note}
+                          onChange={e => setNote(e.target.value)}
+                          placeholder="Açıklama…"
+                        />
+                      </FormRow>
+
+                      <div className="mobile-qpay-allocations">
+                        <div className="mobile-qpay-allocations-head">
+                          {allocations.length > 0
+                            ? (mode === 'single' ? 'İşlenecek kalem' : 'İşlenecek kalemler')
+                            : 'Açık borç kalemleri'}
+                          {mode === 'auto' && listItems.length > 1 && (
+                            <span className="mobile-qpay-allocations-hint"> · en eski → yeni</span>
+                          )}
+                        </div>
+                        {rowsClickable && (
+                          <div className="mobile-qpay-allocations-tip">
+                            Sadece bir kaleme ödemek için kaleme dokun
+                          </div>
+                        )}
+                        {listItems.map(({ item, portion, planned }) => {
+                          const isPartial = planned && portion < item.remainingAmount - 0.001;
+                          const RowTag = rowsClickable ? 'button' : 'div';
+                          return (
+                            <RowTag
+                              key={item.key}
+                              {...(rowsClickable ? { type: 'button', onClick: () => handlePickItem(item) } : {})}
+                              className={'mobile-qpay-alloc-row' + (rowsClickable ? ' is-clickable' : '')}
+                            >
+                              <span className="mobile-qpay-alloc-main">
+                                <span className="mobile-qpay-alloc-title">{item.title}</span>
+                                <span className="mobile-qpay-alloc-sub">{item.subtitle}</span>
+                              </span>
+                              <span className="mobile-qpay-alloc-amount">
+                                <span className="mobile-qpay-alloc-portion">{fmtTL(portion)}</span>
+                                {isPartial && <span className="mobile-qpay-alloc-partial">kısmi</span>}
+                              </span>
+                              {rowsClickable && (
+                                <span className="mobile-qpay-alloc-chev" aria-hidden="true">
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <path d="M9 6l6 6-6 6" />
+                                  </svg>
+                                </span>
+                              )}
+                            </RowTag>
+                          );
+                        })}
                       </div>
-                    </FormRow>
+
+                      {isOverDebt && (
+                        <div className="mobile-csheet-error" role="alert">
+                          Tutar {mode === 'single' ? 'bu kalemin' : 'açık borç'} kalanından ({fmtTL(maxAmount)}) fazla olamaz.
+                        </div>
+                      )}
+                      {error && <div className="mobile-csheet-error" role="alert">{error}</div>}
+                    </>
                   )}
-
-                  <FormRow label="Not (opsiyonel)">
-                    <input
-                      type="text"
-                      className="mobile-csheet-input"
-                      value={note}
-                      onChange={e => setNote(e.target.value)}
-                      placeholder="Açıklama…"
-                    />
-                  </FormRow>
-
-                  {error && <div className="mobile-csheet-error" role="alert">{error}</div>}
                 </>
               )}
             </div>
 
             <footer className="mobile-csheet-actions">
               {phase === 'pickStudent' && (
-                <>
-                  <button
-                    type="button"
-                    className="mobile-csheet-btn-ghost mobile-csheet-btn-full"
-                    onClick={onClose}
-                  >
-                    Vazgeç
-                  </button>
-                </>
+                <button
+                  type="button"
+                  className="mobile-csheet-btn-ghost mobile-csheet-btn-full"
+                  onClick={onClose}
+                >
+                  Vazgeç
+                </button>
               )}
-              {phase === 'pickDebt' && (
+              {phase === 'pay' && (
                 <>
                   <button
                     type="button"
                     className="mobile-csheet-btn-ghost"
                     onClick={onClose}
-                  >
-                    Vazgeç
-                  </button>
-                  <button
-                    type="button"
-                    className="mobile-csheet-btn-ghost"
-                    onClick={handleClearStudent}
-                  >
-                    Geri
-                  </button>
-                </>
-              )}
-              {phase === 'enterAmount' && (
-                <>
-                  <button
-                    type="button"
-                    className="mobile-csheet-btn-ghost"
-                    onClick={handleBackToDebts}
                     disabled={submitting}
                   >
-                    Geri
+                    Vazgeç
                   </button>
                   <button
                     type="button"
                     className="mobile-csheet-btn-primary"
                     onClick={handleSubmit}
-                    disabled={submitting || !amount || parseFloat(amount) <= 0}
+                    disabled={!canSubmit}
                   >
-                    {submitting ? 'Kaydediliyor…' : 'Tahsil et'}
+                    {submitting
+                      ? 'Kaydediliyor…'
+                      : (parsedAmount > 0 && !isOverDebt
+                          ? `${fmtTL(parsedAmount)} kaydet`
+                          : 'Tahsil et')}
                   </button>
                 </>
               )}

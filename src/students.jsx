@@ -21,6 +21,14 @@ export function fmtDate(iso) {
   return new Date(iso).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
+export function fmtDateTime(iso) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleString('tr-TR', {
+    day: 'numeric', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  });
+}
+
 export function fmtShortDate(iso) {
   if (!iso) return '—';
   return new Date(iso).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' });
@@ -75,6 +83,18 @@ export function getStudentFinancialState({ lessonDebt, productDebt }) {
   return { tone: 'clear', headline: 'Borç yok' };
 }
 
+function summarizeSaleItems(items) {
+  if (!Array.isArray(items) || items.length === 0) return null;
+  const parts = items
+    .filter(it => (it?.name_snapshot ?? '').trim().length > 0)
+    .map(it => {
+      const qty = parseInt(it.quantity ?? '1', 10) || 1;
+      const name = String(it.name_snapshot).trim();
+      return qty > 1 ? `${qty}× ${name}` : name;
+    });
+  return parts.length ? parts.join(', ') : null;
+}
+
 export function buildOpenDebtItems(detail) {
   const lessonItems = (detail?.lessons ?? [])
     .filter(l =>
@@ -86,43 +106,86 @@ export function buildOpenDebtItems(detail) {
       const gross = parseMoney(l.price_snapshot);
       const discount = parseMoney(l.discount_amount);
       const net = parseMoney(l.net_amount ?? (gross - discount));
+      const paid = parseMoney(l.paid_amount);
+      const remaining = parseMoney(l.remaining_receivable);
       return {
         key: `lesson-${l.id}`,
         targetType: 'lesson',
         targetId: l.id,
         dateIso: l.starts_at,
         typeLabel: 'Ders',
-        description: l.note?.trim() || 'Özel ders',
+        description: l.note?.trim() || null,
         grossAmount: gross,
         discountAmount: discount,
         totalAmount: net,
-        paidAmount: parseMoney(l.paid_amount),
-        remainingAmount: parseMoney(l.remaining_receivable),
+        paidAmount: paid,
+        remainingAmount: remaining,
+        paidRatio: net > 0 ? Math.min(paid / net, 1) : 0,
         canDiscount: true,
       };
     });
 
   const saleItems = (detail?.productSales ?? [])
     .filter(s => parseMoney(s.remaining_receivable) > 0.01)
-    .map(s => ({
-      key: `product-sale-${s.product_sale_id}`,
-      targetType: 'product_sale',
-      targetId: s.product_sale_id,
-      dateIso: s.sold_at,
-      typeLabel: 'Ürün satışı',
-      description: 'Ürün satışı',
-      grossAmount: parseMoney(s.total_amount),
-      discountAmount: 0,
-      totalAmount: parseMoney(s.total_amount),
-      paidAmount: parseMoney(s.paid_amount),
-      remainingAmount: parseMoney(s.remaining_receivable),
-      canDiscount: false,
-    }));
+    .map(s => {
+      const total = parseMoney(s.total_amount);
+      const paid = parseMoney(s.paid_amount);
+      const remaining = parseMoney(s.remaining_receivable);
+      return {
+        key: `product-sale-${s.product_sale_id}`,
+        targetType: 'product_sale',
+        targetId: s.product_sale_id,
+        dateIso: s.sold_at,
+        typeLabel: 'Ürün satışı',
+        description: summarizeSaleItems(s.items),
+        grossAmount: total,
+        discountAmount: 0,
+        totalAmount: total,
+        paidAmount: paid,
+        remainingAmount: remaining,
+        paidRatio: total > 0 ? Math.min(paid / total, 1) : 0,
+        canDiscount: false,
+      };
+    });
 
   return [...lessonItems, ...saleItems].sort(
     (a, b) => new Date(b.dateIso).getTime() - new Date(a.dateIso).getTime(),
   );
 }
+
+// Tutarı, en eski borçtan başlayarak FIFO sırasında alt kalemlere böler.
+// Backend ders bazında ödeme alır — submit pipeline bu çıktı üzerinden
+// her kalem için ayrı createCashPayment çağrısı yapar.
+export function allocateFifo(items, totalAmount) {
+  const amount = parseFloat(totalAmount) || 0;
+  if (amount <= 0.005 || !Array.isArray(items) || items.length === 0) return [];
+  const sorted = [...items].sort(
+    (a, b) => new Date(a.dateIso).getTime() - new Date(b.dateIso).getTime(),
+  );
+  const allocations = [];
+  let remaining = amount;
+  for (const item of sorted) {
+    if (remaining <= 0.005) break;
+    const portion = Math.min(item.remainingAmount, remaining);
+    if (portion > 0.005) {
+      allocations.push({ item, portion });
+    }
+    remaining -= portion;
+  }
+  // Float yuvarlama: son non-zero alocasyona kalan farkı ekleyip toplam
+  // parsedAmount'a eşit kalsın.
+  const rounded = allocations.map(a => ({ ...a, portion: Math.round(a.portion * 100) / 100 }));
+  if (rounded.length > 0) {
+    const sum = rounded.reduce((s, a) => s + a.portion, 0);
+    const diff = Math.round((amount - sum) * 100) / 100;
+    if (Math.abs(diff) > 0.001) {
+      const last = rounded[rounded.length - 1];
+      last.portion = Math.round((last.portion + diff) * 100) / 100;
+    }
+  }
+  return rounded;
+}
+
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
@@ -509,6 +572,29 @@ function StudentRow({ student, onPaymentClick, onOpenStudent }) {
 
 // ─── Receive Payment Modal ────────────────────────────────────────────────────
 
+function RpmCheckCircle() {
+  return (
+    <svg viewBox="0 0 52 52" width="64" height="64" aria-hidden="true">
+      <circle
+        cx="26" cy="26" r="24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        className="rpm-success-check-circle"
+      />
+      <path
+        d="M14 27l8 8 16-18"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="rpm-success-check-tick"
+      />
+    </svg>
+  );
+}
+
 export function ReceivePaymentModal({ student, detail, onClose, onSuccess }) {
   const [localDetail, setLocalDetail] = React.useState(detail);
   React.useEffect(() => { setLocalDetail(detail); }, [detail]);
@@ -518,11 +604,16 @@ export function ReceivePaymentModal({ student, detail, onClose, onSuccess }) {
       getStudentLessons(student.id),
       getStudentProductSales(student.id),
     ]);
-    setLocalDetail({ ...localDetail, lessons, productSales });
+    setLocalDetail(prev => ({ ...prev, lessons, productSales }));
   }
 
   const debtItems = buildOpenDebtItems(localDetail);
-  const [selectedKey, setSelectedKey] = React.useState(null);
+  const totalRemaining = debtItems.reduce((sum, it) => sum + it.remainingAmount, 0);
+
+  const [phase, setPhase] = React.useState('form'); // 'form' | 'success'
+  const [result, setResult] = React.useState(null); // { paidAmount, remainingAfter, count }
+  const [mode, setMode] = React.useState('auto'); // 'auto' | 'single'
+  const [selectedTargetKey, setSelectedTargetKey] = React.useState(null);
   const [amount, setAmount] = React.useState('');
   const [source, setSource] = React.useState('cash');
   const [paidAt, setPaidAt] = React.useState(() => toDateTimeLocalValue(new Date()));
@@ -530,52 +621,157 @@ export function ReceivePaymentModal({ student, detail, onClose, onSuccess }) {
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState(null);
 
-  const selectedItem = debtItems.find(item => item.key === selectedKey) ?? null;
-  const parsedAmount = parseMoney(amount);
-  const isOverDebt = selectedItem && parsedAmount > selectedItem.remainingAmount + 0.001;
-  const remainingAfterPayment = selectedItem
-    ? Math.max(selectedItem.remainingAmount - parsedAmount, 0)
-    : 0;
-  const canSubmit =
-    !!selectedItem && parsedAmount > 0 && !!paidAt && !submitting && !isOverDebt;
+  const selectedItem = mode === 'single'
+    ? (debtItems.find(it => it.key === selectedTargetKey) ?? null)
+    : null;
 
-  function handleSelectItem(item) {
-    setSelectedKey(item.key);
-    setAmount(item.remainingAmount.toFixed(2));
+  const parsedAmount = parseMoney(amount);
+  const maxAmount = selectedItem ? selectedItem.remainingAmount : totalRemaining;
+  const isOverDebt = parsedAmount > maxAmount + 0.001;
+  const isMultiItem = debtItems.length > 1;
+  const rowsClickable = mode === 'auto' && isMultiItem && !submitting;
+
+  const allocations = React.useMemo(() => {
+    if (parsedAmount <= 0 || isOverDebt) return [];
+    if (mode === 'single' && selectedItem) {
+      return [{ item: selectedItem, portion: parsedAmount }];
+    }
+    return allocateFifo(debtItems, parsedAmount);
+  }, [mode, selectedItem, debtItems, parsedAmount, isOverDebt]);
+
+  // Liste her zaman görünür. Tutar > 0 ve geçerliyse "işlenecek kalemler",
+  // aksi halde tüm açık borçlar (en eski → yeni) gösterilir.
+  const listItems = React.useMemo(() => {
+    if (allocations.length > 0) {
+      return allocations.map(a => ({ ...a, planned: true }));
+    }
+    if (mode === 'single' && selectedItem) {
+      return [{ item: selectedItem, portion: selectedItem.remainingAmount, planned: false }];
+    }
+    const sorted = [...debtItems].sort(
+      (a, b) => new Date(a.dateIso).getTime() - new Date(b.dateIso).getTime(),
+    );
+    return sorted.map(it => ({ item: it, portion: it.remainingAmount, planned: false }));
+  }, [allocations, mode, selectedItem, debtItems]);
+
+  const canSubmit =
+    parsedAmount > 0 && !isOverDebt && !!paidAt && !submitting && allocations.length > 0;
+
+  function handleAmountFocus(event) {
+    event.target.select();
+  }
+
+  function handlePickItem(item) {
+    setMode('single');
+    setSelectedTargetKey(item.key);
+    setError(null);
+    // Tutar otomatik doldurulmaz — kullanıcı kendi belirler.
+  }
+
+  function handleBackToAuto() {
+    setMode('auto');
+    setSelectedTargetKey(null);
     setError(null);
   }
 
   async function handleSubmit(event) {
     event.preventDefault();
 
-    if (!selectedItem) { setError('Önce bir borç kalemi seçin.'); return; }
+    if (allocations.length === 0) { setError('Ödeme yapılacak kalem yok.'); return; }
     if (parsedAmount <= 0) { setError('Ödeme tutarı sıfırdan büyük olmalı.'); return; }
     if (isOverDebt) {
-      setError('Ödeme tutarı kalan borcu aşamaz.');
+      setError(mode === 'single'
+        ? 'Tutar bu kalemin kalanından fazla olamaz.'
+        : 'Tutar açık borç toplamından fazla olamaz.');
       return;
     }
-
     const paidAtDate = new Date(paidAt);
     if (Number.isNaN(paidAtDate.getTime())) { setError('Geçerli bir ödeme tarihi girin.'); return; }
 
     setSubmitting(true);
     setError(null);
 
+    const paidAtIso = paidAtDate.toISOString();
+    const noteValue = note.trim() || null;
+    const remainingBefore = totalRemaining;
+    const totalToPay = allocations.reduce((s, a) => s + a.portion, 0);
+    let succeeded = 0;
+
     try {
-      await createCashPayment({
-        targetType: selectedItem.targetType,
-        targetId: selectedItem.targetId,
-        amount: amount.trim(),
-        source,
-        paidAt: paidAtDate.toISOString(),
-        note: note.trim() || null,
+      for (const { item, portion } of allocations) {
+        await createCashPayment({
+          targetType: item.targetType,
+          targetId: item.targetId,
+          amount: portion.toFixed(2),
+          source,
+          paidAt: paidAtIso,
+          note: noteValue,
+        });
+        succeeded += 1;
+      }
+      setResult({
+        paidAmount: totalToPay,
+        remainingAfter: Math.max(0, remainingBefore - totalToPay),
+        count: allocations.length,
       });
-      await onSuccess();
+      setPhase('success');
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : 'Ödeme alınamadı.');
+      const baseMsg = submitError instanceof Error ? submitError.message : 'Ödeme alınamadı.';
+      const tail = succeeded > 0
+        ? ` (${succeeded}/${allocations.length} kalem kaydedildi)`
+        : '';
+      setError(baseMsg + tail);
+      if (succeeded > 0) {
+        await refreshDetail();
+        setMode('auto');
+        setSelectedTargetKey(null);
+        setAmount('');
+      }
     } finally {
       setSubmitting(false);
     }
+  }
+
+  async function handleFinish() {
+    // Kullanıcı "Tamam" dedikten sonra caller modal'ı kapatıp listeyi tazeler.
+    await onSuccess();
+  }
+
+  if (phase === 'success' && result) {
+    const isFullyPaid = result.remainingAfter <= 0.005;
+    const statusLabel = isFullyPaid
+      ? 'Tüm borçlar kapandı'
+      : `${fmtTL(result.remainingAfter)} borç kaldı`;
+    return (
+      <div className="modal-backdrop" onClick={handleFinish}>
+        <div className="modal rpm-modal" onClick={e => e.stopPropagation()}>
+          <div className="rpm-success">
+            <div className="rpm-success-check">
+              <RpmCheckCircle />
+            </div>
+            <h3 className="rpm-success-title">Tahsilat alındı</h3>
+            <p className="rpm-success-meta">
+              <span>{student.full_name}</span>
+              <span className="rpm-success-sub-dot" aria-hidden="true">·</span>
+              <span>{result.count} kalem</span>
+              <span className="rpm-success-sub-dot" aria-hidden="true">·</span>
+              <strong>{fmtTL(result.paidAmount)}</strong>
+            </p>
+            <div className={'rpm-success-status ' + (isFullyPaid ? 'is-paid' : 'is-partial')}>
+              {statusLabel}
+            </div>
+            <button
+              type="button"
+              className="rpm-success-done"
+              onClick={handleFinish}
+              autoFocus
+            >
+              Tamam
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -584,7 +780,17 @@ export function ReceivePaymentModal({ student, detail, onClose, onSuccess }) {
         <div className="rpm-head">
           <div>
             <h3>Ödeme al</h3>
-            <div className="rpm-subtitle">{student.full_name} için açık borç kalemi seçin.</div>
+            <div className="rpm-modal-subhead">
+              <strong>{student.full_name}</strong>
+              {debtItems.length > 0 && (
+                <>
+                  <span className="rpm-modal-subhead-sep" aria-hidden="true">·</span>
+                  <span>Açık borç toplamı: <strong>{fmtTL(totalRemaining)}</strong></span>
+                  <span className="rpm-modal-subhead-sep" aria-hidden="true">·</span>
+                  <span>{debtItems.length} kalem</span>
+                </>
+              )}
+            </div>
           </div>
           <button className="btn btn-ghost btn-xs" onClick={onClose} disabled={submitting}>Kapat</button>
         </div>
@@ -594,117 +800,137 @@ export function ReceivePaymentModal({ student, detail, onClose, onSuccess }) {
             Öğrencinin tahsil edilebilir açık borç kalemi bulunmuyor.
           </div>
         ) : (
-          <>
-            <div className="rpm-section">
-              <div className="rpm-section-head">
-                <span className="eyebrow">Açık borç kalemleri</span>
+          <form className="rpm-form" onSubmit={handleSubmit}>
+            {mode === 'single' && selectedItem && (
+              <div className="rpm-mode-banner">
+                <span>
+                  <strong>Sadece bu kaleme:</strong> {selectedItem.typeLabel}
+                  {' · '}{fmtDate(selectedItem.dateIso)}
+                  {' · '}{fmtTL(selectedItem.remainingAmount)} kalan
+                </span>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-xs"
+                  onClick={handleBackToAuto}
+                  disabled={submitting}
+                >
+                  Tüm borçlara dön
+                </button>
               </div>
-              <div className="rpm-list" role="list">
-                {debtItems.map(item => {
-                  const iconKind = item.targetType === 'lesson' ? 'lesson' : 'sale';
-                  const Icn = iconKind === 'lesson' ? Icon.Calendar : Icon.Tag;
-                  return (
-                    <button
-                      key={item.key}
-                      type="button"
-                      className={`rpm-item${selectedKey === item.key ? ' is-selected' : ''}`}
-                      onClick={() => handleSelectItem(item)}
-                    >
-                      <div className="rpm-item-lead">
-                        <span className={'rpm-item-icon rpm-item-icon-' + iconKind} aria-hidden="true">
-                          <Icn width="14" height="14" />
-                        </span>
-                        <div className="rpm-item-main">
-                          <div className="rpm-item-title">{fmtDate(item.dateIso)} · {item.typeLabel}</div>
-                          <div className="rpm-item-desc">{item.description}</div>
-                        </div>
-                      </div>
-                      <div className="rpm-item-meta">
-                        <span>Toplam: {fmtTL(item.totalAmount)}</span>
-                        <span>Ödenen: {fmtTL(item.paidAmount)}</span>
-                        <span className="rpm-item-remaining">Kalan: {fmtTL(item.remainingAmount)}</span>
-                      </div>
-                    </button>
-                  );
-                })}
+            )}
+
+            <div className="form-row-2">
+              <div className="form-row">
+                <label>Ödeme tutarı</label>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min="0.01" step="0.01"
+                  value={amount}
+                  onChange={e => setAmount(e.target.value)}
+                  onFocus={handleAmountFocus}
+                  placeholder="0,00"
+                  disabled={submitting}
+                  autoFocus
+                />
+              </div>
+              <div className="form-row">
+                <label>Ödeme yöntemi</label>
+                <select value={source} onChange={e => setSource(e.target.value)} disabled={submitting}>
+                  <option value="cash">Nakit</option>
+                  <option value="iban">IBAN</option>
+                </select>
               </div>
             </div>
 
-            {selectedItem && selectedItem.canDiscount && (
+            <div className="form-row-2">
+              <div className="form-row">
+                <label>Ödeme tarihi</label>
+                <input
+                  type="datetime-local"
+                  value={paidAt}
+                  onChange={e => setPaidAt(e.target.value)}
+                  disabled={submitting}
+                />
+              </div>
+              <div className="form-row">
+                <label>Not</label>
+                <input
+                  type="text"
+                  value={note}
+                  onChange={e => setNote(e.target.value)}
+                  placeholder="İsteğe bağlı"
+                  disabled={submitting}
+                />
+              </div>
+            </div>
+
+            {listItems.length > 0 && (
+              <div className="rpm-allocations">
+                <div className="rpm-allocations-head">
+                  {allocations.length > 0
+                    ? (mode === 'single' ? 'İşlenecek kalem' : 'İşlenecek kalemler')
+                    : 'Açık borç kalemleri'}
+                  {mode === 'auto' && listItems.length > 1 && (
+                    <span className="rpm-allocations-hint"> · en eski → yeni</span>
+                  )}
+                  {rowsClickable && (
+                    <span className="rpm-allocations-action-hint"> · sadece bir kaleme ödemek için tıkla</span>
+                  )}
+                </div>
+                {listItems.map(({ item, portion, planned }) => {
+                  const isPartial = planned && portion < item.remainingAmount - 0.001;
+                  const RowTag = rowsClickable ? 'button' : 'div';
+                  return (
+                    <RowTag
+                      key={item.key}
+                      {...(rowsClickable ? { type: 'button', onClick: () => handlePickItem(item) } : {})}
+                      className={'rpm-allocations-row' + (rowsClickable ? ' is-clickable' : '')}
+                      title={rowsClickable ? 'Sadece bu kaleme öde' : undefined}
+                    >
+                      <span className="rpm-allocations-date">{fmtDate(item.dateIso)}</span>
+                      <span className="rpm-allocations-type">{item.typeLabel}</span>
+                      <span className="rpm-allocations-desc" title={item.description || ''}>
+                        {item.description || ''}
+                      </span>
+                      <span className="rpm-allocations-amount">
+                        <strong>{fmtTL(portion)}</strong>
+                        {isPartial && <span className="rpm-allocations-partial"> · kısmi</span>}
+                      </span>
+                    </RowTag>
+                  );
+                })}
+              </div>
+            )}
+
+            {isOverDebt && (
+              <div className="rpm-error">
+                Tutar {mode === 'single' ? 'bu kalemin' : 'açık borç'} kalanından ({fmtTL(maxAmount)}) fazla olamaz.
+              </div>
+            )}
+
+            {error && <div className="rpm-error">{error}</div>}
+
+            {mode === 'single' && selectedItem && selectedItem.canDiscount && (
               <DiscountInline
                 item={selectedItem}
                 onApplied={async () => { await refreshDetail(); }}
               />
             )}
 
-            {selectedItem && (
-              <form className="rpm-form" onSubmit={handleSubmit}>
-                <div className="rpm-section">
-                  <div className="rpm-section-head">
-                    <span className="eyebrow">Ödeme formu</span>
-                    <span className="rpm-selected-pill">
-                      {selectedItem.typeLabel} · {fmtTL(selectedItem.remainingAmount)} kalan
-                    </span>
-                  </div>
-
-                  <div className="form-row-2">
-                    <div className="form-row">
-                      <label>Ödeme tutarı</label>
-                      <input
-                        type="number" min="0.01" step="0.01"
-                        value={amount}
-                        onChange={e => setAmount(e.target.value)}
-                        placeholder="0.00"
-                      />
-                    </div>
-                    <div className="form-row">
-                      <label>Ödeme yöntemi</label>
-                      <select value={source} onChange={e => setSource(e.target.value)}>
-                        <option value="cash">Nakit</option>
-                        <option value="iban">IBAN</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="form-row">
-                    <label>Ödeme tarihi</label>
-                    <input type="datetime-local" value={paidAt} onChange={e => setPaidAt(e.target.value)}/>
-                  </div>
-
-                  <div className="form-row">
-                    <label>Not</label>
-                    <textarea rows="3" value={note} onChange={e => setNote(e.target.value)} placeholder="İsteğe bağlı"/>
-                  </div>
-
-                  {parsedAmount > 0 && !isOverDebt && (
-                    <div className="rpm-summary">
-                      <div className="rpm-summary-row">
-                        <span>Borca işlenecek</span>
-                        <strong>{fmtTL(parsedAmount)}</strong>
-                      </div>
-                      <div className="rpm-summary-row">
-                        <span>İşlem sonrası kalan borç</span>
-                        <strong>{fmtTL(remainingAfterPayment)}</strong>
-                      </div>
-                    </div>
-                  )}
-
-                  {isOverDebt && (
-                    <div className="rpm-error">Ödeme tutarı kalan borçtan ({fmtTL(selectedItem.remainingAmount)}) fazla olamaz.</div>
-                  )}
-
-                  {error && <div className="rpm-error">{error}</div>}
-
-                  <div className="modal-actions">
-                    <button type="button" className="btn btn-ghost" onClick={onClose} disabled={submitting}>Vazgeç</button>
-                    <button type="submit" className="btn btn-accent" disabled={!canSubmit}>
-                      {submitting ? 'Kaydediliyor...' : 'Ödemeyi kaydet'}
-                    </button>
-                  </div>
-                </div>
-              </form>
-            )}
-          </>
+            <div className="modal-actions">
+              <button type="button" className="btn btn-ghost" onClick={onClose} disabled={submitting}>
+                Vazgeç
+              </button>
+              <button type="submit" className="btn btn-accent" disabled={!canSubmit}>
+                {submitting
+                  ? 'Kaydediliyor...'
+                  : (parsedAmount > 0 && !isOverDebt
+                      ? `${fmtTL(parsedAmount)} kaydet`
+                      : 'Ödemeyi kaydet')}
+              </button>
+            </div>
+          </form>
         )}
       </div>
     </div>

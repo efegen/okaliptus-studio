@@ -11,9 +11,9 @@ import {
   getStudentPackages,
   getStudentProductSales,
   getStudentMovements,
-  createCashPayment,
   setLessonDiscount,
 } from './api';
+import { ReceivePaymentModal } from './students';
 
 const LESSON_STATUS_TR = {
   scheduled: 'Planlı',
@@ -116,12 +116,12 @@ function lessonStatusLabel(l) {
   if (l.status === 'cancelled') return { label: 'İptal',   tone: 'neutral' };
   if (l.status === 'no_show')   return { label: 'Gelmedi', tone: 'warn' };
   // completed
-  if (l.prepaid_package_id)     return { label: 'Tamamlandı · Krediden', tone: 'credit' };
+  if (l.prepaid_package_id)     return { label: 'Krediden', tone: 'credit' };
   const remaining = money(l.remaining_receivable);
   const paid = money(l.paid_amount);
-  if (remaining < 0.01 && paid > 0.01) return { label: 'Tamamlandı · Ödendi',    tone: 'paid' };
-  if (paid > 0.01 && remaining > 0.01) return { label: 'Tamamlandı · Kısmi',     tone: 'partial' };
-  return                                    { label: 'Tamamlandı · Borçlu',    tone: 'open' };
+  if (remaining < 0.01 && paid > 0.01) return { label: 'Ödendi', tone: 'paid' };
+  if (paid > 0.01 && remaining > 0.01) return { label: 'Kısmi',  tone: 'partial' };
+  return                                    { label: 'Borçlu', tone: 'open' };
 }
 
 function saleStatusLabel(s) {
@@ -129,7 +129,7 @@ function saleStatusLabel(s) {
   const paid = money(s.paid_amount);
   if (remaining < 0.01) return { label: 'Ödendi', tone: 'paid' };
   if (paid > 0.01)      return { label: 'Kısmi',  tone: 'partial' };
-  return                       { label: 'Açık',   tone: 'open' };
+  return                       { label: 'Borçlu', tone: 'open' };
 }
 
 function toDateTimeLocalValue(value = new Date()) {
@@ -193,11 +193,11 @@ function buildActivity({ lessons, packages, productSales }) {
   for (const l of lessons ?? []) {
     if (l.deleted_at) continue;
     const remaining = money(l.remaining_receivable);
-    const paid = money(l.paid_amount);
     const gross = money(l.price_snapshot);
     const discount = money(l.discount_amount);
     const net = money(l.net_amount ?? (gross - discount));
     const status = lessonStatusLabel(l);
+    const hasDebt = l.status === 'completed' && !l.prepaid_package_id && remaining > 0.01;
     items.push({
       key:           `lesson-${l.id}`,
       date:          l.starts_at,
@@ -209,16 +209,10 @@ function buildActivity({ lessons, packages, productSales }) {
       sub:           l.note?.trim() || null,
       status,
       discount,
-      amount:     l.prepaid_package_id ? null
-                : l.status !== 'completed' ? net
-                : remaining > 0.01 ? remaining
-                : (paid || net),
-      amountSub:  l.prepaid_package_id ? null
-                : (l.status === 'completed' && remaining > 0.01) ? `/ ${fmtTL(net)}`
-                : null,
+      amount:     l.prepaid_package_id ? null : net,
+      amountSub:  hasDebt ? `Kalan: ${fmtTL(remaining)}` : null,
       amountTone: l.prepaid_package_id ? 'mute'
-                : l.status !== 'completed' ? 'quiet'
-                : remaining > 0.01 ? 'warn'
+                : hasDebt ? 'warn'
                 : 'quiet',
       _search: [
         LESSON_STATUS_TR[l.status],
@@ -252,6 +246,7 @@ function buildActivity({ lessons, packages, productSales }) {
     const remaining = money(s.remaining_receivable);
     const total = money(s.total_amount);
     const status = saleStatusLabel(s);
+    const hasDebt = remaining > 0.01;
     items.push({
       key:        `sale-${s.product_sale_id}`,
       saleId:     s.product_sale_id,
@@ -262,9 +257,9 @@ function buildActivity({ lessons, packages, productSales }) {
       sub:        s.note?.trim() || null,
       status,
       paymentTone: status.tone,
-      amount:     remaining > 0.01 ? remaining : total,
-      amountSub:  remaining > 0.01 ? `/ ${fmtTL(total)}` : null,
-      amountTone: remaining > 0.01 ? 'warn' : 'quiet',
+      amount:     total,
+      amountSub:  hasDebt ? `Kalan: ${fmtTL(remaining)}` : null,
+      amountTone: hasDebt ? 'warn' : 'quiet',
       _search: ['ürün', 'satış', s.note, status.label].filter(Boolean).join(' ').toLowerCase(),
     });
   }
@@ -372,7 +367,7 @@ export function StudentProfilePage({ studentId, onBack, onOpenSale }) {
       </div>
 
       {paymentOpen && (
-        <ProfilePaymentModal
+        <ReceivePaymentModal
           student={student}
           detail={{ lessons, productSales }}
           onClose={() => setPaymentOpen(false)}
@@ -554,7 +549,7 @@ const LESSON_SUBFILTERS = [
 
 const PRODUCT_FILTERS = [
   { id: 'all',     label: 'Tümü',   match: () => true },
-  { id: 'open',    label: 'Açık',   match: i => i.paymentTone === 'open' },
+  { id: 'open',    label: 'Borçlu', match: i => i.paymentTone === 'open' },
   { id: 'partial', label: 'Kısmi',  match: i => i.paymentTone === 'partial' },
   { id: 'paid',    label: 'Ödendi', match: i => i.paymentTone === 'paid' },
 ];
@@ -762,15 +757,17 @@ function ActivityAmount({ item }) {
   if (item.amount == null || item.amountTone === 'mute') {
     return <span className="sp-muted">—</span>;
   }
-  const cls =
+  const mainCls =
     'sp-money-main' +
-    (item.amountTone === 'warn'   ? ' sp-money-warn'   :
-     item.amountTone === 'credit' ? ' sp-money-credit' :
+    (item.amountTone === 'credit' ? ' sp-money-credit' :
      item.amountTone === 'quiet'  ? ' sp-money-quiet'  : '');
+  const subCls =
+    'sp-money-hint' +
+    (item.amountTone === 'warn' ? ' sp-money-hint-warn' : '');
   return (
     <>
-      <span className={cls}>{fmtTL(item.amount)}</span>
-      {item.amountSub && <span className="sp-money-hint">{item.amountSub}</span>}
+      <span className={mainCls}>{fmtTL(item.amount)}</span>
+      {item.amountSub && <span className={subCls}>{item.amountSub}</span>}
     </>
   );
 }
@@ -1349,235 +1346,3 @@ export function DiscountInline({ item, onApplied }) {
   );
 }
 
-// ─── Payment modal (profile-scoped, same payload as list version) ─────────────
-
-function ProfilePaymentModal({ student, detail, onClose, onSuccess }) {
-  // Detay lokal state'te tutulur ki, indirim uygulandıktan sonra modalı
-  // kapatmadan borç kalemleri yeniden hesaplansın.
-  const [localDetail, setLocalDetail] = React.useState(detail);
-  React.useEffect(() => { setLocalDetail(detail); }, [detail]);
-
-  async function refreshDetail() {
-    const [lessons, productSales] = await Promise.all([
-      getStudentLessons(student.id),
-      getStudentProductSales(student.id),
-    ]);
-    setLocalDetail({ lessons, productSales });
-  }
-
-  const debtItems = React.useMemo(() => {
-    const lessonItems = (localDetail.lessons ?? [])
-      .filter(l =>
-        l.status === 'completed' &&
-        !l.prepaid_package_id &&
-        money(l.remaining_receivable) > 0.01,
-      )
-      .map(l => {
-        const gross = money(l.price_snapshot);
-        const discount = money(l.discount_amount);
-        const net = money(l.net_amount ?? (gross - discount));
-        return {
-          key: `lesson-${l.id}`,
-          targetType: 'lesson',
-          targetId: l.id,
-          dateIso: l.starts_at,
-          typeLabel: 'Ders',
-          description: l.note?.trim() || 'Özel ders',
-          grossAmount: gross,
-          discountAmount: discount,
-          totalAmount: net,
-          paidAmount: money(l.paid_amount),
-          remainingAmount: money(l.remaining_receivable),
-          canDiscount: true,
-        };
-      });
-
-    const saleItems = (localDetail.productSales ?? [])
-      .filter(s => money(s.remaining_receivable) > 0.01)
-      .map(s => ({
-        key: `product-sale-${s.product_sale_id}`,
-        targetType: 'product_sale',
-        targetId: s.product_sale_id,
-        dateIso: s.sold_at,
-        typeLabel: 'Ürün satışı',
-        description: 'Ürün satışı',
-        grossAmount: money(s.total_amount),
-        discountAmount: 0,
-        totalAmount: money(s.total_amount),
-        paidAmount: money(s.paid_amount),
-        remainingAmount: money(s.remaining_receivable),
-        canDiscount: false,
-      }));
-
-    return [...lessonItems, ...saleItems].sort(
-      (a, b) => new Date(b.dateIso).getTime() - new Date(a.dateIso).getTime(),
-    );
-  }, [localDetail]);
-
-  const [selectedKey, setSelectedKey] = React.useState(null);
-  const [amount, setAmount] = React.useState('');
-  const [source, setSource] = React.useState('cash');
-  const [paidAt, setPaidAt] = React.useState(() => toDateTimeLocalValue(new Date()));
-  const [note, setNote] = React.useState('');
-  const [submitting, setSubmitting] = React.useState(false);
-  const [error, setError] = React.useState(null);
-
-  const selectedItem = debtItems.find(i => i.key === selectedKey) ?? null;
-  const parsed = parseFloat(amount) || 0;
-  const isOverDebt = selectedItem && parsed > selectedItem.remainingAmount + 0.001;
-  const afterRemaining = selectedItem
-    ? Math.max(selectedItem.remainingAmount - parsed, 0)
-    : 0;
-  const canSubmit = !!selectedItem && parsed > 0 && !!paidAt && !submitting && !isOverDebt;
-
-  function selectItem(item) {
-    setSelectedKey(item.key);
-    setAmount(item.remainingAmount.toFixed(2));
-    setError(null);
-  }
-
-  async function submit(e) {
-    e.preventDefault();
-    if (!selectedItem) { setError('Önce bir borç kalemi seçin.'); return; }
-    if (parsed <= 0) { setError('Ödeme tutarı sıfırdan büyük olmalı.'); return; }
-    if (isOverDebt) {
-      setError('Ödeme tutarı kalan borcu aşamaz.'); return;
-    }
-    const d = new Date(paidAt);
-    if (Number.isNaN(d.getTime())) { setError('Geçerli bir ödeme tarihi girin.'); return; }
-
-    setSubmitting(true); setError(null);
-    try {
-      await createCashPayment({
-        targetType: selectedItem.targetType,
-        targetId: selectedItem.targetId,
-        amount: amount.trim(),
-        source,
-        paidAt: d.toISOString(),
-        note: note.trim() || null,
-      });
-      await onSuccess();
-    } catch (submitErr) {
-      setError(submitErr instanceof Error ? submitErr.message : 'Ödeme alınamadı.');
-    } finally { setSubmitting(false); }
-  }
-
-  return (
-    <div className="modal-backdrop" onClick={() => !submitting && onClose()}>
-      <div className="modal rpm-modal" onClick={e => e.stopPropagation()}>
-        <div className="rpm-head">
-          <div>
-            <h3>Ödeme al</h3>
-            <div className="rpm-subtitle">{student.full_name} için açık borç kalemi seçin.</div>
-          </div>
-          <button className="btn btn-ghost btn-xs" onClick={onClose} disabled={submitting}>Kapat</button>
-        </div>
-
-        {!debtItems.length ? (
-          <div className="rpm-empty">Öğrencinin tahsil edilebilir açık borç kalemi bulunmuyor.</div>
-        ) : (
-          <>
-            <div className="rpm-section">
-              <div className="rpm-section-head">
-                <span className="eyebrow">Açık borç kalemleri</span>
-              </div>
-              <div className="rpm-list" role="list">
-                {debtItems.map(item => (
-                  <button
-                    key={item.key}
-                    type="button"
-                    className={'rpm-item' + (selectedKey === item.key ? ' is-selected' : '')}
-                    onClick={() => selectItem(item)}
-                  >
-                    <div className="rpm-item-main">
-                      <div className="rpm-item-title">{fmtDate(item.dateIso)} · {item.typeLabel}</div>
-                      <div className="rpm-item-desc">{item.description}</div>
-                    </div>
-                    <div className="rpm-item-meta">
-                      <span>Toplam: {fmtTL(item.totalAmount)}</span>
-                      <span>Ödenen: {fmtTL(item.paidAmount)}</span>
-                      <span className="rpm-item-remaining">Kalan: {fmtTL(item.remainingAmount)}</span>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {selectedItem && selectedItem.canDiscount && (
-              <DiscountInline
-                item={selectedItem}
-                onApplied={async () => { await refreshDetail(); }}
-              />
-            )}
-
-            {selectedItem && (
-              <form className="rpm-form" onSubmit={submit}>
-                <div className="rpm-section">
-                  <div className="rpm-section-head">
-                    <span className="eyebrow">Ödeme formu</span>
-                    <span className="rpm-selected-pill">
-                      {selectedItem.typeLabel} · {fmtTL(selectedItem.remainingAmount)} kalan
-                    </span>
-                  </div>
-
-                  <div className="form-row-2">
-                    <div className="form-row">
-                      <label>Ödeme tutarı</label>
-                      <input type="number" min="0.01" step="0.01" value={amount}
-                        onChange={e => setAmount(e.target.value)} placeholder="0.00" />
-                    </div>
-                    <div className="form-row">
-                      <label>Ödeme yöntemi</label>
-                      <select value={source} onChange={e => setSource(e.target.value)}>
-                        <option value="cash">Nakit</option>
-                        <option value="iban">IBAN</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="form-row">
-                    <label>Ödeme tarihi</label>
-                    <input type="datetime-local" value={paidAt} onChange={e => setPaidAt(e.target.value)} />
-                  </div>
-
-                  <div className="form-row">
-                    <label>Not</label>
-                    <textarea rows="3" value={note} onChange={e => setNote(e.target.value)} placeholder="İsteğe bağlı" />
-                  </div>
-
-                  {parsed > 0 && !isOverDebt && (
-                    <div className="rpm-summary">
-                      <div className="rpm-summary-row">
-                        <span>Borca işlenecek</span>
-                        <strong>{fmtTL(parsed)}</strong>
-                      </div>
-                      <div className="rpm-summary-row">
-                        <span>İşlem sonrası kalan borç</span>
-                        <strong>{fmtTL(afterRemaining)}</strong>
-                      </div>
-                    </div>
-                  )}
-
-                  {isOverDebt && (
-                    <div className="rpm-error">Ödeme tutarı kalan borçtan ({fmtTL(selectedItem.remainingAmount)}) fazla olamaz.</div>
-                  )}
-
-                  {error && <div className="rpm-error">{error}</div>}
-
-                  <div className="modal-actions">
-                    <button type="button" className="btn btn-ghost" onClick={onClose} disabled={submitting}>
-                      Vazgeç
-                    </button>
-                    <button type="submit" className="btn btn-accent" disabled={!canSubmit}>
-                      {submitting ? 'Kaydediliyor...' : 'Ödemeyi kaydet'}
-                    </button>
-                  </div>
-                </div>
-              </form>
-            )}
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
