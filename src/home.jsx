@@ -1958,14 +1958,17 @@ function DebtActionCard() {
 
 function UpcomingEventsCard() {
   const today = getIstanbulToday();
+  const { data: students = [] } = useQuery({ queryKey: queryKeys.students(), queryFn: getStudents });
 
-  const birthdays = STUDENTS.map(s => {
-    const b = new Date(s.birthday);
-    let next = new Date(today.getFullYear(), b.getMonth(), b.getDate());
-    if (next < today) next = new Date(today.getFullYear() + 1, b.getMonth(), b.getDate());
-    const days = Math.round((next - today) / 86400000);
-    return { student: s, days, next };
-  }).filter(x => x.days <= 15).sort((a, b) => a.days - b.days);
+  const birthdays = students
+    .filter(s => s.birthday)
+    .map(s => {
+      const b = new Date(s.birthday);
+      let next = new Date(today.getFullYear(), b.getMonth(), b.getDate());
+      if (next < today) next = new Date(today.getFullYear() + 1, b.getMonth(), b.getDate());
+      const days = Math.round((next - today) / 86400000);
+      return { student: s, days, next };
+    }).filter(x => x.days <= 15).sort((a, b) => a.days - b.days);
 
   return (
     <div className="card">
