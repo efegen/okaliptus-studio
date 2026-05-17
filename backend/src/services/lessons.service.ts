@@ -374,6 +374,13 @@ export async function createLesson(input: CreateLessonInput): Promise<LessonRow>
 // artık bu akışta yaratılmıyor — v2 ürün satış modülü ayrı. Ders bloğu üzerinde
 // gösterilen satışlar listLessonsInRange içinde aynı gün/öğrenci eşleşmesi ile
 // bulunur (DB'de doğrudan bağ yok).
+//
+// Operatör yanlışlıkla yarınki dersi "tamamlandı" işaretlemesin diye: ders ancak
+// başlangıcından MIN_MINUTES_AFTER_START_TO_COMPLETE dakika geçtikten sonra
+// tamamlanabilir. UI aynı kuralı önden uygular; bu sunucu kontrolü son savunma
+// hattıdır.
+export const MIN_MINUTES_AFTER_START_TO_COMPLETE = 20;
+
 export type CompleteLessonResult = {
   lesson: LessonRow;
 };
@@ -405,6 +412,15 @@ export async function completeLesson(
 
     if (lesson.status === "completed") {
       throw new InvalidStatusTransitionError("Lesson is already completed.");
+    }
+
+    const startsAtMs = new Date(lesson.starts_at).getTime();
+    const earliestCompletableMs =
+      startsAtMs + MIN_MINUTES_AFTER_START_TO_COMPLETE * 60 * 1000;
+    if (Number.isFinite(startsAtMs) && Date.now() < earliestCompletableMs) {
+      throw new InvalidStatusTransitionError(
+        `Ders henüz tamamlanamaz. Tamamlamak için ders başladıktan en az ${MIN_MINUTES_AFTER_START_TO_COMPLETE} dakika geçmiş olmalı.`,
+      );
     }
 
     const before = { ...lesson };

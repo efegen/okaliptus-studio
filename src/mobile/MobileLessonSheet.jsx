@@ -6,6 +6,10 @@ import {
   LESSON_STATE_META,
   PAYMENT_METHOD_LABELS,
   getLessonStateInfo,
+  getCompleteAvailableAt,
+  canCompleteLessonAt,
+  formatIstanbulTime,
+  COMPLETE_AVAILABLE_AFTER_MINUTES,
 } from './shared/lessonMeta';
 
 const ACTIVE_PAYMENT_METHODS = { cash: true, iban: true };
@@ -141,6 +145,22 @@ export function MobileLessonSheet({ session, onClose, onUpdated }) {
   const stateInfo = session ? getLessonStateInfo(session) : null;
   const lessonRemaining = session ? Math.max(0, session.price - session.paid) : 0;
 
+  // Ders ancak başlangıcından 20 dk geçtikten sonra tamamlanabilir. Modal
+  // açıkken zaman geldiğinde butonun kendiliğinden aktifleşmesi için tek
+  // bir setTimeout ile re-render tetikliyoruz.
+  const completeAvailableAt = session ? getCompleteAvailableAt(session.startsAt) : null;
+  const completeAvailableMs = completeAvailableAt ? completeAvailableAt.getTime() : null;
+  const [nowMs, setNowMs] = React.useState(() => Date.now());
+  React.useEffect(() => {
+    if (completeAvailableMs == null) return undefined;
+    const delay = completeAvailableMs - Date.now();
+    if (delay <= 0) return undefined;
+    const t = setTimeout(() => setNowMs(Date.now()), delay);
+    return () => clearTimeout(t);
+  }, [completeAvailableMs]);
+  const canCompleteNow = completeAvailableMs == null || nowMs >= completeAvailableMs;
+  const completeUnlockLabel = completeAvailableAt ? formatIstanbulTime(completeAvailableAt) : '';
+
   const lessonPaymentLabel = session?.paymentMethod
     ? (PAYMENT_METHOD_LABELS[session.paymentMethod] || session.paymentMethod)
     : null;
@@ -155,6 +175,12 @@ export function MobileLessonSheet({ session, onClose, onUpdated }) {
   }
 
   async function handleComplete() {
+    if (!canCompleteNow) {
+      setError(
+        `Bu ders henüz tamamlanamaz. ${completeUnlockLabel}'den itibaren işaretleyebilirsin.`,
+      );
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
@@ -244,6 +270,12 @@ export function MobileLessonSheet({ session, onClose, onUpdated }) {
                           <span>Ders ücreti</span>
                           <span>{session.price > 0 ? fmtTL(session.price) : '—'}</span>
                         </div>
+                        {!canCompleteNow && (
+                          <div className="mobile-lsheet-hint" role="note">
+                            Ders {completeUnlockLabel}'den itibaren tamamlanabilir
+                            (başlangıçtan {COMPLETE_AVAILABLE_AFTER_MINUTES} dk sonra).
+                          </div>
+                        )}
                         {session.note && <NoteBlock text={session.note} />}
                       </>
                     )}
@@ -289,6 +321,13 @@ export function MobileLessonSheet({ session, onClose, onUpdated }) {
                         type="button"
                         className="mobile-lsheet-btn-primary"
                         onClick={() => { setPhase('complete'); setError(null); }}
+                        disabled={!canCompleteNow}
+                        aria-disabled={!canCompleteNow}
+                        title={
+                          !canCompleteNow
+                            ? `Ders ${completeUnlockLabel}'den itibaren tamamlanabilir`
+                            : undefined
+                        }
                       >
                         Dersi tamamla
                       </button>
@@ -323,7 +362,7 @@ export function MobileLessonSheet({ session, onClose, onUpdated }) {
                       type="button"
                       className="mobile-lsheet-btn-primary"
                       onClick={handleComplete}
-                      disabled={submitting}
+                      disabled={submitting || !canCompleteNow}
                     >
                       {submitting ? 'Kaydediliyor…' : 'Tamamla'}
                     </button>

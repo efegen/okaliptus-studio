@@ -18,6 +18,11 @@ import {
 } from './api';
 import { ReceivePaymentModal } from './students';
 import { useLessonActions } from './mobile/shared/useLessonActions';
+import {
+  COMPLETE_AVAILABLE_AFTER_MINUTES,
+  formatIstanbulTime,
+  getCompleteAvailableAt,
+} from './mobile/shared/lessonMeta';
 
 function parseNumericValue(value, fallback = null) {
   if (value === null || value === undefined || value === '') {
@@ -1208,6 +1213,20 @@ function LessonModal({ session, onClose, onUpdated, activePaymentMethods = { cas
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose, submitting]);
 
+  // Ders ancak başlangıcından 20 dk geçtikten sonra tamamlanabilir. Modal
+  // açıkken eşik geldiğinde butonun kendiliğinden aktifleşmesi için tek bir
+  // setTimeout ile re-render tetikliyoruz; backend aynı kuralı uygular.
+  const completeAvailableAt = session ? getCompleteAvailableAt(session.startsAt) : null;
+  const completeAvailableMs = completeAvailableAt ? completeAvailableAt.getTime() : null;
+  const [nowMs, setNowMs] = React.useState(() => Date.now());
+  React.useEffect(() => {
+    if (completeAvailableMs == null) return undefined;
+    const delay = completeAvailableMs - Date.now();
+    if (delay <= 0) return undefined;
+    const t = setTimeout(() => setNowMs(Date.now()), delay);
+    return () => clearTimeout(t);
+  }, [completeAvailableMs]);
+
   if (!session) return null;
 
   const isScheduled = session.lessonState === 'planned';
@@ -1215,6 +1234,8 @@ function LessonModal({ session, onClose, onUpdated, activePaymentMethods = { cas
   const price = Number(session.price) || 0;
   const paid = Number(session.paid) || 0;
   const remaining = Math.max(0, price - paid);
+  const canCompleteNow = completeAvailableMs == null || nowMs >= completeAvailableMs;
+  const completeUnlockLabel = completeAvailableAt ? formatIstanbulTime(completeAvailableAt) : '';
 
   const dateLabel = session.startsAt
     ? new Date(session.startsAt).toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' })
@@ -1245,6 +1266,12 @@ function LessonModal({ session, onClose, onUpdated, activePaymentMethods = { cas
   }
 
   async function handleComplete() {
+    if (!canCompleteNow) {
+      setError(
+        `Bu ders henüz tamamlanamaz. ${completeUnlockLabel}'den itibaren işaretleyebilirsin.`,
+      );
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
@@ -1290,7 +1317,7 @@ function LessonModal({ session, onClose, onUpdated, activePaymentMethods = { cas
     }
   }
 
-  const completeDisabled = submitting;
+  const completeDisabled = submitting || !canCompleteNow;
 
   return (
     <div className="modal-backdrop" onClick={() => { if (!submitting) onClose(); }}>
@@ -1334,6 +1361,12 @@ function LessonModal({ session, onClose, onUpdated, activePaymentMethods = { cas
                   <span className="lm-sum-val">{price > 0 ? fmtTL(price) : '—'}</span>
                 </div>
               </div>
+              {!canCompleteNow && (
+                <div className="lm-step-sub" role="note">
+                  Ders {completeUnlockLabel}'den itibaren tamamlanabilir
+                  (başlangıçtan {COMPLETE_AVAILABLE_AFTER_MINUTES} dk sonra).
+                </div>
+              )}
               {session.note && (
                 <div className="lm-note">
                   <span className="lm-note-label">Not</span>
@@ -1503,7 +1536,17 @@ function LessonModal({ session, onClose, onUpdated, activePaymentMethods = { cas
               <button className="btn btn-ghost lm-btn-danger" onClick={() => { setPhase('cancel'); setError(null); }}>
                 İptal et
               </button>
-              <button className="btn btn-primary" onClick={() => { setPhase('complete'); setError(null); }}>
+              <button
+                className="btn btn-primary"
+                onClick={() => { setPhase('complete'); setError(null); }}
+                disabled={!canCompleteNow}
+                aria-disabled={!canCompleteNow}
+                title={
+                  !canCompleteNow
+                    ? `Ders ${completeUnlockLabel}'den itibaren tamamlanabilir`
+                    : undefined
+                }
+              >
                 Dersi tamamla
               </button>
             </>

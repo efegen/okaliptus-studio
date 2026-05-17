@@ -7,6 +7,36 @@ export const PAYMENT_METHOD_LABELS = {
   mixed: 'Karışık',
 };
 
+// Bir ders en erken başlangıcından şu kadar dakika sonra "tamamlandı"
+// işaretlenebilir — geleceğin dersini yanlışlıkla tamamlamayı engeller.
+// Backend lessons.service.ts aynı eşiği uygular (MIN_MINUTES_AFTER_START_TO_COMPLETE).
+export const COMPLETE_AVAILABLE_AFTER_MINUTES = 20;
+
+export function getCompleteAvailableAt(startsAt) {
+  if (!startsAt) return null;
+  const ms = new Date(startsAt).getTime();
+  if (!Number.isFinite(ms)) return null;
+  return new Date(ms + COMPLETE_AVAILABLE_AFTER_MINUTES * 60 * 1000);
+}
+
+export function canCompleteLessonAt(startsAt, nowMs = Date.now()) {
+  const target = getCompleteAvailableAt(startsAt);
+  if (!target) return true;
+  return nowMs >= target.getTime();
+}
+
+export function formatIstanbulTime(date) {
+  if (!date) return '';
+  const d = date instanceof Date ? date : new Date(date);
+  if (Number.isNaN(d.getTime())) return '';
+  return new Intl.DateTimeFormat('tr-TR', {
+    timeZone: 'Europe/Istanbul',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(d);
+}
+
 export function debtStateFor(paid, total) {
   if (total <= 0) return 'empty';
   if (paid >= total) return 'paid';
