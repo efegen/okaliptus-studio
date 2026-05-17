@@ -2022,7 +2022,7 @@ v1.5 revizyonu, v1.4'ün "ayrı sprint'e ertelenmiş" PWA artefaktlarını ve mo
 - **Mobile shell mimarisi.** Frontend artık iki shell ile geliyor: web (mevcut) ve mobile. [main.jsx](src/main.jsx) içinde `useIsMobile` hook'u viewport breakpoint'inde aktif shell'i seçer. MobileApp shell yapısı: sticky `MobileHeader` + scrollable `<main>` + fixed `BottomTabBar`. Quick-Add (`+`) FAB bottom tab merkezinde (henüz no-op stub — v1.6+'a ertelendi).
 
 - **Mobile pages (v1.5 kapsamında tamamlanmış).**
-  - `MobileHome` = `MobileGreetingHeader` + `MobileKpiSection` + `MobileWeekCalendar`
+  - `MobileHome` = `MobileGreetingHeader` + `MobileFinanceSummary` + `MobileAgenda` (önceki `MobileKpiSection` + `MobileWeekStrip` + `MobileDayLessons` + `MobileHeroLessonCard` kompozisyonu kaldırıldı; finans özet kartı ve "Bugün / Yarın / sıradaki ders" ajandası ile birleşik akışa geçildi)
   - `MobileCalendar` (haftalık görünüm) + `MobileLessonSheet` (lesson detay + complete / cancel / payment / product-sale edit-delete actions)
   - `MobileCreateLessonSheet` (yeni ders bottom sheet)
   - `MobileStudents` + `MobileStudentList` + `MobileStudentsKpi` + `MobileStudentsMenu` + `MobileCreateStudentPage`
