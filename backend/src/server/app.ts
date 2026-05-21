@@ -25,6 +25,10 @@ import { requireAuth } from "./middleware/requireAuth.js";
 export function createApp() {
   const app = express();
 
+  // Railway's edge proxy adds X-Forwarded-For. Trust exactly one hop so
+  // express-rate-limit can derive the real client IP without opening the
+  // door to header spoofing (trust proxy: true would let any client forge it).
+  app.set("trust proxy", 1);
   app.disable("x-powered-by");
   app.use((req, res, next) => {
     const origin = req.headers.origin;
