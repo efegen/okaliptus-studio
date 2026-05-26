@@ -118,6 +118,63 @@
     background: color-mix(in oklch, var(--accent) 12%, transparent);
   }
 
+  /* ---------- Mobile profile menu ---------- */
+
+  .mobile-profile-wrap {
+    position: relative;
+  }
+
+  .mobile-avatar-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: 0;
+    padding: 2px;
+    border-radius: 999px;
+    cursor: pointer;
+  }
+  .mobile-avatar-btn:active { opacity: 0.7; }
+
+  .mobile-profile-menu {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    min-width: 160px;
+    background: var(--surface);
+    border: 1px solid var(--ink-8);
+    border-radius: 12px;
+    box-shadow: 0 8px 24px color-mix(in oklch, var(--ink) 12%, transparent);
+    overflow: hidden;
+    z-index: 200;
+  }
+
+  .mobile-profile-menu-name {
+    padding: 10px 14px 8px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink);
+    border-bottom: 1px solid var(--ink-8);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .mobile-profile-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 11px 14px;
+    background: transparent;
+    border: 0;
+    font-size: 14px;
+    color: var(--warn);
+    cursor: pointer;
+    text-align: left;
+  }
+  .mobile-profile-menu-item:active { background: var(--surface-2); }
+
   /* ---------- Main scroll region ---------- */
 
   .mobile-main {
