@@ -25,6 +25,8 @@ import { createStudent } from "../../src/services/students.service.js";
 import {
   archiveProduct,
   createProduct,
+  deleteProduct,
+  getProductById,
   updateProduct,
 } from "../../src/services/products.service.js";
 import {
@@ -154,6 +156,45 @@ async function run(): Promise<void> {
       "VALIDATION_ERROR",
       "Arşivli ürün sepete eklenememeli",
     );
+
+    // ── 9. Aktif ürün silinemez (önce arşivle) ───────────────────────────────
+    step("Aktif ürün (productB) silinmeye çalışılıyor → DELETE_CONFLICT...");
+    await assertRejects(
+      () => deleteProduct(productB.id),
+      "DELETE_CONFLICT",
+      "Arşivlenmemiş ürün silinememeli",
+    );
+
+    // ── 10. Arşivle + sil (satışsız ürün) ────────────────────────────────────
+    step("productB arşivlenip kalıcı siliniyor...");
+    await archiveProduct(productB.id);
+    await deleteProduct(productB.id);
+    await assertRejects(
+      () => getProductById(productB.id),
+      "PRODUCT_NOT_FOUND",
+      "Silinen ürün artık bulunamamalı",
+    );
+
+    // ── 11. Satılmış + arşivli ürünü sil → satış snapshot'ı korunur ──────────
+    step("productA (arşivli + satılmış) siliniyor; satış kaydı bağımsız kalmalı...");
+    await deleteProduct(productA.id);
+    await assertRejects(
+      () => getProductById(productA.id),
+      "PRODUCT_NOT_FOUND",
+      "Silinen satılmış ürün artık bulunamamalı",
+    );
+
+    const afterDelete = await getProductSaleById(sale.id);
+    assertEqual(afterDelete.items.length, 2, "ürün silindikten sonra items hâlâ 2");
+    const snapA = afterDelete.items.find(it => it.name_snapshot === "SMOKE_Yoga Matı");
+    assert(!!snapA, "silinen ürünün satır kaydı name_snapshot ile korunuyor");
+    if (snapA) {
+      assertEqual(snapA.product_id, null, "silinen ürünün product_id NULL'a düşürüldü (FK RESTRICT'ten kaçınıldı)");
+      assertMoney(snapA.unit_price_snapshot, "400.00", "unit_price_snapshot snapshot korunuyor");
+    }
+
+    // Silindiler — final cleanup hard-delete'i atlasın.
+    productIds.length = 0;
 
     ok("\nSMOKE 17 — TÜM ADIMLAR BAŞARILI ✓");
   } finally {

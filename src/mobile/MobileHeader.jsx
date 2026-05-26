@@ -1,6 +1,5 @@
 import React from 'react';
 import { Icon } from '../layout';
-import { initials } from '../data';
 
 const PAGE_TITLES = {
   home: 'Ana Sayfa',
@@ -12,21 +11,12 @@ const PAGE_TITLES = {
   menu: 'Menü',
 };
 
-export function MobileHeader({ page, showBack, onBack, title, currentUser, onLogout }) {
+// action (opsiyonel): sağ üstte tek bir ikon-buton render eder.
+//   { icon: Component, onClick, label }
+// Hesap/çıkış artık Menü sekmesinde olduğu için header'da avatar yok.
+export function MobileHeader({ page, showBack, onBack, title, action }) {
   const resolvedTitle = title ?? PAGE_TITLES[page] ?? 'Okaliptus';
-  const [profileOpen, setProfileOpen] = React.useState(false);
-  const menuRef = React.useRef(null);
-
-  React.useEffect(() => {
-    if (!profileOpen) return;
-    function handleClick(e) {
-      if (menuRef.current && !menuRef.current.contains(e.target)) {
-        setProfileOpen(false);
-      }
-    }
-    document.addEventListener('pointerdown', handleClick);
-    return () => document.removeEventListener('pointerdown', handleClick);
-  }, [profileOpen]);
+  const ActionIcon = action?.icon;
 
   return (
     <header className="mobile-header">
@@ -44,34 +34,16 @@ export function MobileHeader({ page, showBack, onBack, title, currentUser, onLog
         <span className="mobile-header-title-text">{resolvedTitle}</span>
       </div>
       <div className="mobile-header-actions">
-        <div className="mobile-profile-wrap" ref={menuRef}>
+        {action && ActionIcon && (
           <button
             type="button"
-            className="mobile-avatar-btn"
-            onClick={() => setProfileOpen(o => !o)}
-            aria-label="Hesap menüsü"
+            className="mobile-iconbtn mobile-iconbtn-accent"
+            onClick={action.onClick}
+            aria-label={action.label}
           >
-            <span className="avatar avatar-sm" aria-hidden="true">
-              {currentUser ? initials(currentUser.displayName) : '?'}
-            </span>
+            <ActionIcon width="22" height="22" />
           </button>
-          {profileOpen && (
-            <div className="mobile-profile-menu">
-              {currentUser?.displayName && (
-                <div className="mobile-profile-menu-name">{currentUser.displayName}</div>
-              )}
-              {onLogout && (
-                <button
-                  className="mobile-profile-menu-item"
-                  onClick={() => { setProfileOpen(false); onLogout(); }}
-                >
-                  <Icon.LogOut width="16" height="16" />
-                  Çıkış yap
-                </button>
-              )}
-            </div>
-          )}
-        </div>
+        )}
       </div>
     </header>
   );

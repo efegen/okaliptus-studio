@@ -18,6 +18,7 @@ import { SettingsPage } from '../settings';
 import { CatalogPage } from '../catalog';
 import { queryKeys } from '../hooks/queryKeys';
 import { fmtTL } from '../data';
+import { Icon } from '../layout';
 
 // Mobile shell: header (when shown) + page body + fixed bottom tab bar. The
 // center "+" FAB opens the QuickAdd action sheet (Ödeme al · Ürün sat · Ders
@@ -61,6 +62,10 @@ export function MobileApp({
   // preselected student so the sheet can skip the student picker.
   const [profileActionStudent, setProfileActionStudent] = React.useState(null);
   const [toast, setToast] = React.useState(null);
+
+  // Ürünler sayfasında header'daki "+" basıldığında artırılır; sayfa bunu
+  // izleyip yeni-ürün editörünü açar (state sayfada kalsın diye nonce ile köprü).
+  const [newProductNonce, setNewProductNonce] = React.useState(0);
 
   // Ürün satışı modülünün state'i page'ler arası paylaşılır: katalog → checkout
   // sırasında sepet ve seçili öğrenci korunur, akış sonunda topluca temizlenir.
@@ -205,7 +210,7 @@ export function MobileApp({
   } else if (page === 'catalog') {
     body = <CatalogPage />;
   } else if (page === 'products') {
-    body = <MobileProductCatalogPage />;
+    body = <MobileProductCatalogPage createNonce={newProductNonce} />;
   } else if (page === 'product-sale') {
     body = (
       <MobileProductSalePage
@@ -239,8 +244,9 @@ export function MobileApp({
           page={page}
           showBack={showBack}
           onBack={handleBack}
-          currentUser={currentUser}
-          onLogout={onLogout}
+          action={page === 'products'
+            ? { icon: Icon.Plus, onClick: () => setNewProductNonce(n => n + 1), label: 'Yeni ürün' }
+            : null}
         />
       )}
       <main className="mobile-main" data-screen-label={page}>

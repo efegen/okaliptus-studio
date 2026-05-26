@@ -8,6 +8,7 @@ import type { PoolClient } from "pg";
 import { pool } from "../db/connection.js";
 import {
   AppError,
+  DeleteConflictError,
   ValidationError,
   toServiceError,
 } from "./errors.js";
@@ -347,6 +348,55 @@ async function setArchived(
 
     await client.query("COMMIT");
     return updated;
+  } catch (error) {
+    await rollbackQuietly(client);
+    throw toServiceError(error);
+  } finally {
+    client.release();
+  }
+}
+
+// Kalıcı silme. Yalnız arşivlenmiş ürünler silinebilir (archived_at IS NOT NULL);
+// aktif ürün silinmek istenirse 409 → önce arşivle. Satılmış ürünlerin
+// product_sale_items satırları korunur (name_snapshot/unit_price_snapshot ile
+// rapor immutable kalır); FK RESTRICT'e takılmamak için product_id NULL'a düşer.
+// product_images CASCADE ile otomatik silinir (0234).
+export async function deleteProduct(
+  productId: EntityId,
+  actorUserId: number | string | null = null,
+): Promise<{ id: string }> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const beforeResult = await client.query<ProductRow>(
+      `SELECT * FROM products WHERE id = $1 FOR UPDATE`,
+      [productId],
+    );
+    const before = beforeResult.rows[0];
+    if (!before) throw new ProductNotFoundError();
+    if (before.archived_at === null) {
+      throw new DeleteConflictError(
+        "Yalnızca arşivlenmiş ürünler silinebilir. Önce ürünü arşivleyin.",
+      );
+    }
+
+    await client.query(
+      `UPDATE product_sale_items SET product_id = NULL WHERE product_id = $1`,
+      [productId],
+    );
+    await client.query(`DELETE FROM products WHERE id = $1`, [productId]);
+
+    await insertAuditLog(client, {
+      action: "product_deleted",
+      entityType: "product",
+      entityId: before.id,
+      before,
+      actorUserId,
+    });
+
+    await client.query("COMMIT");
+    return { id: before.id };
   } catch (error) {
     await rollbackQuietly(client);
     throw toServiceError(error);

@@ -515,6 +515,14 @@ export async function unarchiveProduct(productId) {
   return ensureMutationResult(payload, "Ürün arşivden çıkarılamadı.");
 }
 
+// Kalıcı silme — yalnız arşivlenmiş ürünlerde başarılı olur (backend 409 atar).
+export async function deleteProduct(productId) {
+  const payload = await apiRequest(`/products/${encodeURIComponent(productId)}`, {
+    method: "DELETE",
+  });
+  return ensureMutationResult(payload, "Ürün silinemedi.");
+}
+
 // Ham görsel bytes'ı (sıkıştırılmış Blob) yükler. Content-Type blob türünden
 // gelir (image/webp ya da fallback image/jpeg); backend image_url'ı günceller.
 export async function uploadProductImage(productId, blob) {

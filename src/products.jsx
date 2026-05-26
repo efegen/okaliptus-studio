@@ -7,6 +7,9 @@ import {
   updateProduct,
   archiveProduct,
   unarchiveProduct,
+  deleteProduct,
+  uploadProductImage,
+  removeProductImage,
   bulkArchiveProducts,
   bulkUnarchiveProducts,
   bulkSetProductCategory,
@@ -15,6 +18,7 @@ import {
 } from './api';
 import { queryKeys } from './hooks/queryKeys';
 import { Icon } from './layout';
+import { compressToSquareWebp } from './imageCompress';
 
 function fmtPrice(raw) {
   if (raw === null || raw === undefined || raw === '') return '—';
@@ -249,6 +253,96 @@ function CategoryCombobox({ value, onChange, knownCategories }) {
   );
 }
 
+// ─── WebcamCaptureModal ─────────────────────────────────────────────────────
+//
+// Masaüstünde "fotoğraf çek": getUserMedia ile webcam akışını gösterir, kullanıcı
+// çekince ham kareyi Blob olarak döndürür. Sıkıştırma çağıran tarafta
+// compressToSquareWebp ile yapılır (kare kırpma + WebP). Mobil tarayıcıda da
+// çalışır ama mobilde zaten dosya seçici capture daha akıcı.
+
+function WebcamCaptureModal({ onCapture, onClose }) {
+  const videoRef = React.useRef(null);
+  const streamRef = React.useRef(null);
+  const [error, setError] = React.useState(null);
+  const [ready, setReady] = React.useState(false);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    async function start() {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setError('Bu tarayıcı kamera erişimini desteklemiyor.');
+        return;
+      }
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 1280 } },
+          audio: false,
+        });
+        if (cancelled) { stream.getTracks().forEach(t => t.stop()); return; }
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          await videoRef.current.play().catch(() => {});
+        }
+        setReady(true);
+      } catch {
+        setError('Kameraya erişilemedi. Tarayıcı izni verildiğinden ve kameranın başka bir uygulamada açık olmadığından emin olun.');
+      }
+    }
+    start();
+    return () => {
+      cancelled = true;
+      if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
+    };
+  }, []);
+
+  function handleSnap() {
+    const video = videoRef.current;
+    if (!video) return;
+    const vw = video.videoWidth;
+    const vh = video.videoHeight;
+    if (!vw || !vh) return;
+    const canvas = document.createElement('canvas');
+    canvas.width = vw;
+    canvas.height = vh;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.drawImage(video, 0, 0, vw, vh);
+    canvas.toBlob((blob) => {
+      if (blob) onCapture(blob);
+    }, 'image/webp', 0.9);
+  }
+
+  return (
+    <div className="modal-backdrop webcam-backdrop" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal webcam-modal">
+        <div className="lt-modal-head">
+          <div className="lt-modal-mark" aria-hidden="true">
+            <Icon.Tag width="18" height="18" />
+          </div>
+          <h3>Fotoğraf çek</h3>
+        </div>
+
+        {error ? (
+          <div className="stg-feedback stg-feedback-err" style={{ marginTop: 12 }}>{error}</div>
+        ) : (
+          <div className="webcam-stage">
+            <video ref={videoRef} playsInline muted className="webcam-video" />
+            {!ready && <div className="webcam-loading">Kamera açılıyor…</div>}
+          </div>
+        )}
+
+        <div className="modal-actions">
+          <button type="button" className="btn btn-ghost" onClick={onClose}>İptal</button>
+          <button type="button" className="btn btn-primary" onClick={handleSnap} disabled={!ready || !!error}>
+            Çek
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── ProductModal ───────────────────────────────────────────────────────────
 
 function ProductModal({ initial, knownCategories, onClose, onSaved }) {
@@ -267,11 +361,70 @@ function ProductModal({ initial, knownCategories, onClose, onSaved }) {
   }));
   const [saving, setSaving] = React.useState(false);
   const [err, setErr] = React.useState(null);
+  const [confirmDelete, setConfirmDelete] = React.useState(false);
+
+  // Görsel staging: çekilen/seçilen foto kaydedilene kadar bekler. cleared =
+  // mevcut görseli kaldırma niyeti (kaydet'te uygulanır). Mobildeki ProductEditor
+  // ile aynı mantık.
+  const [stagedBlob, setStagedBlob] = React.useState(null);
+  const [stagedPreview, setStagedPreview] = React.useState(null);
+  const [cleared, setCleared] = React.useState(false);
+  const [photoBusy, setPhotoBusy] = React.useState(false);
+  const [webcamOpen, setWebcamOpen] = React.useState(false);
+  const fileInputRef = React.useRef(null);
+
+  React.useEffect(() => {
+    return () => { if (stagedPreview) URL.revokeObjectURL(stagedPreview); };
+  }, [stagedPreview]);
 
   function set(key, val) {
     setForm(f => ({ ...f, [key]: val }));
     setErr(null);
   }
+
+  async function stagePhoto(fileOrBlob) {
+    if (!fileOrBlob) return;
+    setPhotoBusy(true);
+    setErr(null);
+    try {
+      const blob = await compressToSquareWebp(fileOrBlob, { size: 800, quality: 0.75 });
+      setStagedPreview(prev => { if (prev) URL.revokeObjectURL(prev); return URL.createObjectURL(blob); });
+      setStagedBlob(blob);
+      setCleared(false);
+    } catch (e) {
+      setErr(e.message || 'Görsel işlenemedi.');
+    } finally {
+      setPhotoBusy(false);
+    }
+  }
+
+  async function handlePickFile(e) {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // aynı dosya tekrar seçilebilsin
+    await stagePhoto(file);
+  }
+
+  function handleWebcamCapture(blob) {
+    setWebcamOpen(false);
+    stagePhoto(blob);
+  }
+
+  function handleRemovePhoto() {
+    if (stagedBlob) {
+      // Yeni seçilen fotoğrafı geri al → mevcut görsele dön.
+      setStagedPreview(prev => { if (prev) URL.revokeObjectURL(prev); return null; });
+      setStagedBlob(null);
+      return;
+    }
+    // Mevcut (kayıtlı) görseli kaldır.
+    setCleared(true);
+    set('image_url', '');
+  }
+
+  const shownImage = stagedPreview
+    ? stagedPreview
+    : (!cleared && form.image_url ? form.image_url : null);
+  const hasRemovable = !!stagedBlob || (!cleared && !!form.image_url);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -286,7 +439,7 @@ function ProductModal({ initial, knownCategories, onClose, onSaved }) {
         name,
         price: priceNum,
         barcode: form.barcode.trim() || null,
-        imageUrl: form.image_url.trim() || null,
+        imageUrl: cleared ? null : (form.image_url.trim() || null),
         tyListingUrl: form.ty_listing_url.trim() || null,
         hbListingUrl: form.hb_listing_url.trim() || null,
         notes: form.notes.trim() || null,
@@ -297,7 +450,17 @@ function ProductModal({ initial, knownCategories, onClose, onSaved }) {
       const saved = isNew
         ? await createProduct(payload)
         : await updateProduct(initial.id, payload);
-      onSaved(saved);
+      const savedId = saved?.id ?? initial?.id;
+
+      // Görsel işlemleri ürün kaydedildikten sonra (yeni üründe id gerekli).
+      let finalSaved = saved;
+      if (stagedBlob && savedId) {
+        finalSaved = await uploadProductImage(savedId, stagedBlob);
+      } else if (cleared && !isNew && savedId) {
+        const wasOurUpload = (initial?.image_url || '').includes(`/products/${savedId}/image`);
+        if (wasOurUpload) finalSaved = await removeProductImage(savedId);
+      }
+      onSaved(finalSaved);
     } catch (e) {
       setErr(e.message || 'Kaydedilemedi.');
       setSaving(false);
@@ -319,6 +482,20 @@ function ProductModal({ initial, knownCategories, onClose, onSaved }) {
     }
   }
 
+  async function handleDelete() {
+    if (!initial) return;
+    setSaving(true);
+    setErr(null);
+    try {
+      await deleteProduct(initial.id);
+      onSaved(null);
+    } catch (e) {
+      setErr(e.message || 'Ürün silinemedi.');
+      setSaving(false);
+      setConfirmDelete(false);
+    }
+  }
+
   return (
     <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal prod-modal">
@@ -334,23 +511,66 @@ function ProductModal({ initial, knownCategories, onClose, onSaved }) {
             <div className="prod-modal-imgcol">
               <label className="prod-modal-label">Görsel</label>
               <div className="prod-modal-imgbox">
-                {form.image_url ? (
-                  <img src={form.image_url} alt="" onError={e => e.currentTarget.style.display = 'none'} />
+                {shownImage ? (
+                  <img src={shownImage} alt="" onError={e => e.currentTarget.style.display = 'none'} />
                 ) : (
                   <span className="prod-modal-imgbox-fallback" aria-hidden="true">
                     <Icon.Tag width="22" height="22" />
                   </span>
                 )}
               </div>
+
               <input
-                className="prod-modal-input"
-                value={form.image_url}
-                onChange={e => set('image_url', e.target.value)}
-                placeholder="https://cdn.dsmcdn.com/…"
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handlePickFile}
+                style={{ display: 'none' }}
               />
-              <p className="prod-modal-hint">
-                Public URL (Trendyol CDN'i olduğu gibi çalışır).
-              </p>
+              <div className="prod-modal-img-actions">
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-xs prod-modal-img-btn"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={photoBusy || saving}
+                >
+                  <Icon.Upload width="13" height="13" />
+                  {photoBusy ? 'İşleniyor…' : 'Bilgisayardan yükle'}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-xs prod-modal-img-btn"
+                  onClick={() => setWebcamOpen(true)}
+                  disabled={photoBusy || saving}
+                >
+                  <Icon.Camera width="13" height="13" />
+                  Fotoğraf çek
+                </button>
+                {hasRemovable && (
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-xs prod-modal-img-btn"
+                    onClick={handleRemovePhoto}
+                    disabled={photoBusy || saving}
+                  >
+                    Görseli kaldır
+                  </button>
+                )}
+              </div>
+
+              <details className="prod-modal-url">
+                <summary className="prod-modal-hint">veya görsel URL'i yapıştır</summary>
+                <input
+                  className="prod-modal-input"
+                  style={{ marginTop: 6 }}
+                  value={form.image_url}
+                  onChange={e => { set('image_url', e.target.value); setCleared(false); }}
+                  placeholder="https://cdn.dsmcdn.com/…"
+                />
+                <p className="prod-modal-hint">
+                  Public URL (Trendyol CDN'i olduğu gibi çalışır). Çekilen/yüklenen foto önceliklidir.
+                </p>
+              </details>
             </div>
 
             <div className="prod-modal-fields">
@@ -467,14 +687,39 @@ function ProductModal({ initial, knownCategories, onClose, onSaved }) {
 
           <div className="modal-actions modal-actions-spread">
             {!isNew ? (
-              <button
-                type="button"
-                className={'btn ' + (initial.archived_at ? 'btn-ghost' : 'btn-warn-ghost')}
-                onClick={handleArchive}
-                disabled={saving}
-              >
-                {initial.archived_at ? 'Arşivden çıkar' : 'Arşivle'}
-              </button>
+              <div className="prod-modal-left-actions">
+                <button
+                  type="button"
+                  className={'btn ' + (initial.archived_at ? 'btn-ghost' : 'btn-warn-ghost')}
+                  onClick={handleArchive}
+                  disabled={saving}
+                >
+                  {initial.archived_at ? 'Arşivden çıkar' : 'Arşivle'}
+                </button>
+                {initial.archived_at && (
+                  confirmDelete ? (
+                    <span className="prod-modal-delete-confirm">
+                      <button type="button" className="btn btn-danger btn-xs" onClick={handleDelete} disabled={saving}>
+                        {saving ? 'Siliniyor…' : 'Kalıcı sil'}
+                      </button>
+                      <button type="button" className="btn btn-ghost btn-xs" onClick={() => setConfirmDelete(false)} disabled={saving}>
+                        Vazgeç
+                      </button>
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-xs prod-modal-delete-btn"
+                      onClick={() => setConfirmDelete(true)}
+                      disabled={saving}
+                      title="Ürünü kalıcı olarak sil"
+                    >
+                      <Icon.Trash width="13" height="13" />
+                      Sil
+                    </button>
+                  )
+                )}
+              </div>
             ) : <span />}
             <div style={{ display: 'flex', gap: 8 }}>
               <button type="button" className="btn btn-ghost" onClick={onClose} disabled={saving}>
@@ -487,6 +732,13 @@ function ProductModal({ initial, knownCategories, onClose, onSaved }) {
           </div>
         </form>
       </div>
+
+      {webcamOpen && (
+        <WebcamCaptureModal
+          onCapture={handleWebcamCapture}
+          onClose={() => setWebcamOpen(false)}
+        />
+      )}
     </div>
   );
 }

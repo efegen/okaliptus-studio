@@ -110,62 +110,13 @@
   }
   .mobile-iconbtn:active { background: var(--surface-2); }
 
-  /* ---------- Mobile profile menu ---------- */
-
-  .mobile-profile-wrap {
-    position: relative;
+  /* Accent header action (ör. Ürünler sayfasında "+" yeni ürün). */
+  .mobile-iconbtn-accent {
+    color: var(--accent);
   }
-
-  .mobile-avatar-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    background: transparent;
-    border: 0;
-    padding: 2px;
-    border-radius: 999px;
-    cursor: pointer;
+  .mobile-iconbtn-accent:active {
+    background: color-mix(in oklch, var(--accent) 12%, transparent);
   }
-  .mobile-avatar-btn:active { opacity: 0.7; }
-
-  .mobile-profile-menu {
-    position: absolute;
-    top: calc(100% + 8px);
-    right: 0;
-    min-width: 160px;
-    background: var(--surface);
-    border: 1px solid var(--ink-8);
-    border-radius: 12px;
-    box-shadow: 0 8px 24px color-mix(in oklch, var(--ink) 12%, transparent);
-    overflow: hidden;
-    z-index: 200;
-  }
-
-  .mobile-profile-menu-name {
-    padding: 10px 14px 8px;
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--ink);
-    border-bottom: 1px solid var(--ink-8);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .mobile-profile-menu-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    width: 100%;
-    padding: 11px 14px;
-    background: transparent;
-    border: 0;
-    font-size: 14px;
-    color: var(--warn);
-    cursor: pointer;
-    text-align: left;
-  }
-  .mobile-profile-menu-item:active { background: var(--surface-2); }
 
   /* ---------- Main scroll region ---------- */
 
@@ -2121,6 +2072,115 @@
   /* Single-button footer: span the full row instead of 50/50 split. */
   .mobile-csheet-actions:has(.mobile-csheet-btn-full) {
     grid-template-columns: 1fr;
+  }
+
+  /* ---------- Product editor (catalog) image + manage controls ---------- */
+  .mobile-prod-img-row {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+  }
+  .mobile-prod-img-box {
+    width: 88px;
+    height: 88px;
+    border-radius: 12px;
+    flex-shrink: 0;
+    overflow: hidden;
+    background: var(--bg);
+    border: 1px solid var(--ink-4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--ink-3);
+  }
+  .mobile-prod-img-box img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .mobile-prod-img-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+  }
+  .mobile-prod-img-actions .mobile-csheet-btn-ghost,
+  .mobile-prod-img-actions .mobile-csheet-btn-primary {
+    min-height: 40px;
+    font-size: 14px;
+  }
+  .mobile-prod-url-summary {
+    font-size: 13px;
+    color: var(--ink-3);
+    cursor: pointer;
+  }
+
+  .mobile-prod-manage {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 4px;
+    padding-top: 16px;
+    border-top: 1px solid var(--ink-4);
+  }
+  .mobile-prod-manage-btn {
+    min-height: 44px;
+  }
+  .mobile-prod-manage-hint {
+    font-size: 13px;
+    color: var(--ink-3);
+    text-align: center;
+  }
+  .mobile-prod-delete-trigger {
+    min-height: 44px;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid color-mix(in oklch, oklch(0.62 0.20 25) 40%, transparent);
+    background: transparent;
+    color: oklch(0.55 0.20 25);
+  }
+  .mobile-prod-delete-trigger:active {
+    background: color-mix(in oklch, oklch(0.62 0.20 25) 10%, transparent);
+  }
+  .mobile-prod-delete-trigger:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  .mobile-prod-delete-confirm {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px;
+    border-radius: 12px;
+    background: color-mix(in oklch, oklch(0.62 0.20 25) 8%, transparent);
+    border: 1px solid color-mix(in oklch, oklch(0.62 0.20 25) 30%, transparent);
+  }
+  .mobile-prod-delete-confirm > span {
+    font-size: 14px;
+    color: var(--ink);
+  }
+  .mobile-prod-delete-confirm-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .mobile-prod-delete-yes {
+    min-height: 44px;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    border: 0;
+    background: oklch(0.55 0.20 25);
+    color: var(--surface);
+  }
+  .mobile-prod-delete-yes:active { background: oklch(0.50 0.20 25); }
+  .mobile-prod-delete-yes:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 
   /* ---------- Quick-add entry sheet (mobile-qadd-*) ----------
@@ -4392,14 +4452,125 @@
   padding: 16px;
 }
 
-.mobile-products-toolbar {
+/* Search pill: embedded leading icon + clear button, full width. */
+.mobile-prodbar-search {
   display: flex;
-  gap: 8px;
   align-items: center;
+  gap: 8px;
+  min-height: 46px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: var(--bg);
+  border: 1px solid var(--ink-4);
+  color: var(--ink-3);
+}
+.mobile-prodbar-search:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--accent) 18%, transparent);
+}
+.mobile-prodbar-search > svg { flex: 0 0 auto; }
+.mobile-prodbar-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  font-size: 16px;
+  color: var(--ink);
+  outline: none;
+  padding: 0;
+}
+.mobile-prodbar-search input::-webkit-search-cancel-button { display: none; }
+.mobile-prodbar-clear {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--ink-2);
+  cursor: pointer;
 }
 
-.mobile-products-search {
-  flex: 1;
+/* Status segmented control (Aktif / Arşivli / Tümü) with counts. */
+.mobile-prod-segment {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  padding: 4px;
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+.mobile-prod-segment-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 38px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--ink-2);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.mobile-prod-segment-btn.is-on {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 1px 3px color-mix(in oklch, var(--ink) 14%, transparent);
+}
+.mobile-prod-segment-count {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+.mobile-prod-segment-btn.is-on .mobile-prod-segment-count {
+  color: var(--accent);
+}
+
+/* Category chips: horizontal scroll, edge-to-edge. */
+.mobile-prod-cats {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  margin: 0 -16px;
+  padding: 2px 16px;
+}
+.mobile-prod-cats::-webkit-scrollbar { display: none; }
+.mobile-prod-cat-chip {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid var(--ink-4);
+  background: var(--bg);
+  color: var(--ink-2);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.mobile-prod-cat-chip.is-on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--surface);
+}
+.mobile-prod-cat-count {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+.mobile-prod-cat-chip.is-on .mobile-prod-cat-count {
+  color: color-mix(in oklch, var(--surface) 80%, transparent);
 }
 
 .mobile-products-list {

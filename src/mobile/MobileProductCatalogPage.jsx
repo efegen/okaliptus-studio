@@ -1,4 +1,5 @@
 import React from 'react';
+import { Drawer } from 'vaul';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   getProducts,
@@ -6,6 +7,7 @@ import {
   updateProduct,
   archiveProduct,
   unarchiveProduct,
+  deleteProduct,
   uploadProductImage,
   removeProductImage,
 } from '../api';
@@ -13,6 +15,26 @@ import { queryKeys } from '../hooks/queryKeys';
 import { fmtTL } from '../data';
 import { Icon } from '../layout';
 import { compressToSquareWebp } from '../imageCompress';
+
+function getMobilePaletteRoot() {
+  if (typeof document === 'undefined') return null;
+  return document.getElementById('mobile-palette-root');
+}
+
+function emptyProductForm(product) {
+  return {
+    name: product?.name ?? '',
+    price: product ? String(product.price) : '',
+    barcode: product?.barcode ?? '',
+    imageUrl: product?.image_url ?? '',
+    tyListingUrl: product?.ty_listing_url ?? '',
+    hbListingUrl: product?.hb_listing_url ?? '',
+    notes: product?.notes ?? '',
+    parentProductCode: product?.parent_product_code ?? '',
+    variantLabel: product?.variant_label ?? '',
+    category: product?.category ?? '',
+  };
+}
 
 function ProductThumb({ product, size = 44 }) {
   const fallback = (product.name || '?').trim().charAt(0).toUpperCase();
@@ -39,30 +61,36 @@ function ProductThumb({ product, size = 44 }) {
   );
 }
 
-function ProductEditor({ product, onClose, onSaved }) {
+function ProductEditor({ open, product, onClose, onSaved }) {
   const isNew = !product;
-  const [form, setForm] = React.useState(() => ({
-    name: product?.name ?? '',
-    price: product ? String(product.price) : '',
-    barcode: product?.barcode ?? '',
-    imageUrl: product?.image_url ?? '',
-    tyListingUrl: product?.ty_listing_url ?? '',
-    hbListingUrl: product?.hb_listing_url ?? '',
-    notes: product?.notes ?? '',
-    parentProductCode: product?.parent_product_code ?? '',
-    variantLabel: product?.variant_label ?? '',
-    category: product?.category ?? '',
-  }));
+  const portalContainer = React.useMemo(getMobilePaletteRoot, []);
+
+  const [form, setForm] = React.useState(() => emptyProductForm(product));
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState(null);
+  const [confirmDelete, setConfirmDelete] = React.useState(false);
 
-  // Görsel: çekilen foto kaydedilene kadar staging'de bekler. cleared = mevcut
-  // görseli kaldırma niyeti (kaydet'te uygulanır).
+  // Görsel: seçilen/çekilen foto kaydedilene kadar staging'de bekler. cleared =
+  // mevcut görseli kaldırma niyeti (kaydet'te uygulanır).
   const [stagedBlob, setStagedBlob] = React.useState(null);
   const [stagedPreview, setStagedPreview] = React.useState(null);
   const [cleared, setCleared] = React.useState(false);
   const [photoBusy, setPhotoBusy] = React.useState(false);
-  const fileInputRef = React.useRef(null);
+  const cameraInputRef = React.useRef(null);
+  const galleryInputRef = React.useRef(null);
+
+  // Sheet her açılışında forma/görsele yeni kaydı yükle (vaul Drawer mount kalır).
+  React.useEffect(() => {
+    if (!open) return;
+    setForm(emptyProductForm(product));
+    setStagedBlob(null);
+    setStagedPreview(prev => { if (prev) URL.revokeObjectURL(prev); return null; });
+    setCleared(false);
+    setError(null);
+    setSubmitting(false);
+    setConfirmDelete(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, product?.id]);
 
   React.useEffect(() => {
     // Object URL bellek temizliği.
@@ -93,7 +121,7 @@ function ProductEditor({ product, onClose, onSaved }) {
 
   function handleRemovePhoto() {
     if (stagedBlob) {
-      // Yeni çekilen fotoğrafı geri al → mevcut görsele dön.
+      // Yeni seçilen fotoğrafı geri al → mevcut görsele dön.
       setStagedPreview(prev => { if (prev) URL.revokeObjectURL(prev); return null; });
       setStagedBlob(null);
       return;
@@ -163,209 +191,370 @@ function ProductEditor({ product, onClose, onSaved }) {
     }
   }
 
+  async function handleDelete() {
+    if (!product) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await deleteProduct(product.id);
+      onSaved();
+    } catch (err) {
+      setError(err.message || 'Ürün silinemedi.');
+      setSubmitting(false);
+      setConfirmDelete(false);
+    }
+  }
+
   return (
-    <div className="mobile-csheet-overlay" onClick={(e) => { if (e.target === e.currentTarget && !submitting) onClose(); }}>
-      <div className="mobile-csheet-content" style={{ position: 'relative', maxWidth: 480, margin: '40px auto' }}>
-        <div className="mobile-csheet-form">
-          <header className="mobile-csheet-header">
-            <h2 className="mobile-csheet-title">{isNew ? 'Yeni ürün' : 'Ürünü düzenle'}</h2>
-          </header>
-          <div className="mobile-csheet-body">
-            <div className="mobile-csheet-form-row">
-              <label className="mobile-csheet-label">Ad</label>
-              <input className="mobile-csheet-input" value={form.name} onChange={e => set('name', e.target.value)} autoFocus />
-            </div>
-            <div className="mobile-csheet-form-row">
-              <label className="mobile-csheet-label">Fiyat (₺)</label>
-              <input
-                className="mobile-csheet-input"
-                type="number"
-                inputMode="decimal"
-                min="0"
-                step="0.01"
-                value={form.price}
-                onChange={e => set('price', e.target.value)}
-              />
-            </div>
-            <div className="mobile-csheet-form-row">
-              <label className="mobile-csheet-label">Barkod (opsiyonel)</label>
-              <input className="mobile-csheet-input" value={form.barcode} onChange={e => set('barcode', e.target.value)} />
-            </div>
-            <div className="mobile-csheet-form-row">
-              <label className="mobile-csheet-label">Görsel</label>
-              <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-                <div
-                  style={{
-                    width: 96, height: 96, borderRadius: 12, flexShrink: 0, overflow: 'hidden',
-                    background: 'var(--bg-2, #f2f2f2)', border: '1px solid var(--line, #e5e5e5)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  }}
-                >
-                  {shownImage ? (
-                    <img
-                      src={shownImage}
-                      alt=""
-                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                      onError={e => { e.currentTarget.style.display = 'none'; }}
-                    />
-                  ) : (
-                    <Icon.Tag width="24" height="24" />
-                  )}
+    <Drawer.Root
+      open={open}
+      onOpenChange={(o) => { if (!o && !submitting) onClose(); }}
+      dismissible={!submitting}
+      shouldScaleBackground={false}
+      repositionInputs={false}
+    >
+      <Drawer.Portal container={portalContainer || undefined}>
+        <Drawer.Overlay className="mobile-csheet-overlay" />
+        <Drawer.Content className="mobile-csheet-content">
+          <Drawer.Handle className="mobile-csheet-handle" />
+          {open && (
+            <div className="mobile-csheet-form">
+              <header className="mobile-csheet-header">
+                <Drawer.Title className="mobile-csheet-title">{isNew ? 'Yeni ürün' : 'Ürünü düzenle'}</Drawer.Title>
+              </header>
+              <div className="mobile-csheet-body">
+                <div className="mobile-csheet-form-row">
+                  <label className="mobile-csheet-label">Ad</label>
+                  <input className="mobile-csheet-input" value={form.name} onChange={e => set('name', e.target.value)} />
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flex: 1, minWidth: 0 }}>
+                <div className="mobile-csheet-form-row">
+                  <label className="mobile-csheet-label">Fiyat (₺)</label>
                   <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    onChange={handlePickPhoto}
-                    style={{ display: 'none' }}
+                    className="mobile-csheet-input"
+                    type="number"
+                    inputMode="decimal"
+                    min="0"
+                    step="0.01"
+                    value={form.price}
+                    onChange={e => set('price', e.target.value)}
                   />
-                  <button
-                    type="button"
-                    className="mobile-csheet-btn-primary"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={photoBusy || submitting}
-                  >
-                    {photoBusy ? 'İşleniyor…' : (shownImage ? '📷 Fotoğrafı değiştir' : '📷 Fotoğraf çek')}
-                  </button>
-                  {hasRemovable && (
+                </div>
+                <div className="mobile-csheet-form-row">
+                  <label className="mobile-csheet-label">Barkod (opsiyonel)</label>
+                  <input className="mobile-csheet-input" value={form.barcode} onChange={e => set('barcode', e.target.value)} />
+                </div>
+                <div className="mobile-csheet-form-row">
+                  <label className="mobile-csheet-label">Görsel</label>
+                  <div className="mobile-prod-img-row">
+                    <div className="mobile-prod-img-box">
+                      {shownImage ? (
+                        <img
+                          src={shownImage}
+                          alt=""
+                          onError={e => { e.currentTarget.style.display = 'none'; }}
+                        />
+                      ) : (
+                        <Icon.Tag width="24" height="24" />
+                      )}
+                    </div>
+                    <div className="mobile-prod-img-actions">
+                      <input
+                        ref={cameraInputRef}
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        onChange={handlePickPhoto}
+                        style={{ display: 'none' }}
+                      />
+                      <input
+                        ref={galleryInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handlePickPhoto}
+                        style={{ display: 'none' }}
+                      />
+                      <button
+                        type="button"
+                        className="mobile-csheet-btn-primary"
+                        onClick={() => cameraInputRef.current?.click()}
+                        disabled={photoBusy || submitting}
+                      >
+                        {photoBusy ? 'İşleniyor…' : '📷 Fotoğraf çek'}
+                      </button>
+                      <button
+                        type="button"
+                        className="mobile-csheet-btn-ghost"
+                        onClick={() => galleryInputRef.current?.click()}
+                        disabled={photoBusy || submitting}
+                      >
+                        🖼 Galeriden seç
+                      </button>
+                      {hasRemovable && (
+                        <button
+                          type="button"
+                          className="mobile-csheet-btn-ghost"
+                          onClick={handleRemovePhoto}
+                          disabled={photoBusy || submitting}
+                        >
+                          Kaldır
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <details className="mobile-csheet-form-row">
+                  <summary className="mobile-prod-url-summary">
+                    veya görsel URL'i yapıştır
+                  </summary>
+                  <input
+                    className="mobile-csheet-input"
+                    style={{ marginTop: 6 }}
+                    value={form.imageUrl}
+                    onChange={e => { set('imageUrl', e.target.value); setCleared(false); }}
+                    placeholder="https://cdn.dsmcdn.com/..."
+                  />
+                </details>
+                <div className="mobile-csheet-form-row">
+                  <label className="mobile-csheet-label">Trendyol linki (opsiyonel)</label>
+                  <input className="mobile-csheet-input" value={form.tyListingUrl} onChange={e => set('tyListingUrl', e.target.value)} />
+                </div>
+                <div className="mobile-csheet-form-row">
+                  <label className="mobile-csheet-label">Hepsiburada linki (opsiyonel)</label>
+                  <input className="mobile-csheet-input" value={form.hbListingUrl} onChange={e => set('hbListingUrl', e.target.value)} />
+                </div>
+                <div className="mobile-csheet-form-row">
+                  <label className="mobile-csheet-label">Kategori (opsiyonel)</label>
+                  <input
+                    className="mobile-csheet-input"
+                    value={form.category}
+                    onChange={e => set('category', e.target.value)}
+                    placeholder="ör. Tütsü ve Buhurdanlık"
+                  />
+                </div>
+                <div className="mobile-csheet-form-row">
+                  <label className="mobile-csheet-label">Model Kodu (opsiyonel)</label>
+                  <input
+                    className="mobile-csheet-input"
+                    value={form.parentProductCode}
+                    onChange={e => set('parentProductCode', e.target.value)}
+                    placeholder="ör. OKY-BUH"
+                  />
+                </div>
+                <div className="mobile-csheet-form-row">
+                  <label className="mobile-csheet-label">Varyant etiketi (opsiyonel)</label>
+                  <input
+                    className="mobile-csheet-input"
+                    value={form.variantLabel}
+                    onChange={e => set('variantLabel', e.target.value)}
+                    placeholder="ör. Mavi, 80x28"
+                  />
+                </div>
+                <div className="mobile-csheet-form-row">
+                  <label className="mobile-csheet-label">Not (opsiyonel)</label>
+                  <input className="mobile-csheet-input" value={form.notes} onChange={e => set('notes', e.target.value)} placeholder="İç açıklama" />
+                </div>
+
+                {!isNew && (
+                  <div className="mobile-prod-manage">
                     <button
                       type="button"
-                      className="mobile-csheet-btn-ghost"
-                      onClick={handleRemovePhoto}
-                      disabled={photoBusy || submitting}
+                      className="mobile-csheet-btn-ghost mobile-prod-manage-btn"
+                      onClick={handleArchive}
+                      disabled={submitting}
                     >
-                      Kaldır
+                      {product.archived_at ? 'Arşivden çıkar' : 'Arşivle'}
                     </button>
-                  )}
-                  <span style={{ fontSize: 12, color: 'var(--text-muted, #888)' }}>
-                    Telefonla çek; otomatik küçültülüp kaydedilir.
-                  </span>
-                </div>
-              </div>
-            </div>
+                    {product.archived_at ? (
+                      confirmDelete ? (
+                        <div className="mobile-prod-delete-confirm">
+                          <span>Bu ürün kalıcı olarak silinsin mi?</span>
+                          <div className="mobile-prod-delete-confirm-row">
+                            <button type="button" className="mobile-prod-delete-yes" onClick={handleDelete} disabled={submitting}>
+                              {submitting ? 'Siliniyor…' : 'Evet, sil'}
+                            </button>
+                            <button type="button" className="mobile-csheet-btn-ghost mobile-prod-manage-btn" onClick={() => setConfirmDelete(false)} disabled={submitting}>
+                              Vazgeç
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          className="mobile-prod-delete-trigger"
+                          onClick={() => setConfirmDelete(true)}
+                          disabled={submitting}
+                        >
+                          🗑 Ürünü kalıcı sil
+                        </button>
+                      )
+                    ) : (
+                      <span className="mobile-prod-manage-hint">Silmek için önce ürünü arşivleyin.</span>
+                    )}
+                  </div>
+                )}
 
-            <details className="mobile-csheet-form-row">
-              <summary style={{ fontSize: 13, color: 'var(--text-muted, #888)', cursor: 'pointer' }}>
-                veya görsel URL'i yapıştır
-              </summary>
-              <input
-                className="mobile-csheet-input"
-                style={{ marginTop: 6 }}
-                value={form.imageUrl}
-                onChange={e => { set('imageUrl', e.target.value); setCleared(false); }}
-                placeholder="https://cdn.dsmcdn.com/..."
-              />
-            </details>
-            <div className="mobile-csheet-form-row">
-              <label className="mobile-csheet-label">Trendyol linki (opsiyonel)</label>
-              <input className="mobile-csheet-input" value={form.tyListingUrl} onChange={e => set('tyListingUrl', e.target.value)} />
+                {error && <div className="mobile-csheet-error" role="alert">{error}</div>}
+              </div>
+              <footer className="mobile-csheet-actions">
+                <button type="button" className="mobile-csheet-btn-ghost" onClick={onClose} disabled={submitting}>Vazgeç</button>
+                <button type="button" className="mobile-csheet-btn-primary" onClick={handleSave} disabled={submitting}>
+                  {submitting ? 'Kaydediliyor…' : 'Kaydet'}
+                </button>
+              </footer>
             </div>
-            <div className="mobile-csheet-form-row">
-              <label className="mobile-csheet-label">Hepsiburada linki (opsiyonel)</label>
-              <input className="mobile-csheet-input" value={form.hbListingUrl} onChange={e => set('hbListingUrl', e.target.value)} />
-            </div>
-            <div className="mobile-csheet-form-row">
-              <label className="mobile-csheet-label">Kategori (opsiyonel)</label>
-              <input
-                className="mobile-csheet-input"
-                value={form.category}
-                onChange={e => set('category', e.target.value)}
-                placeholder="ör. Tütsü ve Buhurdanlık"
-              />
-            </div>
-            <div className="mobile-csheet-form-row">
-              <label className="mobile-csheet-label">Model Kodu (opsiyonel)</label>
-              <input
-                className="mobile-csheet-input"
-                value={form.parentProductCode}
-                onChange={e => set('parentProductCode', e.target.value)}
-                placeholder="ör. OKY-BUH"
-              />
-            </div>
-            <div className="mobile-csheet-form-row">
-              <label className="mobile-csheet-label">Varyant etiketi (opsiyonel)</label>
-              <input
-                className="mobile-csheet-input"
-                value={form.variantLabel}
-                onChange={e => set('variantLabel', e.target.value)}
-                placeholder="ör. Mavi, 80x28"
-              />
-            </div>
-            <div className="mobile-csheet-form-row">
-              <label className="mobile-csheet-label">Not (opsiyonel)</label>
-              <input className="mobile-csheet-input" value={form.notes} onChange={e => set('notes', e.target.value)} placeholder="İç açıklama" />
-            </div>
-            {error && <div className="mobile-csheet-error" role="alert">{error}</div>}
-          </div>
-          <footer className="mobile-csheet-actions">
-            <button type="button" className="mobile-csheet-btn-ghost" onClick={onClose} disabled={submitting}>Vazgeç</button>
-            {!isNew && (
-              <button type="button" className="mobile-csheet-btn-ghost" onClick={handleArchive} disabled={submitting}>
-                {product.archived_at ? 'Arşivden çıkar' : 'Arşivle'}
-              </button>
-            )}
-            <button type="button" className="mobile-csheet-btn-primary" onClick={handleSave} disabled={submitting}>
-              {submitting ? 'Kaydediliyor…' : 'Kaydet'}
-            </button>
-          </footer>
-        </div>
-      </div>
-    </div>
+          )}
+        </Drawer.Content>
+      </Drawer.Portal>
+    </Drawer.Root>
   );
 }
 
-export function MobileProductCatalogPage() {
+const STATUS_FILTERS = [
+  { key: 'active', label: 'Aktif' },
+  { key: 'archived', label: 'Arşivli' },
+  { key: 'all', label: 'Tümü' },
+];
+
+function statusMatch(product, status) {
+  if (status === 'active') return !product.archived_at;
+  if (status === 'archived') return !!product.archived_at;
+  return true;
+}
+
+export function MobileProductCatalogPage({ createNonce = 0 }) {
   const queryClient = useQueryClient();
   const [search, setSearch] = React.useState('');
-  const [includeArchived, setIncludeArchived] = React.useState(false);
+  const [status, setStatus] = React.useState('active');
+  const [category, setCategory] = React.useState(''); // '' = tüm kategoriler
   const [editing, setEditing] = React.useState(null); // null | 'new' | productObject
 
-  const queryParams = { search: search.trim() || undefined, includeArchived };
+  // Tek seferde tüm katalog (arşiv dahil) çekilir; arama/durum/kategori filtresi
+  // istemci tarafında uygulanır → filtre değişiminde anında, ağ turu yok. Web
+  // products.jsx ile aynı yaklaşım.
   const productsQuery = useQuery({
-    queryKey: queryKeys.products(queryParams),
-    queryFn: () => getProducts(queryParams),
+    queryKey: queryKeys.products({ includeArchived: true }),
+    queryFn: () => getProducts({ includeArchived: true }),
     staleTime: 30 * 1000,
   });
 
-  const products = productsQuery.data ?? [];
+  const allProducts = productsQuery.data ?? [];
+
+  // Header'daki "+" basıldığında yeni-ürün editörünü aç. Yalnız nonce gerçekten
+  // ARTTIĞINDA tetiklenir; mount'ta (örn. sayfaya geri dönünce) açılmaz.
+  const prevNonceRef = React.useRef(createNonce);
+  React.useEffect(() => {
+    if (createNonce !== prevNonceRef.current) {
+      prevNonceRef.current = createNonce;
+      if (createNonce > 0) setEditing('new');
+    }
+  }, [createNonce]);
+
+  const counts = React.useMemo(() => ({
+    active: allProducts.filter(p => !p.archived_at).length,
+    archived: allProducts.filter(p => !!p.archived_at).length,
+    all: allProducts.length,
+  }), [allProducts]);
+
+  // Kategoriler aktif durum filtresine göre türetilir (sayımlar görünenle uyumlu).
+  const statusFiltered = React.useMemo(
+    () => allProducts.filter(p => statusMatch(p, status)),
+    [allProducts, status],
+  );
+
+  const categories = React.useMemo(() => {
+    const map = new Map();
+    for (const p of statusFiltered) {
+      if (!p.category) continue;
+      map.set(p.category, (map.get(p.category) || 0) + 1);
+    }
+    return [...map.entries()]
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'tr-TR'));
+  }, [statusFiltered]);
+
+  const products = React.useMemo(() => {
+    const q = search.trim().toLocaleLowerCase('tr-TR');
+    return statusFiltered.filter(p => {
+      if (category && p.category !== category) return false;
+      if (!q) return true;
+      const hay = [p.name, p.barcode, p.variant_label, p.parent_product_code, p.category]
+        .filter(Boolean)
+        .join(' ')
+        .toLocaleLowerCase('tr-TR');
+      return hay.includes(q);
+    });
+  }, [statusFiltered, category, search]);
 
   function handleSaved() {
     setEditing(null);
     queryClient.invalidateQueries({ queryKey: ['products'] });
   }
 
+  const isEmpty = !productsQuery.isLoading && !productsQuery.error && products.length === 0;
+
   return (
     <div className="mobile-products-page">
-      <div className="mobile-products-toolbar">
+      <div className="mobile-prodbar-search">
+        <Icon.Search width="18" height="18" />
         <input
           type="search"
-          className="mobile-csheet-input mobile-products-search"
-          placeholder="Ad veya barkod ara"
+          placeholder="Ürün veya barkod ara"
           value={search}
           onChange={e => setSearch(e.target.value)}
           inputMode="search"
           autoComplete="off"
         />
-        <button
-          type="button"
-          className="mobile-csheet-btn-primary"
-          onClick={() => setEditing('new')}
-          aria-label="Yeni ürün"
-        >
-          <Icon.Plus width="18" height="18" />
-        </button>
+        {search && (
+          <button
+            type="button"
+            className="mobile-prodbar-clear"
+            onClick={() => setSearch('')}
+            aria-label="Aramayı temizle"
+          >
+            <Icon.Plus width="16" height="16" style={{ transform: 'rotate(45deg)' }} />
+          </button>
+        )}
       </div>
 
-      <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 13, color: 'var(--text-muted, #666)' }}>
-        <input
-          type="checkbox"
-          checked={includeArchived}
-          onChange={e => setIncludeArchived(e.target.checked)}
-        />
-        Arşivlenenleri göster
-      </label>
+      <div className="mobile-prod-segment" role="tablist" aria-label="Durum filtresi">
+        {STATUS_FILTERS.map(f => (
+          <button
+            key={f.key}
+            type="button"
+            role="tab"
+            aria-selected={status === f.key}
+            className={'mobile-prod-segment-btn' + (status === f.key ? ' is-on' : '')}
+            onClick={() => setStatus(f.key)}
+          >
+            <span>{f.label}</span>
+            <span className="mobile-prod-segment-count">{counts[f.key]}</span>
+          </button>
+        ))}
+      </div>
+
+      {categories.length > 0 && (
+        <div className="mobile-prod-cats" role="group" aria-label="Kategori filtresi">
+          <button
+            type="button"
+            className={'mobile-prod-cat-chip' + (!category ? ' is-on' : '')}
+            onClick={() => setCategory('')}
+          >
+            Tümü
+          </button>
+          {categories.map(c => (
+            <button
+              key={c.name}
+              type="button"
+              className={'mobile-prod-cat-chip' + (category === c.name ? ' is-on' : '')}
+              onClick={() => setCategory(prev => (prev === c.name ? '' : c.name))}
+            >
+              {c.name}
+              <span className="mobile-prod-cat-count">{c.count}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       {productsQuery.isLoading && (
         <div className="mobile-products-empty">Yükleniyor…</div>
@@ -375,9 +564,11 @@ export function MobileProductCatalogPage() {
           {productsQuery.error.message || 'Ürünler alınamadı.'}
         </div>
       )}
-      {!productsQuery.isLoading && !productsQuery.error && products.length === 0 && (
+      {isEmpty && (
         <div className="mobile-products-empty">
-          Henüz ürün yok. Sağ üstten yeni ürün ekleyebilirsin.
+          {allProducts.length === 0
+            ? 'Henüz ürün yok. Sağ üstteki + ile ekleyebilirsin.'
+            : 'Bu filtreyle eşleşen ürün yok.'}
         </div>
       )}
 
@@ -412,13 +603,12 @@ export function MobileProductCatalogPage() {
         ))}
       </div>
 
-      {editing !== null && (
-        <ProductEditor
-          product={editing === 'new' ? null : editing}
-          onClose={() => setEditing(null)}
-          onSaved={handleSaved}
-        />
-      )}
+      <ProductEditor
+        open={editing !== null}
+        product={editing && editing !== 'new' ? editing : null}
+        onClose={() => setEditing(null)}
+        onSaved={handleSaved}
+      />
     </div>
   );
 }

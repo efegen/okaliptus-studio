@@ -9,6 +9,7 @@ import {
   bulkUnarchiveProducts,
   bulkUpdatePrice,
   createProduct,
+  deleteProduct,
   deleteProductImage,
   getProductById,
   getProductImage,
@@ -285,6 +286,19 @@ productsRouter.post("/:id/unarchive", async (req, res) => {
   try {
     const id = parseId(req.params.id);
     const data = await unarchiveProduct(id, req.currentUser.id);
+    res.json({ data });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+// DELETE /products/:id — kalıcı silme. Yalnız arşivlenmiş ürünler; aktif ürün
+// 409 DELETE_CONFLICT döndürür (önce arşivle). /:id/image route'u tek segment
+// fazlası olduğu için bu route'u gölgelemez.
+productsRouter.delete("/:id", async (req, res) => {
+  try {
+    const id = parseId(req.params.id);
+    const data = await deleteProduct(id, req.currentUser.id);
     res.json({ data });
   } catch (err) {
     sendError(res, err);

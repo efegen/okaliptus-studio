@@ -5215,6 +5215,71 @@ input, select { font-family: inherit; }
   .prod-modal-imgbox { aspect-ratio: 16 / 9; }
 }
 
+/* Image upload controls (camera + computer + URL paste) */
+.prod-modal-img-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.prod-modal-img-btn {
+  justify-content: flex-start;
+  gap: 6px;
+}
+.prod-modal-url {
+  margin-top: 2px;
+}
+.prod-modal-url > summary {
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.prod-modal-url > summary::-webkit-details-marker { display: none; }
+.prod-modal-url > summary:hover { color: var(--ink-2); }
+
+/* Left-aligned modal actions group (archive + delete) */
+.prod-modal-left-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.prod-modal-delete-confirm {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.prod-modal-delete-btn {
+  gap: 6px;
+  color: var(--danger, oklch(0.55 0.2 25));
+}
+
+/* Webcam capture modal (stacks above the product modal) */
+.webcam-backdrop { z-index: 110; }
+.webcam-modal { width: 520px; }
+.webcam-stage {
+  position: relative;
+  margin-top: 12px;
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: oklch(0.2 0 0);
+  aspect-ratio: 1 / 1;
+  display: grid;
+  place-items: center;
+}
+.webcam-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.webcam-loading {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--surface);
+  font-size: 13px;
+}
+
 /* Variant grouping + category UI */
 .prod-toolbar-right {
   display: flex;
