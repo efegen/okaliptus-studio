@@ -14,11 +14,6 @@ function formatPriceTRY(raw) {
 }
 
 const EMPTY_FORM = { name: '', default_duration_minutes: '60', default_price: '' };
-const FILTERS = [
-  { key: 'all', label: 'Tümü' },
-  { key: 'active', label: 'Aktif' },
-  { key: 'passive', label: 'Pasif' },
-];
 
 const TONE_KEYS = ['lesson', 'payment', 'sale', 'package', 'student'];
 
@@ -43,8 +38,8 @@ function LessonTypeModal({ initial, onSave, onClose }) {
   const isNew = !initial;
   const [form, setForm] = React.useState(
     initial
-      ? { name: initial.name, default_duration_minutes: String(initial.default_duration_minutes), default_price: String(initial.default_price), is_active: initial.is_active }
-      : { ...EMPTY_FORM, is_active: true }
+      ? { name: initial.name, default_duration_minutes: String(initial.default_duration_minutes), default_price: String(initial.default_price) }
+      : { ...EMPTY_FORM }
   );
   const [saving, setSaving] = React.useState(false);
   const [err, setErr] = React.useState(null);
@@ -66,7 +61,7 @@ function LessonTypeModal({ initial, onSave, onClose }) {
     try {
       const payload = isNew
         ? await createLessonType({ name, default_duration_minutes: dur, default_price: price })
-        : await updateLessonType(initial.id, { name, default_duration_minutes: dur, default_price: price, is_active: form.is_active });
+        : await updateLessonType(initial.id, { name, default_duration_minutes: dur, default_price: price });
       onSave(payload);
     } catch (e) {
       setErr(e.message || 'Kaydedilemedi.');
@@ -119,24 +114,6 @@ function LessonTypeModal({ initial, onSave, onClose }) {
             </div>
           </div>
 
-          {!isNew && (
-            <div className="form-row" style={{ marginTop: 8 }}>
-              <label>Durum</label>
-              <div className="lt-status-toggle" aria-label="Ders türü durumu">
-                <button
-                  type="button"
-                  className={'lt-status-btn' + (form.is_active ? ' is-active' : '')}
-                  onClick={() => set('is_active', true)}
-                >Aktif</button>
-                <button
-                  type="button"
-                  className={'lt-status-btn' + (!form.is_active ? ' is-passive' : '')}
-                  onClick={() => set('is_active', false)}
-                >Pasif</button>
-              </div>
-            </div>
-          )}
-
           {err && <div className="stg-feedback stg-feedback-err" style={{ marginTop: 12 }}>{err}</div>}
 
           <div className="modal-actions">
@@ -155,12 +132,7 @@ function LessonTypeModal({ initial, onSave, onClose }) {
 
 function LessonTypeCard({ lt, onEdit }) {
   const tone = getLessonTypeTone(lt.id);
-  const isActive = !!lt.is_active;
-  const className = [
-    'lt-card',
-    `lt-tone-${tone}`,
-    isActive ? '' : 'is-passive',
-  ].filter(Boolean).join(' ');
+  const className = `lt-card lt-tone-${tone}`;
 
   return (
     <article className={className}>
@@ -179,10 +151,6 @@ function LessonTypeCard({ lt, onEdit }) {
 
       <div className="lt-card-body">
         <h2 className="lt-card-name">{lt.name}</h2>
-        <span className={'lt-card-status ' + (isActive ? 'is-active' : 'is-passive')}>
-          <span className="lt-card-status-dot" aria-hidden="true" />
-          {isActive ? 'Aktif' : 'Pasif'}
-        </span>
       </div>
 
       <dl className="lt-card-stats">
@@ -207,7 +175,6 @@ export function LessonTypesSection() {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState(null);
   const [modal, setModal] = React.useState(null); // null | 'new' | lessonTypeObj
-  const [statusFilter, setStatusFilter] = React.useState('all');
   const [query, setQuery] = React.useState('');
 
   React.useEffect(() => {
@@ -235,33 +202,20 @@ export function LessonTypesSection() {
     setModal(null);
   }
 
-  const activeCount = items.filter(x => x.is_active).length;
-  const passiveCount = items.length - activeCount;
   const normalizedQuery = query.trim().toLocaleLowerCase('tr-TR');
   const visibleItems = React.useMemo(() => {
     return items
       .filter(item => {
-        if (statusFilter === 'active' && !item.is_active) return false;
-        if (statusFilter === 'passive' && item.is_active) return false;
         if (!normalizedQuery) return true;
         return item.name.toLocaleLowerCase('tr-TR').includes(normalizedQuery);
       })
-      .sort((a, b) => {
-        if (a.is_active !== b.is_active) return a.is_active ? -1 : 1;
-        return a.name.localeCompare(b.name, 'tr-TR');
-      });
-  }, [items, normalizedQuery, statusFilter]);
-
-  const filterCounts = {
-    all: items.length,
-    active: activeCount,
-    passive: passiveCount,
-  };
+      .sort((a, b) => a.name.localeCompare(b.name, 'tr-TR'));
+  }, [items, normalizedQuery]);
 
   return (
     <section className="catalog-section">
       <div className="catalog-section-head">
-        <div className="eyebrow">{activeCount} aktif · {items.length} toplam</div>
+        <div className="eyebrow">{items.length} ders türü</div>
         <div className="head-actions">
           <label className="lt-search">
             <Icon.Search width="15" height="15" />
@@ -296,37 +250,17 @@ export function LessonTypesSection() {
             İlk ders türünü ekle
           </button>
         </div>
+      ) : visibleItems.length === 0 ? (
+        <div className="lt-state lt-state-empty">
+          <Icon.Search width="20" height="20" />
+          <span>Eşleşen ders türü bulunamadı.</span>
+        </div>
       ) : (
-        <>
-          <div className="lt-filters" role="tablist" aria-label="Durum filtresi">
-            {FILTERS.map(filter => (
-              <button
-                key={filter.key}
-                type="button"
-                role="tab"
-                className={'lt-chip' + (statusFilter === filter.key ? ' is-active' : '')}
-                onClick={() => setStatusFilter(filter.key)}
-                aria-pressed={statusFilter === filter.key}
-              >
-                {filter.label}
-                <span className="lt-chip-count">{filterCounts[filter.key]}</span>
-              </button>
-            ))}
-          </div>
-
-          {visibleItems.length === 0 ? (
-            <div className="lt-state lt-state-empty">
-              <Icon.Search width="20" height="20" />
-              <span>Eşleşen ders türü bulunamadı.</span>
-            </div>
-          ) : (
-            <div className="lt-grid">
-              {visibleItems.map(lt => (
-                <LessonTypeCard key={lt.id} lt={lt} onEdit={setModal} />
-              ))}
-            </div>
-          )}
-        </>
+        <div className="lt-grid">
+          {visibleItems.map(lt => (
+            <LessonTypeCard key={lt.id} lt={lt} onEdit={setModal} />
+          ))}
+        </div>
       )}
 
       {modal && (
