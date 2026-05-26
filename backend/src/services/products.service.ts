@@ -717,3 +717,157 @@ export async function upsertProductByBarcode(
     client.release();
   }
 }
+
+// ─── Görsel yükleme (kendi barındırma) ──────────────────────────────────────
+//
+// Bytes ayrı product_images tablosunda (SELECT *'ı şişirmemek için). Görsel
+// yüklenince products.image_url'a servis endpoint'inin tam URL'i + versiyon
+// (?v=updated_at ms) yazılır; böylece tüm <img> tüketicileri değişmez ve
+// immutable cache güvenle kullanılabilir (URL her güncellemede değişir).
+
+const ALLOWED_IMAGE_MIME = new Set(["image/webp", "image/jpeg", "image/png"]);
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+
+export type ProductImageData = {
+  mime: string;
+  bytes: Buffer;
+  byteSize: number;
+  updatedAt: string;
+};
+
+export async function getProductImage(productId: EntityId): Promise<ProductImageData | null> {
+  const result = await pool.query<{
+    mime: string;
+    bytes: Buffer;
+    byte_size: number;
+    updated_at: string;
+  }>(
+    `SELECT mime, bytes, byte_size, updated_at FROM product_images WHERE product_id = $1`,
+    [productId],
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+  return {
+    mime: row.mime,
+    bytes: row.bytes,
+    byteSize: row.byte_size,
+    updatedAt: row.updated_at,
+  };
+}
+
+export async function setProductImage(
+  productId: EntityId,
+  mime: string,
+  bytes: Buffer,
+  publicBaseUrl: string,
+  actorUserId: number | string | null = null,
+): Promise<ProductRow> {
+  if (!ALLOWED_IMAGE_MIME.has(mime)) {
+    throw new ValidationError("Desteklenmeyen görsel türü. Yalnız WebP, JPEG veya PNG.");
+  }
+  if (!bytes || bytes.length === 0) {
+    throw new ValidationError("Görsel verisi boş.");
+  }
+  if (bytes.length > MAX_IMAGE_BYTES) {
+    throw new ValidationError("Görsel 5MB sınırını aşıyor.");
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const beforeResult = await client.query<ProductRow>(
+      `SELECT * FROM products WHERE id = $1 FOR UPDATE`,
+      [productId],
+    );
+    const before = beforeResult.rows[0];
+    if (!before) throw new ProductNotFoundError();
+
+    const imgResult = await client.query<{ updated_at: string }>(
+      `INSERT INTO product_images (product_id, mime, bytes, byte_size, updated_at)
+       VALUES ($1, $2, $3, $4, now())
+       ON CONFLICT (product_id) DO UPDATE
+         SET mime = EXCLUDED.mime,
+             bytes = EXCLUDED.bytes,
+             byte_size = EXCLUDED.byte_size,
+             updated_at = now()
+       RETURNING updated_at`,
+      [productId, mime, bytes, bytes.length],
+    );
+    const version = new Date(imgResult.rows[0].updated_at).getTime();
+    const imageUrl = `${publicBaseUrl}/products/${productId}/image?v=${version}`;
+
+    const updateResult = await client.query<ProductRow>(
+      `UPDATE products SET image_url = $1 WHERE id = $2 RETURNING *`,
+      [imageUrl, productId],
+    );
+    const after = updateResult.rows[0];
+
+    await insertAuditLog(client, {
+      action: "product_updated",
+      entityType: "product",
+      entityId: after.id,
+      before,
+      after,
+      note: "görsel yüklendi",
+      actorUserId,
+    });
+
+    await client.query("COMMIT");
+    return after;
+  } catch (error) {
+    await rollbackQuietly(client);
+    throw toServiceError(error);
+  } finally {
+    client.release();
+  }
+}
+
+export async function deleteProductImage(
+  productId: EntityId,
+  actorUserId: number | string | null = null,
+): Promise<ProductRow> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const beforeResult = await client.query<ProductRow>(
+      `SELECT * FROM products WHERE id = $1 FOR UPDATE`,
+      [productId],
+    );
+    const before = beforeResult.rows[0];
+    if (!before) throw new ProductNotFoundError();
+
+    await client.query(`DELETE FROM product_images WHERE product_id = $1`, [productId]);
+
+    // image_url yalnız bizim servis endpoint'imize işaret ediyorsa temizlenir;
+    // Trendyol CDN gibi harici URL'i silmeyiz (kullanıcı oraya geri dönebilsin).
+    let after = before;
+    const pointsToOurImage = before.image_url?.includes(`/products/${productId}/image`) ?? false;
+    if (pointsToOurImage) {
+      const updateResult = await client.query<ProductRow>(
+        `UPDATE products SET image_url = NULL WHERE id = $1 RETURNING *`,
+        [productId],
+      );
+      after = updateResult.rows[0];
+    }
+
+    await insertAuditLog(client, {
+      action: "product_updated",
+      entityType: "product",
+      entityId: after.id,
+      before,
+      after,
+      note: "görsel kaldırıldı",
+      actorUserId,
+    });
+
+    await client.query("COMMIT");
+    return after;
+  } catch (error) {
+    await rollbackQuietly(client);
+    throw toServiceError(error);
+  } finally {
+    client.release();
+  }
+}

@@ -13,7 +13,7 @@ import {
   productSalesRouter,
   listStudentProductSalesHandler,
 } from "./routes/product-sales.router.js";
-import { productsRouter } from "./routes/products.router.js";
+import { productsRouter, serveProductImageHandler } from "./routes/products.router.js";
 import { kpiRouter } from "./routes/kpi.router.js";
 import { settingsRouter } from "./routes/settings.router.js";
 import { instructorsRouter } from "./routes/instructors.router.js";
@@ -52,6 +52,11 @@ export function createApp() {
   // ── Public routes (no auth required) ──────────────────────────────────────
   app.use("/health", healthRouter);
   app.use("/auth", authRouter);
+
+  // Ürün görseli (salt-okuma): image_url'ler zaten public (0229). Auth gate'in
+  // ÖNCESİNDE, böylece cross-site <img> third-party cookie engeline takılmaz.
+  // Yazma (POST/DELETE /products/:id/image) authed router'da kalır.
+  app.get("/products/:id/image", serveProductImageHandler);
 
   // ── Auth gate ─────────────────────────────────────────────────────────────
   app.use(requireAuth);

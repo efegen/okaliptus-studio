@@ -6,10 +6,13 @@ import {
   updateProduct,
   archiveProduct,
   unarchiveProduct,
+  uploadProductImage,
+  removeProductImage,
 } from '../api';
 import { queryKeys } from '../hooks/queryKeys';
 import { fmtTL } from '../data';
 import { Icon } from '../layout';
+import { compressToSquareWebp } from '../imageCompress';
 
 function ProductThumb({ product, size = 44 }) {
   const fallback = (product.name || '?').trim().charAt(0).toUpperCase();
@@ -53,9 +56,57 @@ function ProductEditor({ product, onClose, onSaved }) {
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState(null);
 
+  // Görsel: çekilen foto kaydedilene kadar staging'de bekler. cleared = mevcut
+  // görseli kaldırma niyeti (kaydet'te uygulanır).
+  const [stagedBlob, setStagedBlob] = React.useState(null);
+  const [stagedPreview, setStagedPreview] = React.useState(null);
+  const [cleared, setCleared] = React.useState(false);
+  const [photoBusy, setPhotoBusy] = React.useState(false);
+  const fileInputRef = React.useRef(null);
+
+  React.useEffect(() => {
+    // Object URL bellek temizliği.
+    return () => { if (stagedPreview) URL.revokeObjectURL(stagedPreview); };
+  }, [stagedPreview]);
+
   function set(key, value) {
     setForm(prev => ({ ...prev, [key]: value }));
   }
+
+  async function handlePickPhoto(e) {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // aynı dosya tekrar seçilebilsin
+    if (!file) return;
+    setPhotoBusy(true);
+    setError(null);
+    try {
+      const blob = await compressToSquareWebp(file, { size: 800, quality: 0.75 });
+      setStagedPreview(prev => { if (prev) URL.revokeObjectURL(prev); return URL.createObjectURL(blob); });
+      setStagedBlob(blob);
+      setCleared(false);
+    } catch (err) {
+      setError(err.message || 'Görsel işlenemedi.');
+    } finally {
+      setPhotoBusy(false);
+    }
+  }
+
+  function handleRemovePhoto() {
+    if (stagedBlob) {
+      // Yeni çekilen fotoğrafı geri al → mevcut görsele dön.
+      setStagedPreview(prev => { if (prev) URL.revokeObjectURL(prev); return null; });
+      setStagedBlob(null);
+      return;
+    }
+    // Mevcut (kayıtlı) görseli kaldır.
+    setCleared(true);
+    set('imageUrl', '');
+  }
+
+  const shownImage = stagedPreview
+    ? stagedPreview
+    : (!cleared && form.imageUrl ? form.imageUrl : null);
+  const hasRemovable = !!stagedBlob || (!cleared && !!form.imageUrl);
 
   async function handleSave() {
     const name = form.name.trim();
@@ -69,7 +120,7 @@ function ProductEditor({ product, onClose, onSaved }) {
         name,
         price: priceNum,
         barcode: form.barcode.trim() || null,
-        imageUrl: form.imageUrl.trim() || null,
+        imageUrl: cleared ? null : (form.imageUrl.trim() || null),
         tyListingUrl: form.tyListingUrl.trim() || null,
         hbListingUrl: form.hbListingUrl.trim() || null,
         notes: form.notes.trim() || null,
@@ -77,10 +128,16 @@ function ProductEditor({ product, onClose, onSaved }) {
         variantLabel: form.variantLabel.trim() || null,
         category: form.category.trim() || null,
       };
-      if (isNew) {
-        await createProduct(payload);
-      } else {
-        await updateProduct(product.id, payload);
+      const saved = isNew ? await createProduct(payload) : await updateProduct(product.id, payload);
+      const savedId = saved?.id ?? product?.id;
+
+      // Görsel işlemleri ürün kaydedildikten sonra (yeni üründe id gerekli).
+      if (stagedBlob && savedId) {
+        await uploadProductImage(savedId, stagedBlob);
+      } else if (cleared && !isNew && savedId) {
+        // Yüklenmiş foto (bizim endpoint'imize işaret eden) varsa bytes'ı da sil.
+        const wasOurUpload = (product?.image_url || '').includes(`/products/${savedId}/image`);
+        if (wasOurUpload) await removeProductImage(savedId);
       }
       onSaved();
     } catch (err) {
@@ -135,17 +192,72 @@ function ProductEditor({ product, onClose, onSaved }) {
               <input className="mobile-csheet-input" value={form.barcode} onChange={e => set('barcode', e.target.value)} />
             </div>
             <div className="mobile-csheet-form-row">
-              <label className="mobile-csheet-label">Görsel URL</label>
+              <label className="mobile-csheet-label">Görsel</label>
+              <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                <div
+                  style={{
+                    width: 96, height: 96, borderRadius: 12, flexShrink: 0, overflow: 'hidden',
+                    background: 'var(--bg-2, #f2f2f2)', border: '1px solid var(--line, #e5e5e5)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}
+                >
+                  {shownImage ? (
+                    <img
+                      src={shownImage}
+                      alt=""
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      onError={e => { e.currentTarget.style.display = 'none'; }}
+                    />
+                  ) : (
+                    <Icon.Tag width="24" height="24" />
+                  )}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flex: 1, minWidth: 0 }}>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    onChange={handlePickPhoto}
+                    style={{ display: 'none' }}
+                  />
+                  <button
+                    type="button"
+                    className="mobile-csheet-btn-primary"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={photoBusy || submitting}
+                  >
+                    {photoBusy ? 'İşleniyor…' : (shownImage ? '📷 Fotoğrafı değiştir' : '📷 Fotoğraf çek')}
+                  </button>
+                  {hasRemovable && (
+                    <button
+                      type="button"
+                      className="mobile-csheet-btn-ghost"
+                      onClick={handleRemovePhoto}
+                      disabled={photoBusy || submitting}
+                    >
+                      Kaldır
+                    </button>
+                  )}
+                  <span style={{ fontSize: 12, color: 'var(--text-muted, #888)' }}>
+                    Telefonla çek; otomatik küçültülüp kaydedilir.
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <details className="mobile-csheet-form-row">
+              <summary style={{ fontSize: 13, color: 'var(--text-muted, #888)', cursor: 'pointer' }}>
+                veya görsel URL'i yapıştır
+              </summary>
               <input
                 className="mobile-csheet-input"
+                style={{ marginTop: 6 }}
                 value={form.imageUrl}
-                onChange={e => set('imageUrl', e.target.value)}
+                onChange={e => { set('imageUrl', e.target.value); setCleared(false); }}
                 placeholder="https://cdn.dsmcdn.com/..."
               />
-              {form.imageUrl && (
-                <img src={form.imageUrl} alt="" style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 8, marginTop: 6 }} />
-              )}
-            </div>
+            </details>
             <div className="mobile-csheet-form-row">
               <label className="mobile-csheet-label">Trendyol linki (opsiyonel)</label>
               <input className="mobile-csheet-input" value={form.tyListingUrl} onChange={e => set('tyListingUrl', e.target.value)} />

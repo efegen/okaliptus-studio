@@ -515,6 +515,24 @@ export async function unarchiveProduct(productId) {
   return ensureMutationResult(payload, "Ürün arşivden çıkarılamadı.");
 }
 
+// Ham görsel bytes'ı (sıkıştırılmış Blob) yükler. Content-Type blob türünden
+// gelir (image/webp ya da fallback image/jpeg); backend image_url'ı günceller.
+export async function uploadProductImage(productId, blob) {
+  const payload = await apiRequest(`/products/${encodeURIComponent(productId)}/image`, {
+    method: "POST",
+    body: blob,
+    headers: { "Content-Type": blob.type || "image/webp" },
+  });
+  return ensureMutationResult(payload, "Görsel yüklenemedi.");
+}
+
+export async function removeProductImage(productId) {
+  const payload = await apiRequest(`/products/${encodeURIComponent(productId)}/image`, {
+    method: "DELETE",
+  });
+  return ensureMutationResult(payload, "Görsel kaldırılamadı.");
+}
+
 export async function bulkArchiveProducts(ids) {
   const payload = await apiRequest("/products/bulk/archive", {
     method: "POST",

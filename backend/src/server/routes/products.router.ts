@@ -1,6 +1,6 @@
 // v1.6 — products endpoints. Auth: requireAuth (mevcut single-admin modeli).
 
-import { Router } from "express";
+import express, { Router, type Request, type Response } from "express";
 
 import {
   archiveProduct,
@@ -9,10 +9,13 @@ import {
   bulkUnarchiveProducts,
   bulkUpdatePrice,
   createProduct,
+  deleteProductImage,
   getProductById,
+  getProductImage,
   listCategories,
   listProducts,
   renameCategory,
+  setProductImage,
   unarchiveProduct,
   updateProduct,
   type BulkPriceMode,
@@ -141,6 +144,77 @@ productsRouter.get("/:id", async (req, res) => {
   try {
     const id = parseId(req.params.id);
     const data = await getProductById(id);
+    res.json({ data });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+// ── Görsel: kendi barındırma ───────────────────────────────────────────────
+// image_url'a `…/products/:id/image?v=<ts>` yazıldığı için <img> bu route'a
+// gelir. `v` her güncellemede değiştiğinden immutable cache güvenli; ETag ile
+// 304 de desteklenir.
+
+// GET /products/:id/image handler — app.ts'te requireAuth ÖNCESİNDE public
+// register edilir. Gerekçe: image_url'ler zaten public (0229; Trendyol CDN gibi)
+// ve cross-site <img> istekleri third-party cookie engeline takılmasın diye
+// auth'suz servis edilir. POST/DELETE (yazma) authed kalır.
+export async function serveProductImageHandler(req: Request, res: Response): Promise<void> {
+  try {
+    const id = parseId(req.params.id);
+    const image = await getProductImage(id);
+    if (!image) {
+      res.status(404).json({ error: { code: "PRODUCT_IMAGE_NOT_FOUND", message: "Ürün görseli yok." } });
+      return;
+    }
+    const etag = `"${new Date(image.updatedAt).getTime()}"`;
+    if (req.headers["if-none-match"] === etag) {
+      res.status(304).end();
+      return;
+    }
+    res.setHeader("Content-Type", image.mime);
+    res.setHeader("Content-Length", image.bytes.length);
+    res.setHeader("ETag", etag);
+    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    res.end(image.bytes);
+  } catch (err) {
+    sendError(res, err);
+  }
+}
+
+// POST /products/:id/image — ham görsel bytes (image/webp|jpeg|png). Bu route
+// kendi raw parser'ını kullanır (5MB); global express.json() image/* için
+// gövdeyi tüketmez. Frontend görseli ~800x800 WebP'e küçültüp yollar.
+productsRouter.post(
+  "/:id/image",
+  express.raw({ type: ["image/webp", "image/jpeg", "image/png"], limit: "5mb" }),
+  async (req, res) => {
+    try {
+      const id = parseId(req.params.id);
+      if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+        res.status(400).json({
+          error: {
+            code: "VALIDATION_ERROR",
+            message: "Görsel verisi okunamadı. İçerik tipi image/webp, image/jpeg veya image/png olmalı.",
+          },
+        });
+        return;
+      }
+      const mime = (req.get("content-type") || "").split(";")[0].trim();
+      const publicBaseUrl = `${req.protocol}://${req.get("host")}`;
+      const data = await setProductImage(id, mime, req.body, publicBaseUrl, req.currentUser.id);
+      res.json({ data });
+    } catch (err) {
+      sendError(res, err);
+    }
+  },
+);
+
+// DELETE /products/:id/image — görseli kaldırır, image_url bize aitse temizler.
+productsRouter.delete("/:id/image", async (req, res) => {
+  try {
+    const id = parseId(req.params.id);
+    const data = await deleteProductImage(id, req.currentUser.id);
     res.json({ data });
   } catch (err) {
     sendError(res, err);
