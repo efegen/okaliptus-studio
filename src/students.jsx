@@ -13,6 +13,8 @@ import {
   getStudentsKpi,
   createCashPayment,
   createStudent,
+  updateStudent,
+  deleteStudent,
 } from './api';
 import { DiscountInline } from './student-profile';
 
@@ -197,6 +199,7 @@ export function StudentsPage({ onOpenStudent }) {
   const [paymentTarget, setPaymentTarget] = React.useState(null);
   const [paymentLoading, setPaymentLoading] = React.useState(false);
   const [createOpen, setCreateOpen] = React.useState(false);
+  const [deleteTarget, setDeleteTarget] = React.useState(null);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -269,6 +272,25 @@ export function StudentsPage({ onOpenStudent }) {
     }
   }
 
+  // Aktif ↔ pasif. Optimistik değil — başarıda listeyi tazeleriz.
+  async function handleSetActive(student, active) {
+    try {
+      await updateStudent(student.id, { isActive: active });
+      await refreshStudents();
+    } catch (err) {
+      console.error('[Students] aktiflik güncellenemedi:', err);
+      window.alert(err instanceof Error ? err.message : 'Öğrenci durumu güncellenemedi.');
+    }
+  }
+
+  // ConfirmDeleteStudentModal hata fırlatırsa modal kendi içinde gösterir
+  // (örn. 409 — geçmişi olan öğrenci). Başarıda hedefi temizleyip tazeleriz.
+  async function handleConfirmDelete() {
+    await deleteStudent(deleteTarget.id);
+    setDeleteTarget(null);
+    await refreshStudents();
+  }
+
   return (
     <div className="page page-students">
       <div className="page-head">
@@ -319,6 +341,8 @@ export function StudentsPage({ onOpenStudent }) {
                   student={st}
                   onPaymentClick={handleOpenPayment}
                   onOpenStudent={onOpenStudent}
+                  onSetActive={handleSetActive}
+                  onDelete={setDeleteTarget}
                 />
               ))}
             </tbody>
@@ -345,6 +369,14 @@ export function StudentsPage({ onOpenStudent }) {
         <CreateStudentModal
           onClose={() => setCreateOpen(false)}
           onCreated={handleStudentCreated}
+        />
+      )}
+
+      {deleteTarget && (
+        <ConfirmDeleteStudentModal
+          student={deleteTarget}
+          onClose={() => setDeleteTarget(null)}
+          onConfirm={handleConfirmDelete}
         />
       )}
     </div>
@@ -459,7 +491,7 @@ function EmptyStudents({ onCreate }) {
 
 // ─── Student Row ──────────────────────────────────────────────────────────────
 
-function StudentRow({ student, onPaymentClick, onOpenStudent }) {
+function StudentRow({ student, onPaymentClick, onOpenStudent, onSetActive, onDelete }) {
   const lessonDebt  = parseMoney(student.lesson_debt);
   const productDebt = parseMoney(student.product_debt);
   const fin = getStudentFinancialState({ lessonDebt, productDebt });
@@ -550,23 +582,238 @@ function StudentRow({ student, onPaymentClick, onOpenStudent }) {
         }
       </td>
 
-      <td className="stu-td stu-td-actions">
+      <td className="stu-td stu-td-actions" onClick={e => e.stopPropagation()}>
         <div className="stu-row-actions">
-          <button
-            className="btn btn-ghost btn-xs"
-            onClick={e => { e.stopPropagation(); }}
-          >
-            Ders ekle
-          </button>
-          <button
-            className="btn btn-accent btn-xs"
-            onClick={e => { e.stopPropagation(); onPaymentClick(String(student.id)); }}
-          >
-            Ödeme al
-          </button>
+          <RowActionsMenu
+            student={student}
+            hasDebt={fin.tone === 'debt'}
+            onPayment={onPaymentClick}
+            onSetActive={onSetActive}
+            onDelete={onDelete}
+          />
         </div>
       </td>
     </tr>
+  );
+}
+
+// ─── Row Actions Menu (kebab) ───────────────────────────────────────────────
+// Profil sayfasındaki ⋯ menüsüyle aynı dil. Tablo içinde clip/oklama sorunlarını
+// önlemek için menü body'ye portal'lanır ve fixed konumlanır (stu-fin-tip ile
+// aynı yaklaşım). Aksiyonlar: Ödeme al (yalnız borçluda) · Pasife al / Tekrar
+// aktif et · Tamamen sil (yalnız pasif öğrencide — önce pasife alma kuralı).
+
+function RowActionsMenu({ student, hasDebt, onPayment, onSetActive, onDelete }) {
+  const [open, setOpen] = React.useState(false);
+  const [pos, setPos] = React.useState(null);
+  const btnRef = React.useRef(null);
+  const isActive = student.is_active;
+
+  React.useEffect(() => {
+    if (!open) return undefined;
+    function onDocPointer(e) {
+      if (btnRef.current?.contains(e.target)) return;
+      if (e.target.closest?.('.stu-row-menu')) return;
+      setOpen(false);
+    }
+    function onKey(e) { if (e.key === 'Escape') setOpen(false); }
+    function onReflow() { setOpen(false); }
+    document.addEventListener('mousedown', onDocPointer);
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('scroll', onReflow, true);
+    window.addEventListener('resize', onReflow);
+    return () => {
+      document.removeEventListener('mousedown', onDocPointer);
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('scroll', onReflow, true);
+      window.removeEventListener('resize', onReflow);
+    };
+  }, [open]);
+
+  function toggle(e) {
+    e.stopPropagation();
+    if (open) { setOpen(false); return; }
+    const r = btnRef.current?.getBoundingClientRect();
+    if (r) {
+      const MENU_W = 200;
+      setPos({ top: r.bottom + 6, left: Math.max(8, r.right - MENU_W) });
+    }
+    setOpen(true);
+  }
+
+  // Aksiyonu çalıştırıp menüyü kapat. stopPropagation satır navigasyonunu engeller.
+  const run = fn => e => { e.stopPropagation(); setOpen(false); fn(); };
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        type="button"
+        className={'iconbtn stu-kebab' + (open ? ' is-open' : '')}
+        aria-label="İşlemler"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={toggle}
+      >
+        <Icon.More width="16" height="16" />
+      </button>
+      {open && pos && ReactDOM.createPortal(
+        <div className="stu-row-menu" style={{ top: pos.top, left: pos.left }} role="menu">
+          {hasDebt && (
+            <>
+              <button
+                type="button"
+                className="stu-row-menu-item"
+                role="menuitem"
+                onClick={run(() => onPayment(String(student.id)))}
+              >
+                Ödeme al
+              </button>
+              <div className="stu-row-menu-sep" />
+            </>
+          )}
+          {isActive ? (
+            <button
+              type="button"
+              className="stu-row-menu-item"
+              role="menuitem"
+              onClick={run(() => onSetActive(student, false))}
+            >
+              Pasife al
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="stu-row-menu-item"
+              role="menuitem"
+              onClick={run(() => onSetActive(student, true))}
+            >
+              Tekrar aktif et
+            </button>
+          )}
+          {!isActive && (
+            <button
+              type="button"
+              className="stu-row-menu-item stu-row-menu-item-danger"
+              role="menuitem"
+              onClick={run(() => onDelete(student))}
+            >
+              Tamamen sil
+            </button>
+          )}
+        </div>,
+        document.body
+      )}
+    </>
+  );
+}
+
+// ─── Confirm Delete Student Modal ───────────────────────────────────────────
+// "Tamamen sil" = kalıcı (hard) silme: öğrenci + tüm ders/ödeme/paket/satış
+// fiziksel silinir, geri alınamaz ve geçmiş raporlarını etkiler. Bu yüzden modal
+// açılınca silinecek kayıtları (blast radius) sayar ve gösterir; geçmişi olan
+// öğrencide ek bir onay kutusu ister. Profil sayfası da bunu yeniden kullanır.
+
+export function ConfirmDeleteStudentModal({ student, onClose, onConfirm }) {
+  const [submitting, setSubmitting] = React.useState(false);
+  const [error, setError] = React.useState(null);
+  const [impact, setImpact] = React.useState(null); // { lessons, packages, sales } | null = yükleniyor
+  const [ack, setAck] = React.useState(false);
+
+  // Silinecek kayıtları say — mevcut öğrenci-bazlı listeleri yeniden kullanır.
+  React.useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      getStudentLessons(student.id),
+      getStudentPackages(student.id),
+      getStudentProductSales(student.id),
+    ])
+      .then(([lessons, packages, sales]) => {
+        if (cancelled) return;
+        setImpact({
+          lessons: lessons?.length ?? 0,
+          packages: packages?.length ?? 0,
+          sales: sales?.length ?? 0,
+        });
+      })
+      .catch(() => {
+        // Sayım başarısız olsa da silmeyi engelleme; sadece genel uyarı göster.
+        if (!cancelled) setImpact({ lessons: 0, packages: 0, sales: 0, unknown: true });
+      });
+    return () => { cancelled = true; };
+  }, [student.id]);
+
+  React.useEffect(() => {
+    function onKey(e) { if (e.key === 'Escape' && !submitting) onClose(); }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose, submitting]);
+
+  const loadingImpact = impact === null;
+  const totalRecords = impact ? impact.lessons + impact.packages + impact.sales : 0;
+  const hasHistory = totalRecords > 0;
+  const canConfirm = !submitting && !loadingImpact && (!hasHistory || ack);
+
+  async function handleConfirm() {
+    if (!canConfirm) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await onConfirm();
+      // Başarı: caller hedefi temizler → modal unmount olur.
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Öğrenci silinemedi.');
+      setSubmitting(false);
+    }
+  }
+
+  function impactParts() {
+    const parts = [];
+    if (impact.lessons > 0) parts.push(`${impact.lessons} ders`);
+    if (impact.packages > 0) parts.push(`${impact.packages} paket`);
+    if (impact.sales > 0) parts.push(`${impact.sales} ürün satışı`);
+    return parts.join(' · ');
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={() => !submitting && onClose()}>
+      <div className="modal cds-modal" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true">
+        <div className="cds-icon"><Icon.Trash width="22" height="22" /></div>
+        <h3 className="cds-title">Öğrenciyi kalıcı olarak sil?</h3>
+        <p className="cds-body">
+          <strong>{student.full_name}</strong> ve tüm kayıtları kalıcı olarak silinecek.
+          Bu işlem <strong>geri alınamaz</strong> ve geçmiş raporları (ciro, ders sayısı) etkiler.
+        </p>
+
+        <div className="cds-impact">
+          {loadingImpact ? (
+            'Silinecek kayıtlar kontrol ediliyor…'
+          ) : hasHistory ? (
+            <>Silinecek: <strong>{impactParts()}</strong> ve bunlara bağlı tüm ödemeler.</>
+          ) : (
+            'Bu öğrencinin ders, paket veya satış kaydı yok.'
+          )}
+        </div>
+
+        {hasHistory && (
+          <label className="cds-ack">
+            <input type="checkbox" checked={ack} onChange={e => setAck(e.target.checked)} disabled={submitting} />
+            <span>Bu işlemin geri alınamayacağını ve geçmiş kayıtların silineceğini anlıyorum.</span>
+          </label>
+        )}
+
+        {error && <div className="cds-error">{error}</div>}
+
+        <div className="modal-actions">
+          <button type="button" className="btn btn-ghost" onClick={onClose} disabled={submitting}>
+            Vazgeç
+          </button>
+          <button type="button" className="btn btn-danger" onClick={handleConfirm} disabled={!canConfirm}>
+            {submitting ? 'Siliniyor…' : 'Kalıcı olarak sil'}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

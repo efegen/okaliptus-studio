@@ -12,8 +12,10 @@ import {
   getStudentProductSales,
   getStudentMovements,
   setLessonDiscount,
+  updateStudent,
+  deleteStudent,
 } from './api';
-import { ReceivePaymentModal } from './students';
+import { ReceivePaymentModal, ConfirmDeleteStudentModal } from './students';
 
 const LESSON_STATUS_TR = {
   scheduled: 'Planlı',
@@ -279,6 +281,26 @@ export function StudentProfilePage({ studentId, onBack, onOpenSale }) {
   const [movements, setMovements] = React.useState([]);
   const [tab, setTab] = React.useState('all');
   const [paymentOpen, setPaymentOpen] = React.useState(false);
+  const [deleteOpen, setDeleteOpen] = React.useState(false);
+
+  // Aktif ↔ pasif. Başarıda profili tazeleyip yeni durumu yansıtırız.
+  async function handleSetActive(active) {
+    try {
+      await updateStudent(student.id, { isActive: active });
+      await loadAll();
+    } catch (e) {
+      console.error('[StudentProfile] aktiflik güncellenemedi:', e);
+      window.alert(e instanceof Error ? e.message : 'Öğrenci durumu güncellenemedi.');
+    }
+  }
+
+  // Silme başarılıysa profil artık yok → listeye dön. 409'da modal kendi
+  // hatasını gösterir (throw ederiz, onBack çağrılmaz).
+  async function handleConfirmDelete() {
+    await deleteStudent(student.id);
+    setDeleteOpen(false);
+    onBack();
+  }
 
   const loadAll = React.useCallback(async () => {
     setLoading(true);
@@ -343,6 +365,8 @@ export function StudentProfilePage({ studentId, onBack, onOpenSale }) {
         student={student}
         onPayment={() => setPaymentOpen(true)}
         onOpenSale={onOpenSale ? () => onOpenSale(student) : undefined}
+        onSetActive={handleSetActive}
+        onDelete={() => setDeleteOpen(true)}
       />
 
       <FinanceStrip fin={fin} />
@@ -374,6 +398,14 @@ export function StudentProfilePage({ studentId, onBack, onOpenSale }) {
           onSuccess={async () => { setPaymentOpen(false); await loadAll(); }}
         />
       )}
+
+      {deleteOpen && (
+        <ConfirmDeleteStudentModal
+          student={student}
+          onClose={() => setDeleteOpen(false)}
+          onConfirm={handleConfirmDelete}
+        />
+      )}
     </div>
   );
 }
@@ -391,7 +423,7 @@ function ProfileBackLink({ onBack }) {
 
 // ─── Identity header ──────────────────────────────────────────────────────────
 
-function ProfileHeader({ student, onPayment, onOpenSale }) {
+function ProfileHeader({ student, onPayment, onOpenSale, onSetActive, onDelete }) {
   const modeMeta = student.preferred_mode === 'onsite'
     ? { icon: ModeIcon.Onsite, text: 'Yüzyüze tercih' }
     : student.preferred_mode === 'online'
@@ -464,9 +496,22 @@ function ProfileHeader({ student, onPayment, onOpenSale }) {
             </button>
             <button type="button" className="sp-more-item">Paket oluştur</button>
             <button type="button" className="sp-more-item">Düzenle</button>
-            <button type="button" className="sp-more-item sp-more-item-warn">
+            <button
+              type="button"
+              className="sp-more-item"
+              onClick={() => onSetActive(!student.is_active)}
+            >
               {student.is_active ? 'Pasife al' : 'Tekrar aktif et'}
             </button>
+            {!student.is_active && (
+              <button
+                type="button"
+                className="sp-more-item sp-more-item-warn"
+                onClick={onDelete}
+              >
+                Tamamen sil
+              </button>
+            )}
           </div>
         </div>
       </div>

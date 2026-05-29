@@ -1,6 +1,5 @@
 import { pool } from "../db/connection.js";
 import {
-  DeleteConflictError,
   StudentNotFoundError,
   ValidationError,
   toServiceError,
@@ -495,7 +494,22 @@ export async function updateStudent(
   }
 }
 
-export async function softDeleteStudent(studentId: EntityId, actorUserId?: number | string | null): Promise<StudentRow> {
+// Öğrenciyi ve TÜM finansal ayak izini kalıcı olarak (fiziksel) siler.
+// Karar (2026-05-29): geçmişi olan öğrenci de silinebilsin. Bu, "borç =
+// completed ders + satış" invariantının altındaki kayıtları yok eder ve geçmiş
+// raporları (ciro, ders sayısı) geriye dönük değiştirir — geri alınamaz.
+//
+// FK'ler ON DELETE RESTRICT olduğu için silme sırası önemli:
+//   payments → product_sales (product_sale_items CASCADE) → lessons →
+//   prepaid_packages → students.
+// (payments lessons/sales/packages'a; lessons packages'a; product_sales
+//  opsiyonel lessons'a referans verir — hepsi bu sırayla çözülür.)
+//
+// Tek kalan iz audit_logs olduğundan, silinen kayıtların özetini note'a yazarız.
+export async function hardDeleteStudent(
+  studentId: EntityId,
+  actorUserId?: number | string | null,
+): Promise<StudentRow> {
   const client = await pool.connect();
 
   try {
@@ -513,65 +527,77 @@ export async function softDeleteStudent(studentId: EntityId, actorUserId?: numbe
 
     const student = studentResult.rows[0];
 
-    if (!student || student.deleted_at !== null) {
+    if (!student) {
       throw new StudentNotFoundError();
     }
 
-    const blockersResult = await client.query<{ entity_type: string; entity_id: string }>(
+    // Silinecek kayıtların sayıları + tahsil edilmiş toplam — audit özeti için.
+    const countsResult = await client.query<{
+      lessons: string;
+      product_sales: string;
+      prepaid_packages: string;
+      payments: string;
+      paid_total: string;
+    }>(
       `
-        SELECT entity_type, entity_id
-        FROM (
-          SELECT 'lesson'::text AS entity_type, id::text AS entity_id
-          FROM lessons
-          WHERE student_id = $1 AND deleted_at IS NULL
+        SELECT
+          (SELECT count(*) FROM lessons          WHERE student_id = $1) AS lessons,
+          (SELECT count(*) FROM product_sales    WHERE student_id = $1) AS product_sales,
+          (SELECT count(*) FROM prepaid_packages WHERE student_id = $1) AS prepaid_packages,
+          (SELECT count(*) FROM payments p
+             WHERE p.lesson_id          IN (SELECT id FROM lessons          WHERE student_id = $1)
+                OR p.product_sale_id    IN (SELECT id FROM product_sales    WHERE student_id = $1)
+                OR p.prepaid_package_id IN (SELECT id FROM prepaid_packages WHERE student_id = $1)) AS payments,
+          (SELECT COALESCE(SUM(p.amount), 0) FROM payments p
+             WHERE p.deleted_at IS NULL AND (
+                   p.lesson_id          IN (SELECT id FROM lessons          WHERE student_id = $1)
+                OR p.product_sale_id    IN (SELECT id FROM product_sales    WHERE student_id = $1)
+                OR p.prepaid_package_id IN (SELECT id FROM prepaid_packages WHERE student_id = $1)
+             )) AS paid_total
+      `,
+      [studentId],
+    );
+    const counts = countsResult.rows[0];
 
-          UNION ALL
-
-          SELECT 'product_sale'::text AS entity_type, id::text AS entity_id
-          FROM product_sales
-          WHERE student_id = $1 AND deleted_at IS NULL
-
-          UNION ALL
-
-          SELECT 'prepaid_package'::text AS entity_type, id::text AS entity_id
-          FROM prepaid_packages
-          WHERE student_id = $1 AND deleted_at IS NULL
-        ) blockers
-        LIMIT 1
+    // 1) Ödemeler (lessons/sales/packages'a referans verir — soft-deleted dahil
+    //    hepsi fiziksel silinmeli ki RESTRICT FK'ler çözülsün).
+    await client.query(
+      `
+        DELETE FROM payments
+        WHERE lesson_id          IN (SELECT id FROM lessons          WHERE student_id = $1)
+           OR product_sale_id    IN (SELECT id FROM product_sales    WHERE student_id = $1)
+           OR prepaid_package_id IN (SELECT id FROM prepaid_packages WHERE student_id = $1)
       `,
       [studentId],
     );
 
-    const blocker = blockersResult.rows[0];
+    // 2) Ürün satışları (product_sale_items ON DELETE CASCADE ile otomatik gider;
+    //    ayrıca lessons'a olası lesson_id referansı bu adımda temizlenmiş olur).
+    await client.query(`DELETE FROM product_sales WHERE student_id = $1`, [studentId]);
 
-    if (blocker) {
-      throw new DeleteConflictError(
-        `Cannot delete student while active ${blocker.entity_type} #${blocker.entity_id} exists.`,
-      );
-    }
+    // 3) Dersler (prepaid_packages'a referans verir → paketlerden önce).
+    await client.query(`DELETE FROM lessons WHERE student_id = $1`, [studentId]);
 
-    const deletedResult = await client.query<StudentRow>(
-      `
-        UPDATE students
-        SET deleted_at = now()
-        WHERE id = $1
-        RETURNING *
-      `,
-      [studentId],
-    );
+    // 4) Paketler.
+    await client.query(`DELETE FROM prepaid_packages WHERE student_id = $1`, [studentId]);
 
-    const deletedStudent = deletedResult.rows[0];
+    // 5) Öğrenci.
+    await client.query(`DELETE FROM students WHERE id = $1`, [studentId]);
 
     await insertAuditLog(client, {
       action: "student_deleted",
       entityType: "student",
-      entityId: deletedStudent.id,
+      entityId: student.id,
       before: student,
+      note:
+        `hard_delete · lessons=${counts.lessons} · product_sales=${counts.product_sales} · ` +
+        `prepaid_packages=${counts.prepaid_packages} · payments=${counts.payments} · ` +
+        `paid_total=${counts.paid_total}`,
       actorUserId: actorUserId ?? null,
     });
 
     await client.query("COMMIT");
-    return deletedStudent;
+    return student;
   } catch (error) {
     await rollbackQuietly(client);
     throw toServiceError(error);

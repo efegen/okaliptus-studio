@@ -9,7 +9,7 @@ import {
   listDebtors,
   listStudents,
   listStudentMovements,
-  softDeleteStudent,
+  hardDeleteStudent,
   updateStudent,
 } from "../../services/students.service.js";
 import { ValidationError } from "../../services/errors.js";
@@ -181,10 +181,12 @@ studentsRouter.patch("/:id", async (req, res) => {
 });
 
 // DELETE /students/:id
+// Kalıcı (hard) silme: öğrenci + tüm ders/ödeme/paket/satış kayıtları fiziksel
+// olarak silinir. Geri alınamaz; geçmişi olan öğrenciler de silinebilir.
 studentsRouter.delete("/:id", async (req, res) => {
   try {
     const id = parseId(req.params.id);
-    const data = await softDeleteStudent(id, req.currentUser.id);
+    const data = await hardDeleteStudent(id, req.currentUser.id);
     res.json({ data });
   } catch (err) {
     sendError(res, err);

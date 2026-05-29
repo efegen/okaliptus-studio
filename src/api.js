@@ -99,7 +99,14 @@ async function apiRequest(path, options = {}) {
       if (response.status === 401 && !path.startsWith('/auth')) {
         window.dispatchEvent(new CustomEvent('auth:unauthorized'));
       }
-      throw new Error(msg);
+      // Hata nesnesine backend kodunu (örn. DELETE_CONFLICT) ve HTTP status'u
+      // iliştir ki çağıran tarafta İngilizce mesaj yerine bağlama uygun
+      // Türkçe metin gösterilebilsin.
+      const err = new Error(msg);
+      err.status = response.status;
+      const code = payload?.error?.code;
+      if (typeof code === 'string') err.code = code;
+      throw err;
     }
 
     return payload;
