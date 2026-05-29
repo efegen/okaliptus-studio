@@ -16,7 +16,7 @@
  *   H. Expired session (Direct SQL ile expires_at geriye al) → null.
  *   I. Non-existent username → null (timing protection).
  *   J. Bcrypt cost=12 doğrulaması (password_hash prefix kontrolü).
- *   K. Auth audit YOK — login/logout sonrası audit_logs'ta auth action'ı yok.
+ *   K. Auth audit VAR — login/logout audit_logs'a user_login/user_logout yazar (0236).
  *
  * ÇALIŞTIRMA:
  *   cd backend && npx tsx scripts/smoke/14-auth.ts
@@ -229,19 +229,34 @@ async function run(): Promise<void> {
     );
 
     // ─────────────────────────────────────────────────────────────────────────
-    // K. Auth audit YOK — v1.4 negatif assertion
+    // K. Auth audit VAR — güvenlik denetimi (migration 0236)
     // ─────────────────────────────────────────────────────────────────────────
-    section("K — Auth audit logging v1.4'te YOK (regression koruması)");
+    section("K — Auth audit logging: login/logout audit_logs'a yazılıyor");
 
-    const auditCount = await pool.query<{ c: string }>(
-      `SELECT COUNT(*)::text AS c FROM audit_logs
-        WHERE action IN ('user_login', 'user_logout', 'password_changed')`,
-    );
-    assertEqual(
-      auditCount.rows[0].c,
-      "0",
-      "K: audit_logs'ta auth action'ı YOK (spec §2.14)",
-    );
+    const authCountSql =
+      `SELECT COUNT(*)::text AS c FROM audit_logs WHERE action IN ('user_login', 'user_logout')`;
+    const beforeK = await pool.query<{ c: string }>(authCountSql);
+
+    const tokenK = await login(admin.username, admin.password, "203.0.113.42");
+    if (!tokenK) {
+      fail("K: login başarısız — audit testi atlandı");
+    } else {
+      await logout(tokenK, "203.0.113.42");
+      const afterK = await pool.query<{ c: string }>(authCountSql);
+      assertEqual(
+        Number(afterK.rows[0].c) - Number(beforeK.rows[0].c),
+        2,
+        "K: bir login + bir logout = 2 yeni auth audit kaydı",
+      );
+
+      // Şekil: auth audit kayıtları entity_type='user' ve actor_user_id dolu olmalı
+      const shapeK = await pool.query<{ c: string }>(
+        `SELECT COUNT(*)::text AS c FROM audit_logs
+          WHERE action IN ('user_login', 'user_logout')
+            AND (entity_type <> 'user' OR actor_user_id IS NULL)`,
+      );
+      assertEqual(shapeK.rows[0].c, "0", "K: auth audit entity_type='user' ve actor_user_id dolu");
+    }
 
     ok("\nSMOKE 14 — AUTH TÜM ADIMLAR BAŞARILI ✓");
   } finally {

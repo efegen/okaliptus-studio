@@ -13,7 +13,7 @@ export type AuthUser = {
   displayName: string;
 };
 
-export async function login(username: string, password: string): Promise<string | null> {
+export async function login(username: string, password: string, ip?: string): Promise<string | null> {
   if (typeof password !== 'string' || password.length < 6) return null;
 
   const result = await pool.query(
@@ -32,6 +32,15 @@ export async function login(username: string, password: string): Promise<string 
     `INSERT INTO sessions (user_id, token, expires_at) VALUES ($1, $2, $3)`,
     [user.id, token, expiresAt],
   );
+
+  // Güvenlik denetimi: başarılı login audit_logs'a yazılır. login transaction
+  // kullanmaz; pool.query yeterli. Audit hatası login akışını bozmasın.
+  await pool.query(
+    `INSERT INTO audit_logs (action, entity_type, entity_id, note, actor_user_id)
+     VALUES ('user_login', 'user', $1, $2, $1)`,
+    [user.id, `Başarılı giriş — IP: ${ip ?? 'bilinmiyor'}`],
+  ).catch(() => {});
+
   return token;
 }
 
@@ -65,6 +74,23 @@ export async function validateSession(token: string): Promise<AuthUser | null> {
   };
 }
 
-export async function logout(token: string): Promise<void> {
+export async function logout(token: string, ip?: string): Promise<void> {
+  // DELETE öncesi token sahibini oku ki audit kaydında entity/actor doldurulsun.
+  const owner = await pool.query<{ user_id: string }>(
+    `SELECT user_id FROM sessions WHERE token = $1`,
+    [token],
+  );
+  const userId = owner.rows[0]?.user_id ?? null;
+
   await pool.query(`DELETE FROM sessions WHERE token = $1`, [token]);
+
+  // Güvenlik denetimi: başarılı logout audit_logs'a yazılır. user_id
+  // bulunamazsa (token zaten geçersiz) audit atlanır. Audit hatası akışı bozmasın.
+  if (userId !== null) {
+    await pool.query(
+      `INSERT INTO audit_logs (action, entity_type, entity_id, note, actor_user_id)
+       VALUES ('user_logout', 'user', $1, $2, $1)`,
+      [userId, `Çıkış yapıldı — IP: ${ip ?? 'bilinmiyor'}`],
+    ).catch(() => {});
+  }
 }

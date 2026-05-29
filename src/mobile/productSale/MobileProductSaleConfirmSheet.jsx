@@ -1,7 +1,6 @@
 import React from 'react';
 import { Drawer } from 'vaul';
-import { useQuery } from '@tanstack/react-query';
-import { createProductSaleApi, createCashPayment, getSettings } from '../../api';
+import { createProductSaleApi, createCashPayment } from '../../api';
 import { fmtTL } from '../../data';
 
 function getMobilePaletteRoot() {
@@ -90,28 +89,19 @@ export function MobileProductSaleConfirmSheet({
   onCompleted,
 }) {
   const portalContainer = React.useMemo(getMobilePaletteRoot, []);
-  const settingsQuery = useQuery({
-    queryKey: ['settings'],
-    queryFn: getSettings,
-    staleTime: 5 * 60 * 1000,
-  });
-  const cashEnabled = settingsQuery.data?.paymentMethodCash ?? true;
-  const ibanEnabled = settingsQuery.data?.paymentMethodIban ?? true;
-  const anyMethodEnabled = cashEnabled || ibanEnabled;
+  // Ödeme yöntemleri her zaman aktif (Nakit + IBAN) — aç/kapa ayarı kaldırıldı (§8.5).
+  const cashEnabled = true;
+  const ibanEnabled = true;
+  const anyMethodEnabled = true;
 
   const [phase, setPhase] = React.useState('choose');
   const [error, setError] = React.useState(null);
 
-  const [source, setSource] = React.useState(cashEnabled ? 'cash' : 'iban');
+  const [source, setSource] = React.useState('cash');
   const [amountInput, setAmountInput] = React.useState('');
 
   const [resultPaidAmount, setResultPaidAmount] = React.useState(0);
   const [resultPaidWith, setResultPaidWith] = React.useState(null);
-
-  React.useEffect(() => {
-    if (cashEnabled) setSource('cash');
-    else if (ibanEnabled) setSource('iban');
-  }, [cashEnabled, ibanEnabled]);
 
   React.useEffect(() => {
     if (phase === 'payment') {

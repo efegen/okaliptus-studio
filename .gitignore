@@ -37,3 +37,6 @@ coverage/
 # Backup
 *.bak
 *-backup/
+
+# Claude Code (local, machine-specific settings & locks)
+.claude/

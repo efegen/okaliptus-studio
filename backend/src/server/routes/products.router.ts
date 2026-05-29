@@ -30,7 +30,16 @@ function parseIdsArray(raw: unknown): Array<string | number> {
       code: "VALIDATION_ERROR",
     });
   }
-  return raw.filter(v => v !== null && v !== undefined && v !== "") as Array<string | number>;
+  const filtered = raw.filter(v => v !== null && v !== undefined && v !== "") as Array<
+    string | number
+  >;
+  if (filtered.length > 200) {
+    throw Object.assign(new Error("En fazla 200 ürün seçilebilir."), {
+      statusCode: 400,
+      code: "VALIDATION_ERROR",
+    });
+  }
+  return filtered;
 }
 
 export const productsRouter = Router();

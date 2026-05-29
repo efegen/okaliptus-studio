@@ -5,7 +5,7 @@ import {
   createLessonType,
   updateLessonType,
 } from "../../services/lesson-types.service.js";
-import { sendError } from "../middleware/response.js";
+import { parseId, sendError } from "../middleware/response.js";
 
 export const lessonTypesRouter = Router();
 
@@ -57,7 +57,7 @@ lessonTypesRouter.post("/", async (req, res) => {
 // PATCH /lesson-types/:id
 lessonTypesRouter.patch("/:id", async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = parseId(req.params.id);
     const body = req.body as {
       name?: unknown;
       default_duration_minutes?: unknown;

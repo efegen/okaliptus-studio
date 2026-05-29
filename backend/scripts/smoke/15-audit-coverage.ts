@@ -5,8 +5,8 @@
  *   A. createLessonType → audit lesson_type_created (actor=99, after içerir)
  *   B. updateLessonType (default_price 750→800) → lesson_type_updated, before/after diff
  *   C. updateSettings(weeklyCapacity) → settings_updated, before/after diff
- *   D. NEGATIF — auth audit YOK: login + logout sonrası audit_logs'ta
- *      user_login/user_logout/password_changed action'ı YOK (regression koruma)
+ *   D. POZİTİF — auth audit VAR: login + logout sonrası audit_logs'a
+ *      user_login/user_logout yazılır (güvenlik denetimi, migration 0236)
  *
  * Cleanup:
  *   - Test'te oluşturulan lesson_type'ı is_active=false yap (referansı var olabilir)
@@ -107,40 +107,35 @@ async function run(): Promise<void> {
     });
 
     // ─────────────────────────────────────────────────────────────────────────
-    // D. NEGATIF — auth audit YOK
+    // D. POZİTİF — auth audit VAR (güvenlik denetimi, migration 0236)
     // ─────────────────────────────────────────────────────────────────────────
-    section("D — NEGATIF: auth audit yok (v1.4 regression koruma)");
+    section("D — POZİTİF: login/logout audit_logs'a yazılıyor");
 
     const admin = seedAdminUser();
     if (admin) {
       const beforeAuthCount = await pool.query<{ c: string }>(
         `SELECT COUNT(*)::text AS c FROM audit_logs
-          WHERE action IN ('user_login', 'user_logout', 'password_changed')`,
+          WHERE action IN ('user_login', 'user_logout')`,
       );
 
-      const token = await login(admin.username, admin.password);
+      const token = await login(admin.username, admin.password, "203.0.113.7");
       if (token) {
         await validateSession(token);
-        await logout(token);
+        await logout(token, "203.0.113.7");
       }
 
       const afterAuthCount = await pool.query<{ c: string }>(
         `SELECT COUNT(*)::text AS c FROM audit_logs
-          WHERE action IN ('user_login', 'user_logout', 'password_changed')`,
+          WHERE action IN ('user_login', 'user_logout')`,
       );
 
       assertEqual(
-        afterAuthCount.rows[0].c,
-        beforeAuthCount.rows[0].c,
-        "D: login/logout sonrası auth audit row count değişmedi (yok)",
+        Number(afterAuthCount.rows[0].c) - Number(beforeAuthCount.rows[0].c),
+        2,
+        "D: login + logout = 2 yeni auth audit kaydı (user_login + user_logout)",
       );
     } else {
-      info("D", "BOOTSTRAP_ADMINS yok — D atlandı (audit kontrolü statik yapılıyor)");
-      const auditCount = await pool.query<{ c: string }>(
-        `SELECT COUNT(*)::text AS c FROM audit_logs
-          WHERE action IN ('user_login', 'user_logout', 'password_changed')`,
-      );
-      assertEqual(auditCount.rows[0].c, "0", "D: auth audit hiç yok");
+      info("D", "BOOTSTRAP_ADMINS yok — auth audit pozitif testi atlandı");
     }
 
     ok("\nSMOKE 15 — TÜM ADIMLAR BAŞARILI ✓");

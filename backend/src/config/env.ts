@@ -16,6 +16,11 @@ if (Number.isNaN(PORT) || PORT <= 0) {
 
 const NODE_ENV = process.env.NODE_ENV ?? "development";
 
+// TLS/SSL opt-in. Kullanıcı Railway'de TLS'i doğruladıktan sonra
+// DATABASE_SSL=true set etmeli; yanlışlıkla zorlamak mevcut bağlantıyı
+// kırıp outage yaratabileceği için opt-in (açık-rıza) bırakıldı.
+const databaseSsl = process.env.DATABASE_SSL === "true";
+
 const ALLOWED_ORIGINS_RAW = (process.env.ALLOWED_ORIGINS ?? "")
   .split(",")
   .map((s) => s.trim())
@@ -32,6 +37,7 @@ const allowedOrigins =
 
 export const env = {
   databaseUrl: DATABASE_URL,
+  databaseSsl,
   nodeEnv: NODE_ENV,
   port: PORT,
   timeZone: process.env.TZ ?? "Europe/Istanbul",

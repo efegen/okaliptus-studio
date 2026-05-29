@@ -332,8 +332,8 @@ async function setArchived(
     if (!before) throw new ProductNotFoundError();
 
     const updateResult = await client.query<ProductRow>(
-      `UPDATE products SET archived_at = ${archive ? "now()" : "NULL"} WHERE id = $1 RETURNING *`,
-      [productId],
+      `UPDATE products SET archived_at = $1 WHERE id = $2 RETURNING *`,
+      [archive ? new Date() : null, productId],
     );
     const updated = updateResult.rows[0];
 
@@ -778,6 +778,45 @@ export async function upsertProductByBarcode(
 const ALLOWED_IMAGE_MIME = new Set(["image/webp", "image/jpeg", "image/png"]);
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
+// Byte'ların gerçekten belirtilen MIME türüne ait olduğunu imza (magic byte)
+// baytlarıyla doğrular. Böylece content-type sahteciliğiyle keyfi byte
+// yüklenemez. Tanınan türde imza tutmazsa false döner.
+function matchesImageSignature(mime: string, bytes: Buffer): boolean {
+  switch (mime) {
+    case "image/jpeg":
+      // FF D8 FF
+      return bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+    case "image/png":
+      // 89 50 4E 47 0D 0A 1A 0A
+      return (
+        bytes.length >= 8 &&
+        bytes[0] === 0x89 &&
+        bytes[1] === 0x50 &&
+        bytes[2] === 0x4e &&
+        bytes[3] === 0x47 &&
+        bytes[4] === 0x0d &&
+        bytes[5] === 0x0a &&
+        bytes[6] === 0x1a &&
+        bytes[7] === 0x0a
+      );
+    case "image/webp":
+      // bayt 0..3 = "RIFF" VE bayt 8..11 = "WEBP"
+      return (
+        bytes.length >= 12 &&
+        bytes[0] === 0x52 &&
+        bytes[1] === 0x49 &&
+        bytes[2] === 0x46 &&
+        bytes[3] === 0x46 &&
+        bytes[8] === 0x57 &&
+        bytes[9] === 0x45 &&
+        bytes[10] === 0x42 &&
+        bytes[11] === 0x50
+      );
+    default:
+      return false;
+  }
+}
+
 export type ProductImageData = {
   mime: string;
   bytes: Buffer;
@@ -820,6 +859,9 @@ export async function setProductImage(
   }
   if (bytes.length > MAX_IMAGE_BYTES) {
     throw new ValidationError("Görsel 5MB sınırını aşıyor.");
+  }
+  if (!matchesImageSignature(mime, bytes)) {
+    throw new ValidationError("Görsel içeriği belirtilen türle uyuşmuyor.");
   }
 
   const client = await pool.connect();

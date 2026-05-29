@@ -133,18 +133,19 @@ function App({ currentUser, onLogout }) {
 
   React.useEffect(() => {
     const handler = (e) => {
+      if (e.origin !== window.location.origin) return;
       if (!e.data || !e.data.type) return;
       if (e.data.type === "__activate_edit_mode") setTweaksOpen(true);
       if (e.data.type === "__deactivate_edit_mode") setTweaksOpen(false);
     };
     window.addEventListener("message", handler);
-    window.parent.postMessage({ type: "__edit_mode_available" }, "*");
+    window.parent.postMessage({ type: "__edit_mode_available" }, window.location.origin);
     return () => window.removeEventListener("message", handler);
   }, []);
 
   const updateTweak = (key, value) => {
     setTweaks(t => ({ ...t, [key]: value }));
-    window.parent.postMessage({ type: "__edit_mode_set_keys", edits: { [key]: value } }, "*");
+    window.parent.postMessage({ type: "__edit_mode_set_keys", edits: { [key]: value } }, window.location.origin);
   };
 
   const cls = [

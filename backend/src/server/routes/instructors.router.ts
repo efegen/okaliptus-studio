@@ -7,7 +7,7 @@ import {
   updateInstructor,
   deleteInstructor,
 } from "../../services/instructors.service.js";
-import { sendError } from "../middleware/response.js";
+import { parseId, sendError } from "../middleware/response.js";
 
 export const instructorsRouter = Router();
 
@@ -48,7 +48,7 @@ instructorsRouter.post("/", async (req, res) => {
 // PATCH /instructors/:id
 instructorsRouter.patch("/:id", async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = parseId(req.params.id);
     const body = req.body as { full_name?: unknown; is_active?: unknown };
 
     const patch: Parameters<typeof updateInstructor>[1] = {};
@@ -87,7 +87,7 @@ instructorsRouter.patch("/:id", async (req, res) => {
 // DELETE /instructors/:id (soft delete)
 instructorsRouter.delete("/:id", async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = parseId(req.params.id);
     const removed = await deleteInstructor(id, req.currentUser.id);
     if (!removed) {
       res.status(404).json({ error: { message: "Eğitmen bulunamadı." } });

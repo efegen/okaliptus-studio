@@ -40,6 +40,10 @@ export function createApp() {
     res.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
+    // OPTIONS preflight'tan ÖNCE set ediliyor; böylece görsel ucu dahil
+    // tüm yanıtlara MIME-sniff koruması uygulanır.
+    res.setHeader("X-Content-Type-Options", "nosniff");
+
     if (req.method === "OPTIONS") {
       res.status(204).end();
       return;
@@ -47,7 +51,27 @@ export function createApp() {
 
     next();
   });
-  app.use(express.json());
+
+  // CSRF koruması: durum değiştiren metotlarda Origin header'ı varsa whitelist'te
+  // olmalı. Origin yoksa (same-origin veya tarayıcı-dışı istemci) geçişe izin
+  // verilir. GET/HEAD güvenli kabul edilir, etkilenmez. OPTIONS preflight zaten
+  // yukarıda 204 ile döndüğü için buraya ulaşmaz.
+  app.use((req, res, next) => {
+    if (req.method === "POST" || req.method === "PATCH" || req.method === "DELETE") {
+      const origin = req.headers.origin;
+      if (origin && !env.allowedOrigins.includes(origin)) {
+        res
+          .status(403)
+          .json({ error: { code: "CSRF_FORBIDDEN", message: "Geçersiz kaynak." } });
+        return;
+      }
+    }
+    next();
+  });
+
+  // Açık gövde limiti: mevcut JSON payload'lar küçük; görsel yüklemesi ayrı
+  // express.raw (5mb) ucuyla gidiyor, bu yüzden 100kb fazlasıyla yeterli.
+  app.use(express.json({ limit: "100kb" }));
 
   // ── Public routes (no auth required) ──────────────────────────────────────
   app.use("/health", healthRouter);

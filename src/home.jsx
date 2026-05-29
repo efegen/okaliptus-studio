@@ -1193,12 +1193,12 @@ function DebtCard({ label, icon, total, paid, remaining, paymentMethod, onCollec
   );
 }
 
-function LessonModal({ session, onClose, onUpdated, activePaymentMethods = { cash: true, iban: true } }) {
+function LessonModal({ session, onClose, onUpdated }) {
   const { complete, cancel, addPayment } = useLessonActions();
   // phase: 'detail' | 'complete' | 'cancel' | 'pay'
   const [phase, setPhase] = React.useState('detail');
   const [cancelReason, setCancelReason] = React.useState(null); // 'student' | 'mistake'
-  const [paySource, setPaySource] = React.useState(activePaymentMethods.cash ? 'cash' : 'iban');
+  const [paySource, setPaySource] = React.useState('cash');
   const [payAmount, setPayAmount] = React.useState('');
   const [payNote, setPayNote] = React.useState('');
   // payTarget pay fazının hangi borç kalemine yöneldiğini taşır.
@@ -1236,6 +1236,9 @@ function LessonModal({ session, onClose, onUpdated, activePaymentMethods = { cas
   const remaining = Math.max(0, price - paid);
   const canCompleteNow = completeAvailableMs == null || nowMs >= completeAvailableMs;
   const completeUnlockLabel = completeAvailableAt ? formatIstanbulTime(completeAvailableAt) : '';
+  // Fazla ödeme client-side koruması (§8.2): tutar kalan borçtan büyükse
+  // form gönderilmez, anında uyarı çıkar. Backend de ayrıca reddeder.
+  const payOverDebt = !!payTarget && parseFloat(payAmount || '0') > payTarget.remaining + 0.001;
 
   const dateLabel = session.startsAt
     ? new Date(session.startsAt).toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' })
@@ -1247,7 +1250,7 @@ function LessonModal({ session, onClose, onUpdated, activePaymentMethods = { cas
     setCancelReason(null);
     setPayAmount('');
     setPayNote('');
-    setPaySource(activePaymentMethods.cash ? 'cash' : 'iban');
+    setPaySource('cash');
     setPayTarget(null);
     setError(null);
   }
@@ -1260,7 +1263,7 @@ function LessonModal({ session, onClose, onUpdated, activePaymentMethods = { cas
     setPayTarget(target);
     setPayAmount(target.remaining > 0 ? String(target.remaining) : '');
     setPayNote('');
-    setPaySource(activePaymentMethods.cash ? 'cash' : 'iban');
+    setPaySource('cash');
     setError(null);
     setPhase('pay');
   }
@@ -1298,7 +1301,7 @@ function LessonModal({ session, onClose, onUpdated, activePaymentMethods = { cas
 
   async function handlePay(e) {
     e.preventDefault();
-    if (!payTarget) return;
+    if (!payTarget || payOverDebt) return;
     setSubmitting(true);
     setError(null);
     try {
@@ -1496,23 +1499,26 @@ function LessonModal({ session, onClose, onUpdated, activePaymentMethods = { cas
                     )}
                   </div>
                   <input
-                    type="number" min="0" step="1"
+                    type="number" min="0" max={payTarget.remaining} step="1"
                     value={payAmount}
                     onChange={e => setPayAmount(e.target.value)}
                     placeholder="0"
                     required
                     autoFocus
                   />
-                </div>
-                {(activePaymentMethods.cash && activePaymentMethods.iban) && (
-                  <div className="form-row">
-                    <label>Yöntem</label>
-                    <div className="mode-seg lm-pay-seg">
-                      <button type="button" className={"mode-btn" + (paySource === 'cash' ? ' is-on' : '')} onClick={() => setPaySource('cash')}>Nakit</button>
-                      <button type="button" className={"mode-btn" + (paySource === 'iban' ? ' is-on' : '')} onClick={() => setPaySource('iban')}>IBAN</button>
+                  {payOverDebt && (
+                    <div className="lm-error lm-pay-overdebt">
+                      Ödeme tutarı kalan borçtan ({fmtTL(payTarget.remaining)}) fazla olamaz.
                     </div>
+                  )}
+                </div>
+                <div className="form-row">
+                  <label>Yöntem</label>
+                  <div className="mode-seg lm-pay-seg">
+                    <button type="button" className={"mode-btn" + (paySource === 'cash' ? ' is-on' : '')} onClick={() => setPaySource('cash')}>Nakit</button>
+                    <button type="button" className={"mode-btn" + (paySource === 'iban' ? ' is-on' : '')} onClick={() => setPaySource('iban')}>IBAN</button>
                   </div>
-                )}
+                </div>
                 <div className="form-row lm-last-field">
                   <label>Not <span className="lm-opt">(opsiyonel)</span></label>
                   <input
@@ -1585,7 +1591,7 @@ function LessonModal({ session, onClose, onUpdated, activePaymentMethods = { cas
                 type="submit"
                 form="lm-pay-form"
                 className="btn btn-primary"
-                disabled={!payAmount || submitting}
+                disabled={!payAmount || submitting || payOverDebt}
               >{submitting ? 'Kaydediliyor…' : 'Ödemeyi kaydet'}</button>
             </>
           )}
@@ -1701,7 +1707,7 @@ function WeekNavBar({ weekStart, onPrev, onNext, onToday, onWeekSelect, sessions
 
 // ─── Week Calendar ───────────────────────────────────────────────────────────
 
-export function WeekCalendar({ weekStart, variant = "detailed", onSessionClick, alwaysFrom = 17, alwaysTo = 23, defaultLessonMode = 'onsite', activePaymentMethods = { cash: true, iban: true }, onSessionsLoaded }) {
+export function WeekCalendar({ weekStart, variant = "detailed", onSessionClick, alwaysFrom = 17, alwaysTo = 23, onSessionsLoaded }) {
   const hourH = variant === "compact" ? 36 : 48;
   const queryClient = useQueryClient();
 
@@ -1830,7 +1836,6 @@ export function WeekCalendar({ weekStart, variant = "detailed", onSessionClick, 
           dayIndex={createModal.dayIndex}
           hour={createModal.hour}
           weekStart={weekStart}
-          defaultMode={defaultLessonMode}
           onClose={() => setCreateModal(null)}
           onCreated={() => { setCreateModal(null); queryClient.invalidateQueries({ queryKey: queryKeys.weekLessons() }); }}
         />
@@ -1838,7 +1843,6 @@ export function WeekCalendar({ weekStart, variant = "detailed", onSessionClick, 
       {lessonModalSession && (
         <LessonModal
           session={lessonModalSession}
-          activePaymentMethods={activePaymentMethods}
           onClose={() => setLessonModalSession(null)}
           onUpdated={() => { setLessonModalSession(null); queryClient.invalidateQueries({ queryKey: queryKeys.weekLessons() }); }}
         />
@@ -2055,7 +2059,7 @@ function UpcomingEventsCard() {
   );
 }
 
-function QuickActions({ defaultLessonMode = 'onsite', activePaymentMethods = { cash: true, iban: true }, onNavigate }) {
+function QuickActions({ onNavigate }) {
   const queryClient = useQueryClient();
   const [modal, setModal] = React.useState(null); // 'lesson' | 'sale' | 'pay'
 
@@ -2121,14 +2125,12 @@ function QuickActions({ defaultLessonMode = 'onsite', activePaymentMethods = { c
 
       {modal === 'lesson' && (
         <StandaloneCreateLessonModal
-          defaultMode={defaultLessonMode}
           onClose={() => setModal(null)}
           onCreated={() => { setModal(null); queryClient.invalidateQueries({ queryKey: queryKeys.weekLessons() }); }}
         />
       )}
       {modal === 'pay' && (
         <QuickPayModal
-          activePaymentMethods={activePaymentMethods}
           onClose={() => setModal(null)}
         />
       )}
@@ -2163,11 +2165,6 @@ export function HomePage({ layout, onNavigate }) {
   const emptySlots = weeklyCapacity !== null ? Math.max(0, weeklyCapacity - lessonsPlanned) : null;
   const calendarAlwaysFrom = studioSettings?.calendarStartHour ?? 17;
   const calendarAlwaysTo = studioSettings?.calendarEndHour ?? 23;
-  const defaultLessonMode = studioSettings?.defaultLessonMode ?? 'onsite';
-  const activePaymentMethods = {
-    cash: studioSettings?.paymentMethodCash ?? true,
-    iban: studioSettings?.paymentMethodIban ?? true,
-  };
 
   const queryClient = useQueryClient();
   const [weekStart, setWeekStart] = React.useState(() => getCurrentMonday());
@@ -2207,7 +2204,7 @@ export function HomePage({ layout, onNavigate }) {
               <WeekNavBar weekStart={weekStart} onPrev={goToPrevWeek} onNext={goToNextWeek} onToday={goToCurrentWeek} onWeekSelect={setWeekStart} sessions={weekSessions} />
             </div>
           </div>
-          <WeekCalendar weekStart={weekStart} variant="detailed" alwaysFrom={calendarAlwaysFrom} alwaysTo={calendarAlwaysTo} defaultLessonMode={defaultLessonMode} activePaymentMethods={activePaymentMethods} onSessionsLoaded={setWeekSessions} />
+          <WeekCalendar weekStart={weekStart} variant="detailed" alwaysFrom={calendarAlwaysFrom} alwaysTo={calendarAlwaysTo} onSessionsLoaded={setWeekSessions} />
           <div className="cal-legend">
             <span className="leg"><span className="leg-sw ls-planned"></span>Planlandı</span>
             <span className="leg"><span className="leg-sw ls-unpaid"></span>Tamamlandı · Ödenmedi</span>
@@ -2279,7 +2276,7 @@ export function HomePage({ layout, onNavigate }) {
               <WeekNavBar weekStart={weekStart} onPrev={goToPrevWeek} onNext={goToNextWeek} onToday={goToCurrentWeek} onWeekSelect={setWeekStart} sessions={weekSessions} />
             </div>
           </div>
-          <WeekCalendar weekStart={weekStart} variant="compact" alwaysFrom={calendarAlwaysFrom} alwaysTo={calendarAlwaysTo} defaultLessonMode={defaultLessonMode} activePaymentMethods={activePaymentMethods} onSessionsLoaded={setWeekSessions} />
+          <WeekCalendar weekStart={weekStart} variant="compact" alwaysFrom={calendarAlwaysFrom} alwaysTo={calendarAlwaysTo} onSessionsLoaded={setWeekSessions} />
         </div>
       </div>
     );
@@ -2358,7 +2355,7 @@ export function HomePage({ layout, onNavigate }) {
             </div>
           </div>
           <div style={{padding: "14px 18px 18px"}}>
-            <WeekCalendar weekStart={weekStart} variant="detailed" alwaysFrom={calendarAlwaysFrom} alwaysTo={calendarAlwaysTo} defaultLessonMode={defaultLessonMode} activePaymentMethods={activePaymentMethods} onSessionsLoaded={setWeekSessions} />
+            <WeekCalendar weekStart={weekStart} variant="detailed" alwaysFrom={calendarAlwaysFrom} alwaysTo={calendarAlwaysTo} onSessionsLoaded={setWeekSessions} />
             <div className="cal-legend">
               <span className="leg"><span className="leg-sw onsite"></span>yüzyüze</span>
               <span className="leg"><span className="leg-sw online"></span>online</span>
@@ -2373,8 +2370,6 @@ export function HomePage({ layout, onNavigate }) {
               <h3 className="card-title">Hızlı aksiyonlar</h3>
             </div>
             <QuickActions
-              defaultLessonMode={defaultLessonMode}
-              activePaymentMethods={activePaymentMethods}
               onNavigate={onNavigate}
             />
           </div>

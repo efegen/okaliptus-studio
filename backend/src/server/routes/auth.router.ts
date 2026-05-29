@@ -31,7 +31,7 @@ const loginLimiter = rateLimit({
   message: {
     error: {
       code: 'RATE_LIMITED',
-      message: 'Too many login attempts. Try again in 15 minutes.',
+      message: 'Çok fazla başarısız deneme — 15 dk sonra tekrar dene.',
     },
   },
 });
@@ -44,7 +44,7 @@ authRouter.post('/login', loginLimiter, async (req, res) => {
     return;
   }
 
-  const token = await login(username, password);
+  const token = await login(username, password, req.ip);
   if (!token) {
     res.status(401).json({ error: { code: 'INVALID_CREDENTIALS', message: 'Invalid username or password.' } });
     return;
@@ -54,20 +54,25 @@ authRouter.post('/login', loginLimiter, async (req, res) => {
   res.json({ ok: true });
 });
 
-// POST /auth/logout
-authRouter.post('/logout', (req, res) => {
+// POST /auth/logout — requireAuth: yalnız geçerli oturum kendini kapatabilir,
+// böylece forced-logout/CSRF yüzeyi kapanır.
+authRouter.post('/logout', requireAuth, (req, res) => {
   const cookieHeader = req.headers.cookie;
   if (cookieHeader) {
     for (const part of cookieHeader.split(';')) {
       const eqIdx = part.indexOf('=');
       if (eqIdx !== -1 && part.slice(0, eqIdx).trim() === COOKIE_NAME) {
         const token = decodeURIComponent(part.slice(eqIdx + 1).trim());
-        logout(token).catch(() => {});
+        logout(token, req.ip).catch(() => {});
         break;
       }
     }
   }
-  res.clearCookie(COOKIE_NAME, { path: '/' });
+  // clearCookie option'ları cookie'nin set edildiği cookieOptions() ile aynı
+  // httpOnly/secure/sameSite/path değerlerini içermeli (maxAge hariç), yoksa
+  // tarayıcı çerezi eşleştiremeyip silemez.
+  const { httpOnly, secure, sameSite, path } = cookieOptions();
+  res.clearCookie(COOKIE_NAME, { httpOnly, secure, sameSite, path });
   res.json({ ok: true });
 });
 

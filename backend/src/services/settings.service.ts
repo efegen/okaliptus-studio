@@ -7,10 +7,7 @@ export type StudioSettings = {
   weekStart: string;
   calendarStartHour: number;
   calendarEndHour: number;
-  defaultLessonMode: "online" | "onsite";
   defaultCurrency: string;
-  paymentMethodCash: boolean;
-  paymentMethodIban: boolean;
   lessonColorSaturation: number;
 };
 
@@ -20,10 +17,7 @@ function rowToSettings(row: Record<string, unknown>): StudioSettings {
     weekStart: row.week_start as string,
     calendarStartHour: Number(row.calendar_start_hour),
     calendarEndHour: Number(row.calendar_end_hour),
-    defaultLessonMode: row.default_lesson_mode as "online" | "onsite",
     defaultCurrency: row.default_currency as string,
-    paymentMethodCash: Boolean(row.payment_method_cash),
-    paymentMethodIban: Boolean(row.payment_method_iban),
     lessonColorSaturation: Number(row.lesson_color_saturation ?? 1),
   };
 }
@@ -33,8 +27,7 @@ export async function getSettings(): Promise<StudioSettings> {
     SELECT
       weekly_capacity, week_start,
       calendar_start_hour, calendar_end_hour,
-      default_lesson_mode,
-      default_currency, payment_method_cash, payment_method_iban,
+      default_currency,
       lesson_color_saturation
     FROM studio_settings WHERE id = 1
   `);
@@ -50,9 +43,6 @@ type SettingsPatch = {
   weeklyCapacity?: number;
   calendarStartHour?: number;
   calendarEndHour?: number;
-  defaultLessonMode?: "online" | "onsite";
-  paymentMethodCash?: boolean;
-  paymentMethodIban?: boolean;
   lessonColorSaturation?: number;
 };
 
@@ -94,37 +84,12 @@ export async function updateSettings(patch: SettingsPatch, actorUserId?: number 
   }
 
   if (
-    patch.defaultLessonMode !== undefined &&
-    !["online", "onsite"].includes(patch.defaultLessonMode)
-  ) {
-    throw new ValidationError("Ders modu 'online' veya 'onsite' olmalı.");
-  }
-
-  if (
     patch.lessonColorSaturation !== undefined &&
     (!Number.isFinite(patch.lessonColorSaturation) ||
       patch.lessonColorSaturation < 0.1 ||
       patch.lessonColorSaturation > 3)
   ) {
     throw new ValidationError("Ders rengi doygunluğu 0.1–3 arasında olmalı.");
-  }
-
-  if (patch.paymentMethodCash === false && patch.paymentMethodIban === false) {
-    throw new ValidationError("En az bir ödeme yöntemi aktif olmalı.");
-  }
-
-  if (patch.paymentMethodCash === false && patch.paymentMethodIban === undefined) {
-    const current = await getSettings();
-    if (!current.paymentMethodIban) {
-      throw new ValidationError("En az bir ödeme yöntemi aktif olmalı.");
-    }
-  }
-
-  if (patch.paymentMethodIban === false && patch.paymentMethodCash === undefined) {
-    const current = await getSettings();
-    if (!current.paymentMethodCash) {
-      throw new ValidationError("En az bir ödeme yöntemi aktif olmalı.");
-    }
   }
 
   const sets: string[] = [];
@@ -142,18 +107,6 @@ export async function updateSettings(patch: SettingsPatch, actorUserId?: number 
   if (patch.calendarEndHour !== undefined) {
     sets.push(`calendar_end_hour = $${i++}`);
     values.push(patch.calendarEndHour);
-  }
-  if (patch.defaultLessonMode !== undefined) {
-    sets.push(`default_lesson_mode = $${i++}`);
-    values.push(patch.defaultLessonMode);
-  }
-  if (patch.paymentMethodCash !== undefined) {
-    sets.push(`payment_method_cash = $${i++}`);
-    values.push(patch.paymentMethodCash);
-  }
-  if (patch.paymentMethodIban !== undefined) {
-    sets.push(`payment_method_iban = $${i++}`);
-    values.push(patch.paymentMethodIban);
   }
   if (patch.lessonColorSaturation !== undefined) {
     sets.push(`lesson_color_saturation = $${i++}`);

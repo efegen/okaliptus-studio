@@ -205,8 +205,12 @@ export function MobileLessonSheet({ session, onClose, onUpdated }) {
     }
   }
 
+  // Fazla ödeme client-side koruması (§8.2): kalan borçtan fazla tutar girilirse
+  // tahsilat gönderilmez, anında uyarı çıkar. Backend de ayrıca reddeder.
+  const payOverDebt = !!payTarget && parseFloat(payAmount || '0') > payTarget.remaining + 0.001;
+
   async function handlePay() {
-    if (!payAmount || parseFloat(payAmount) <= 0 || !payTarget) return;
+    if (!payAmount || parseFloat(payAmount) <= 0 || !payTarget || payOverDebt) return;
     setSubmitting(true);
     setError(null);
     try {
@@ -454,6 +458,7 @@ export function MobileLessonSheet({ session, onClose, onUpdated }) {
                           type="number"
                           inputMode="decimal"
                           min="0"
+                          max={payTarget.remaining}
                           step="1"
                           className="mobile-lsheet-input"
                           value={payAmount}
@@ -470,6 +475,11 @@ export function MobileLessonSheet({ session, onClose, onUpdated }) {
                           </button>
                         )}
                       </div>
+                      {payOverDebt && (
+                        <div className="mobile-lsheet-error" role="alert">
+                          Ödeme tutarı kalan borçtan ({fmtTL(payTarget.remaining)}) fazla olamaz.
+                        </div>
+                      )}
                     </div>
 
                     {ACTIVE_PAYMENT_METHODS.cash && ACTIVE_PAYMENT_METHODS.iban && (
@@ -521,7 +531,7 @@ export function MobileLessonSheet({ session, onClose, onUpdated }) {
                       type="button"
                       className="mobile-lsheet-btn-primary"
                       onClick={handlePay}
-                      disabled={submitting || !payAmount || parseFloat(payAmount) <= 0}
+                      disabled={submitting || !payAmount || parseFloat(payAmount) <= 0 || payOverDebt}
                     >
                       {submitting ? 'Kaydediliyor…' : 'Tahsil et'}
                     </button>

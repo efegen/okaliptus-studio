@@ -41,22 +41,6 @@ settingsRouter.patch("/", async (req, res) => {
       patch.calendarEndHour = v;
     }
 
-    if ("defaultLessonMode" in body) {
-      const v = String(body.defaultLessonMode);
-      if (v !== "online" && v !== "onsite") {
-        throw new ValidationError("defaultLessonMode 'online' veya 'onsite' olmalı.");
-      }
-      patch.defaultLessonMode = v;
-    }
-
-    if ("paymentMethodCash" in body) {
-      patch.paymentMethodCash = Boolean(body.paymentMethodCash);
-    }
-
-    if ("paymentMethodIban" in body) {
-      patch.paymentMethodIban = Boolean(body.paymentMethodIban);
-    }
-
     if ("lessonColorSaturation" in body) {
       const v = Number(body.lessonColorSaturation);
       if (!Number.isFinite(v)) throw new ValidationError("lessonColorSaturation geçersiz.");

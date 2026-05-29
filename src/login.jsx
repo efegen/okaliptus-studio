@@ -21,8 +21,12 @@ export function LoginPage({ onLogin }) {
     try {
       const user = await login(username, password);
       onLogin(user);
-    } catch {
-      setError('Kullanıcı adı veya şifre hatalı.');
+    } catch (err) {
+      if (err?.status === 429 || err?.code === 'RATE_LIMITED') {
+        setError('Çok fazla başarısız deneme — 15 dk sonra tekrar dene.');
+      } else {
+        setError('Kullanıcı adı veya şifre hatalı.');
+      }
     } finally {
       setLoading(false);
     }

@@ -1,6 +1,5 @@
 import React from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { createProductSaleApi, createCashPayment, getSettings } from '../api';
+import { createProductSaleApi, createCashPayment } from '../api';
 import { fmtTL } from '../data';
 
 function CashIcon() {
@@ -83,31 +82,21 @@ export function ProductSaleConfirmModal({
   onClose,
   onCompleted,
 }) {
-  const settingsQuery = useQuery({
-    queryKey: ['settings'],
-    queryFn: getSettings,
-    staleTime: 5 * 60 * 1000,
-  });
-  const cashEnabled = settingsQuery.data?.paymentMethodCash ?? true;
-  const ibanEnabled = settingsQuery.data?.paymentMethodIban ?? true;
-  const anyMethodEnabled = cashEnabled || ibanEnabled;
+  // Ödeme yöntemleri her zaman aktif (Nakit + IBAN) — aç/kapa ayarı kaldırıldı (§8.5).
+  const cashEnabled = true;
+  const ibanEnabled = true;
+  const anyMethodEnabled = true;
 
   const [phase, setPhase] = React.useState('choose');
   const [error, setError] = React.useState(null);
 
   // Payment form state
-  const [source, setSource] = React.useState(cashEnabled ? 'cash' : 'iban');
+  const [source, setSource] = React.useState('cash');
   const [amountInput, setAmountInput] = React.useState('');
 
   // Result state (set on success)
   const [resultPaidAmount, setResultPaidAmount] = React.useState(0);
   const [resultPaidWith, setResultPaidWith] = React.useState(null);
-
-  // Initialize source when settings arrive
-  React.useEffect(() => {
-    if (cashEnabled) setSource('cash');
-    else if (ibanEnabled) setSource('iban');
-  }, [cashEnabled, ibanEnabled]);
 
   // When entering payment phase, prefill amount with full total
   React.useEffect(() => {
