@@ -23,17 +23,6 @@ function ChevronLeftIcon({ size = 22 }) {
   );
 }
 
-function CartIcon({ size = 22 }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M3 4h2l2.5 11.5a2 2 0 0 0 2 1.5h7.5a2 2 0 0 0 2-1.6L21 8H6"
-        stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-      <circle cx="10" cy="20" r="1.4" fill="currentColor" />
-      <circle cx="17" cy="20" r="1.4" fill="currentColor" />
-    </svg>
-  );
-}
-
 function SearchIcon({ size = 16 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -188,20 +177,6 @@ export function MobileProductSalePage({ cart, setCart, onOpenCheckout, onClose }
           <ChevronLeftIcon />
         </button>
         <h1 id="psale-title" className="mobile-psale-topbar-title">Ürün satışı</h1>
-        <button
-          type="button"
-          className="mobile-psale-iconbtn mobile-psale-cart-icon"
-          onClick={onOpenCheckout}
-          disabled={cartCount === 0}
-          aria-label={cartCount > 0 ? `Sepeti aç (${cartCount} ürün)` : 'Sepet boş'}
-        >
-          <CartIcon />
-          {cartCount > 0 && (
-            <span className="mobile-psale-cart-iconbadge" aria-hidden="true">
-              {cartCount}
-            </span>
-          )}
-        </button>
       </header>
 
       <div className="mobile-psale-toolbar">
