@@ -16,4 +16,5 @@ export const queryKeys = {
   debtors:            ()      => ['debtors'],
   auditLogs:          (params)=> ['auditLogs', params],
   auditUsers:         ()      => ['auditUsers'],
+  studioMovements:    (params)=> params !== undefined ? ['movements', params] : ['movements'],
 };

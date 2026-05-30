@@ -236,6 +236,15 @@ export async function getStudentProductSales(studentId) {
   return payload.data;
 }
 
+// Tek bir ürün satışını kalemleriyle (items[]) birlikte getirir.
+export async function getProductSale(saleId) {
+  const payload = await apiGet(`/product-sales/${encodeURIComponent(saleId)}`);
+  if (typeof payload?.data !== 'object' || payload.data === null || Array.isArray(payload.data)) {
+    throw new Error('Satış bilgisi alınamadı.');
+  }
+  return payload.data;
+}
+
 export async function getStudentMovements(studentId) {
   const payload = await apiGet(`/students/${encodeURIComponent(studentId)}/movements`);
   if (!Array.isArray(payload?.data)) throw new Error('Hareket listesi alınamadı.');
@@ -463,6 +472,28 @@ export async function getAuditUsers() {
   const payload = await apiGet("/audit-logs/users");
   if (!Array.isArray(payload?.data)) throw new Error("Kullanıcı listesi alınamadı.");
   return payload.data;
+}
+
+// ─── Movements (stüdyo geneli hareket akışı) ─────────────────────────────────
+
+export async function getMovements({ from, to, type, q, page = 1, limit = 50 } = {}) {
+  const params = new URLSearchParams();
+  if (from) params.set("from", from);
+  if (to) params.set("to", to);
+  if (type && type !== "all") params.set("type", type);
+  if (q) params.set("q", q);
+  params.set("page", String(page));
+  params.set("limit", String(limit));
+
+  const payload = await apiGet(`/movements?${params.toString()}`);
+  if (!Array.isArray(payload?.data)) throw new Error("Hareket listesi alınamadı.");
+  return {
+    data: payload.data,
+    page: payload.page,
+    limit: payload.limit,
+    hasMore: payload.hasMore,
+    summary: payload.summary,
+  };
 }
 
 // ─── Products (catalog) ─────────────────────────────────────────────────────

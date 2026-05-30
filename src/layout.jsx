@@ -48,6 +48,7 @@ export function Sidebar({ page, setPage }) {
     { id: "students", label: "Öğrenciler",           icon: Icon.Users },
     { id: "catalog",  label: "Dersler ve Eğitmenler", icon: Icon.Layers },
     { id: "products", label: "Ürünler",                icon: Icon.Tag },
+    { id: "movements",label: "Hareketler",             icon: Icon.Repeat },
   ];
   return (
     <aside className="sidebar">
@@ -87,6 +88,7 @@ export const PAGE_LABELS = {
   students: "Öğrenciler",
   catalog: "Dersler ve Eğitmenler",
   products: "Ürünler",
+  movements: "Hareketler",
   settings: "Ayarlar",
 };
 

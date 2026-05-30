@@ -65,6 +65,7 @@ export type ProductSaleItemRow = {
   quantity: number;
   line_total: string;
   created_at: string;
+  image_url?: string | null;
 };
 
 export type ProductSaleWithItems = ProductSaleBalanceRow & {
@@ -156,10 +157,12 @@ async function fetchSaleItems(
   if (saleIds.length === 0) return map;
 
   const result = await pool.query<ProductSaleItemRow>(
-    `SELECT id, sale_id, product_id, name_snapshot, unit_price_snapshot, quantity, line_total, created_at
-       FROM product_sale_items
-      WHERE sale_id = ANY($1::bigint[])
-      ORDER BY id ASC`,
+    `SELECT psi.id, psi.sale_id, psi.product_id, psi.name_snapshot, psi.unit_price_snapshot,
+            psi.quantity, psi.line_total, psi.created_at, p.image_url
+       FROM product_sale_items psi
+       LEFT JOIN products p ON p.id = psi.product_id
+      WHERE psi.sale_id = ANY($1::bigint[])
+      ORDER BY psi.id ASC`,
     [saleIds],
   );
 
