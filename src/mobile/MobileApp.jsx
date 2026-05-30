@@ -11,6 +11,7 @@ import { MobileQuickLessonSheet } from './MobileQuickLessonSheet';
 import { MobileStudentProfilePage } from './MobileStudentProfilePage';
 import { MobileToast } from './MobileToast';
 import { MobileMenu } from './MobileMenu';
+import { MobileMovements } from './MobileMovements';
 import { MobileProductCatalogPage } from './MobileProductCatalogPage';
 import { MobileProductSalePage } from './MobileProductSalePage';
 import { MobileProductSaleCheckoutPage } from './MobileProductSaleCheckoutPage';
@@ -43,7 +44,7 @@ export function MobileApp({
 }) {
   const queryClient = useQueryClient();
   const onStudentsPage = page === 'students';
-  const onMenuChild = page === 'settings' || page === 'catalog' || page === 'products';
+  const onMenuChild = page === 'settings' || page === 'catalog' || page === 'products' || page === 'movements';
   const onProductSale = page === 'product-sale' || page === 'product-sale-checkout';
   const showBack = (onStudentsPage && !!studentDetailId) || onMenuChild;
   const hideHeader =
@@ -151,6 +152,7 @@ export function MobileApp({
     queryClient.invalidateQueries({ queryKey: queryKeys.studentsKpi() });
     queryClient.invalidateQueries({ queryKey: queryKeys.debtors() });
     queryClient.invalidateQueries({ queryKey: ['student'] });
+    queryClient.invalidateQueries({ queryKey: ['movements'] });
     if (kind === 'lesson') {
       queryClient.invalidateQueries({ queryKey: queryKeys.students() });
     }
@@ -205,6 +207,13 @@ export function MobileApp({
     body = <MobileCalendar />;
   } else if (page === 'menu') {
     body = <MobileMenu onNavigate={setPage} onLogout={onLogout} />;
+  } else if (page === 'movements') {
+    body = (
+      <MobileMovements
+        onOpenStudent={(id) => { setStudentDetailId(id); setPage('students'); }}
+        onOpenPayment={handleProfilePayment}
+      />
+    );
   } else if (page === 'settings') {
     body = <SettingsPage />;
   } else if (page === 'catalog') {

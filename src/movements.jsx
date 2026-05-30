@@ -16,7 +16,7 @@ const PAGE_SIZE = 50;
 
 const MODE_TR = { online: 'Online', onsite: 'Yüzyüze' };
 
-const KIND_TITLE = {
+export const KIND_TITLE = {
   product_sale: 'Ürün satışı',
   lesson_completed: 'Tamamlanan ders',
   lesson_cancelled: 'İptal edilen ders',
@@ -24,10 +24,10 @@ const KIND_TITLE = {
   payment: 'Tahsilat',
 };
 
-function money(v) { return parseFloat(v ?? '0') || 0; }
+export function money(v) { return parseFloat(v ?? '0') || 0; }
 
 // Tarih + saat — smart year (cari yıl gizlenir).
-function fmtRowDate(iso, { withTime = false } = {}) {
+export function fmtRowDate(iso, { withTime = false } = {}) {
   if (!iso) return '—';
   const d = new Date(iso);
   const now = new Date();
@@ -40,7 +40,7 @@ function fmtRowDate(iso, { withTime = false } = {}) {
   return `${date} · ${time}`;
 }
 
-function fmtDateParts(iso) {
+export function fmtDateParts(iso) {
   if (!iso) return { date: '—', time: '' };
   const d = new Date(iso);
   const now = new Date();
@@ -80,7 +80,7 @@ function dateBucket(iso) {
   };
 }
 
-function bucketByDate(items) {
+export function bucketByDate(items) {
   const groups = new Map();
   for (const it of items) {
     const b = dateBucket(it.occurred_at);
@@ -99,7 +99,7 @@ function lessonSub(d) {
   return `${mode} · ${fmtRowDate(d.starts_at, { withTime: true })}`;
 }
 
-function describeMovement(row) {
+export function describeMovement(row) {
   const d = row.details || {};
   switch (row.kind) {
     case 'product_sale': {
@@ -156,7 +156,7 @@ function describeMovement(row) {
 }
 
 // Detay penceresi için anahtar-değer satırları.
-function detailFields(row) {
+export function detailFields(row) {
   const d = row.details || {};
   const rows = [];
   if (row.kind === 'product_sale') {
@@ -196,14 +196,14 @@ function detailFields(row) {
 
 // ─── Filtreler ────────────────────────────────────────────────────────────────
 
-const DATE_PRESETS = [
+export const DATE_PRESETS = [
   { id: 'month',  label: 'Bu ay' },
   { id: 'days30', label: 'Son 30 gün' },
   { id: 'week',   label: 'Bu hafta' },
   { id: 'all',    label: 'Tümü' },
 ];
 
-function presetFrom(id) {
+export function presetFrom(id) {
   if (id === 'all') return null;
   const now = new Date();
   if (id === 'days30') {
@@ -219,7 +219,7 @@ function presetFrom(id) {
   return new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0).toISOString();
 }
 
-const TYPE_FILTERS = [
+export const TYPE_FILTERS = [
   { id: 'all',     label: 'Tümü' },
   { id: 'sale',    label: 'Satış' },
   { id: 'lesson',  label: 'Ders' },

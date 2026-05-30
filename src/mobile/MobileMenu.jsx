@@ -22,6 +22,12 @@ export function MobileMenu({ onNavigate, onLogout }) {
       onPress: () => onNavigate('products'),
     },
     {
+      id: 'movements',
+      label: 'Hareketler',
+      icon: Icon.Repeat,
+      onPress: () => onNavigate('movements'),
+    },
+    {
       id: 'logout',
       label: 'Çıkış yap',
       icon: Icon.LogOut,
