@@ -32,8 +32,14 @@
 
   --warn: oklch(0.52 0.18 30);
   --warn-2: oklch(0.93 0.05 30);
+  /* Okunur "borç/bekleyen" yazı tonu (warn üstüne metin). */
+  --warn-ink: color-mix(in oklch, var(--warn) 84%, black);
 
   --gold: oklch(0.62 0.13 80);
+
+  /* Mobil ana sayfa hero gradyanının alt ucu. Accent'ten türer ki
+     palette swatch değişince tutarlı kalsın (bkz. --ink-fill kalıbı). */
+  --accent-deep: color-mix(in oklch, var(--accent) 72%, oklch(0.2 0.02 150));
 
   /* Action badge category colors */
   --act-lesson:      oklch(0.52 0.14 40);
@@ -7079,3 +7085,128 @@ input, select { font-family: inherit; }
 }
 .mvd-items-toggle:hover { background: var(--bg-2); color: var(--ink); border-color: var(--line-strong); }
 .mvd-items-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* ============================================================
+   WEB-ONLY THEME — "Sakin Stüdyo" (Calm Studio)
+   ------------------------------------------------------------
+   Scoped entirely under `.app`, the desktop shell. The mobile
+   tree drops `.app` on purpose (see main.jsx), so NONE of this
+   reaches mobile. Goal: shed the high-contrast newsprint /
+   editorial feel for something warmer and calmer suited to a
+   yoga studio — a soft, organic display serif (Fraunces instead
+   of the news-style Newsreader), ink lifted off pure black into
+   a warm charcoal, gentler rounding + shadows, and deep-sage
+   fills wherever stark ink-black used to sit.
+
+   Palette/density tokens are intentionally NOT redefined, so the
+   Tweaks swatch picker keeps working and the chosen accent still
+   drives everything (the dark fill below is derived from it).
+   Every rule is cosmetic — no geometry/positioning changes — so
+   the weekly calendar keeps working exactly as before.
+   ============================================================ */
+.app {
+  /* Background/surfaces restored to the production "cream" — the exact deploy
+     :root values (warm, low-chroma paper). No more yellow/green cast. */
+  --bg:        oklch(0.96 0.008 80);
+  --bg-2:      oklch(0.92 0.012 80);
+  --surface:   oklch(0.995 0.003 80);
+  --surface-2: oklch(0.94 0.01 80);
+
+  /* Ink kept softened off near-black, warm hue so it sits naturally on cream */
+  --ink:   oklch(0.26 0.013 64);
+  --ink-2: oklch(0.39 0.014 62);
+  --ink-3: oklch(0.53 0.012 60);
+  --ink-4: oklch(0.65 0.01 60);
+
+  --line:        oklch(0.88 0.009 72);
+  --line-2:      oklch(0.81 0.012 72);
+  --line-strong: oklch(0.56 0.014 68);
+
+  /* Deep sage fill for surfaces that used pure ink-black. Derived from the
+     accent, so it stays coherent if the palette swatch is switched. */
+  --ink-fill:       color-mix(in oklab, var(--accent) 60%, oklch(0.18 0.02 150));
+  --ink-fill-hover: color-mix(in oklab, var(--accent) 50%, oklch(0.15 0.02 150));
+
+  /* Softer, rounder, calmer */
+  --radius:    12px;
+  --radius-lg: 18px;
+  --radius-sm: 8px;
+
+  /* Warm, diffuse shadows (replace the cool near-black ones) */
+  --shadow-sm: 0 1px 2px oklch(0.32 0.03 80 / 0.05);
+  --shadow:    0 4px 14px oklch(0.32 0.03 80 / 0.06), 0 1px 3px oklch(0.32 0.03 80 / 0.04);
+  --shadow-lg: 0 16px 42px oklch(0.32 0.04 80 / 0.10), 0 3px 9px oklch(0.30 0.03 80 / 0.05);
+
+  /* Display face: soft, organic wellness serif (was the news-style Newsreader) */
+  --f-serif: "Fraunces", "Newsreader", "Iowan Old Style", Georgia, serif;
+
+  background: var(--bg);
+  color: var(--ink);
+}
+
+/* Genuine prose headings: keep the warm Fraunces display serif */
+.app .page-title-serif,
+.app .modal h3 {
+  font-weight: 470;
+  letter-spacing: -0.015em;
+  font-optical-sizing: auto;
+}
+
+/* Data figures (KPI / metric / income / clock / modal price): clean tabular
+   sans rather than serif — serif numerals read too "editorial/newsprint" on a
+   dashboard. Weight kept on the lighter side so big figures don't look heavy.
+   The elements already carry font-variant-numeric: tabular-nums, so columns
+   stay aligned. */
+.app .metric-value,
+.app .kpi-card-val,
+.app .income-main,
+.app .next-time,
+.app .wstat-v,
+.app .lm-debt-amt-big {
+  font-family: var(--f-sans);
+  font-weight: 540;
+  letter-spacing: -0.02em;
+}
+
+/* De-editorialise the "kicker": mono ALL-CAPS dateline → calm sans subtitle */
+.app .eyebrow {
+  font-family: var(--f-sans);
+  text-transform: none;
+  letter-spacing: 0.005em;
+  font-weight: 500;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+/* Card titles: drop the shouty tracked all-caps for quiet sentence case */
+.app .card-title {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+/* Tiny labels: keep the small-caps role but soften the tracking + weight */
+.app .kpi-card-label,
+.app .metric-label {
+  letter-spacing: 0.045em;
+  font-weight: 600;
+}
+.app .kpi-card-label { color: var(--ink-3); }
+
+/* Slimmer accent rule on KPI cards (was a hard 3px editorial bar) */
+.app .kpi-card::before { height: 2px; opacity: 0.85; }
+
+/* Surfaces that were pure ink-black → deep sage. Cosmetic only (colour swaps,
+   no geometry), so the weekly calendar's layout/behaviour is untouched. */
+.app .btn-primary       { background: var(--ink-fill); border-color: var(--ink-fill); }
+.app .btn-primary:hover { background: var(--accent);   border-color: var(--accent); }
+.app .nav-item.active   { background: var(--ink-fill); }
+.app .brand-mark        { background: var(--ink-fill); }
+.app .metric-hero       { background: var(--ink-fill); border-color: var(--ink-fill); }
+.app .action-card       { background: var(--ink-fill); }
+.app .seg-btn.active    { background: var(--ink-fill); }
+.app .tweak-seg button.on { background: var(--ink-fill); }
+.app .wk-day-h.today    { background: var(--ink-fill); }
+.app .wk-col.today      { background: color-mix(in oklab, var(--accent) 7%, var(--surface)); }
