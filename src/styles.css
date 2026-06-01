@@ -34,6 +34,20 @@
   --warn-2: oklch(0.93 0.05 30);
   /* Okunur "borç/bekleyen" yazı tonu (warn üstüne metin). */
   --warn-ink: color-mix(in oklch, var(--warn) 84%, black);
+  /* Borçlu başlık degradesinin koyu ucu / dolu beyaz buton üstü metin
+     (mobil öğrenci profili durum renkli başlık). */
+  --warn-deep: oklch(0.36 0.13 32);
+
+  /* Devam durumu tonları (öğrenci triyaj listesi): amber = "aksayan",
+     paid/yeşil = "düzenli gelen". warn/accent gibi semantik renkler, accent
+     swatch'ından bağımsız sabittir. */
+  --amber: oklch(0.62 0.12 70);
+  --amber-2: oklch(0.94 0.05 75);
+  --amber-ink: oklch(0.46 0.1 62);
+
+  --paid: oklch(0.5 0.1 150);
+  --paid-2: oklch(0.92 0.04 150);
+  --paid-ink: oklch(0.37 0.09 150);
 
   --gold: oklch(0.62 0.13 80);
 

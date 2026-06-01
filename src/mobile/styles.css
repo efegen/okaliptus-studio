@@ -2824,74 +2824,67 @@
     transform: none;
   }
 
-  /* ---------- Mobile student profile page (mobile-msp-*) ---------- */
+  /* ---------- Mobile student profile page (mobile-msp-*) ----------
+     "design_handoff_ogrenci_profili" v16: durum renkli sabit başlık +
+     sayfa içi sekme barı + kayan sekme içeriği. Sayfa .mobile-main'i
+     doldurur; yalnız .mobile-msp-scroll kayar (başlık + sekmeler sabit). */
 
   .mobile-msp-page {
-    position: relative;
-    min-height: 100%;
-    background: var(--bg);
-    padding-top: env(safe-area-inset-top);
+    position: absolute;
+    inset: 0;
     display: flex;
     flex-direction: column;
+    background: var(--bg);
+    overflow: hidden;
   }
 
-  /* Topbar */
-  .mobile-msp-topbar {
-    position: sticky;
-    top: 0;
-    z-index: 5;
-    display: grid;
-    grid-template-columns: 44px 1fr 44px;
-    align-items: center;
-    padding: 0 2px;
-    height: 48px;
-    background: var(--bg);
-    border-bottom: 1px solid var(--ink-4);
-    box-sizing: border-box;
+  /* ── Durum renkli başlık ── */
+  .mobile-msp-hd {
+    flex: 0 0 auto;
+    position: relative;
+    z-index: 10;
+    color: #fff;
+    padding: calc(env(safe-area-inset-top) + 16px) 18px 18px;
+    border-radius: 0 0 26px 26px;
   }
-  .mobile-msp-back,
-  .mobile-msp-more-btn {
-    width: 44px;
-    height: 44px;
-    min-height: 44px;
+  .mobile-msp-hd.is-debt {
+    background: linear-gradient(158deg, oklch(0.5 0.16 32) 0%, oklch(0.34 0.11 33) 100%);
+  }
+  .mobile-msp-hd.is-clear {
+    background: linear-gradient(158deg, var(--accent) 0%, var(--accent-deep) 100%);
+  }
+
+  .mobile-msp-hd-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .mobile-msp-hd-ic {
+    width: 40px;
+    height: 40px;
     border: 0;
     border-radius: 999px;
-    background: transparent;
-    color: var(--ink);
+    background: rgba(255, 255, 255, 0.14);
+    color: #fff;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
   }
-  .mobile-msp-back:active,
-  .mobile-msp-more-btn:active { background: var(--surface-2); }
-  .mobile-msp-topbar-title {
-    margin: 0;
-    text-align: center;
-    font-size: 15px;
-    font-weight: 600;
-    color: var(--ink);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .mobile-msp-topbar-right {
-    position: relative;
-    display: flex;
-    justify-content: flex-end;
-  }
-  .mobile-msp-topbar-spacer { width: 44px; height: 44px; }
+  .mobile-msp-hd-ic:active { background: rgba(255, 255, 255, 0.26); }
+  .mobile-msp-hd-menuwrap { position: relative; }
 
-  /* Overflow menu */
+  /* Overflow menü (açılır kart — renkli başlığın altında) */
   .mobile-msp-menu {
     position: absolute;
-    top: calc(100% + 4px);
+    top: calc(100% + 6px);
     right: 0;
-    min-width: 176px;
+    min-width: 180px;
     background: var(--surface);
-    border: 1px solid var(--ink-4);
+    border: 1px solid var(--line);
     border-radius: 14px;
-    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.13);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
     overflow: hidden;
     z-index: 20;
     display: flex;
@@ -2911,477 +2904,525 @@
   .mobile-msp-menu-item:active { background: var(--surface-2); }
   .mobile-msp-menu-item:disabled { opacity: 0.38; cursor: not-allowed; }
   .mobile-msp-menu-item.is-danger { color: #c0392b; }
-  .mobile-msp-menu-item + .mobile-msp-menu-item { border-top: 1px solid var(--ink-4); }
+  .mobile-msp-menu-item + .mobile-msp-menu-item { border-top: 1px solid var(--line); }
 
-  /* Body scroll */
-  .mobile-msp-body {
-    flex: 1 1 auto;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    padding: 16px 16px calc(env(safe-area-inset-bottom) + 28px);
-  }
-
-  /* ── Hero ── */
-  .mobile-msp-hero {
+  /* Kimlik satırı */
+  .mobile-msp-hd-id {
     display: flex;
     align-items: center;
-    gap: 13px;
-    padding: 2px 0 4px;
+    gap: 12px;
+    margin-bottom: 18px;
   }
-  .mobile-msp-avatar {
-    flex: 0 0 52px;
-    width: 52px;
-    height: 52px;
+  .mobile-msp-hd-av {
+    flex-shrink: 0;
+    width: 42px;
+    height: 42px;
     border-radius: 999px;
-    background: color-mix(in oklch, var(--accent) 16%, var(--surface));
-    color: var(--accent);
+    background: rgba(255, 255, 255, 0.22);
+    color: #fff;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 18px;
-    font-weight: 800;
-    letter-spacing: 0.01em;
-    flex-shrink: 0;
+    font-size: 16px;
+    font-weight: 700;
   }
-  .mobile-msp-avatar.is-empty {
-    background: var(--surface-2);
-    color: var(--ink-3);
-  }
-  .mobile-msp-hero-info {
-    flex: 1 1 auto;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-  }
-  .mobile-msp-hero-name-row {
+  .mobile-msp-hd-id-txt { min-width: 0; }
+  .mobile-msp-hd-name {
     display: flex;
     align-items: center;
-    gap: 8px;
-  }
-  .mobile-msp-hero-name {
+    gap: 9px;
     font-size: 17px;
     font-weight: 700;
-    color: var(--ink);
-    line-height: 1.25;
+    min-width: 0;
+  }
+  .mobile-msp-hd-nametext {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     min-width: 0;
   }
-  .mobile-msp-badge {
-    flex-shrink: 0;
-    font-size: 10px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    padding: 2px 7px;
-    border-radius: 999px;
-    background: color-mix(in oklch, #6aaa52 20%, var(--surface));
-    color: #2e6b1e;
-  }
-  .mobile-msp-badge.is-inactive {
-    background: var(--surface-2);
-    color: var(--ink-3);
-  }
-  .mobile-msp-hero-sub {
-    font-size: 13px;
-    color: var(--ink-2);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .mobile-msp-hero-nick {
-    font-size: 12px;
-    color: var(--ink-3);
-    font-style: italic;
-  }
-
-  /* ── Finance card ── */
-  .mobile-msp-finance {
-    background: var(--surface);
-    border: 1px solid var(--ink-4);
-    border-radius: 16px;
-    overflow: hidden;
-  }
-
-  /* Open-account (debt) variant */
-  .mobile-msp-finance.is-debt {
-    position: relative;
-    background: color-mix(in oklch, #c0392b 7%, var(--surface));
-    border-color: color-mix(in oklch, #c0392b 28%, var(--ink-4));
-  }
-  .mobile-msp-finance.is-debt::before {
-    content: '';
-    position: absolute;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    width: 4px;
-    background: #c0392b;
-  }
-  .mobile-msp-finance-head {
-    padding: 12px 16px 12px 18px;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-  .mobile-msp-finance-eyebrow {
-    font-size: 10.5px;
-    font-weight: 800;
-    color: #c0392b;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-  }
-  .mobile-msp-finance-amount {
-    font-size: 26px;
-    font-weight: 800;
-    font-variant-numeric: tabular-nums;
-    letter-spacing: -0.02em;
-    color: #c0392b;
-    line-height: 1.15;
-  }
-  .mobile-msp-finance-caption {
-    font-size: 12.5px;
-    color: var(--ink-2);
-    margin-top: 2px;
-    font-weight: 500;
-  }
-
-  /* Optional ders+ürün split shown only when both have debt */
-  .mobile-msp-finance-split {
-    display: flex;
-    border-top: 1px solid color-mix(in oklch, #c0392b 20%, var(--ink-4));
-  }
-  .mobile-msp-finance-split-row {
-    flex: 1 1 0;
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    padding: 9px 14px 9px 18px;
-    gap: 8px;
-  }
-  .mobile-msp-finance-split-row + .mobile-msp-finance-split-row {
-    border-left: 1px solid color-mix(in oklch, #c0392b 20%, var(--ink-4));
-    padding-left: 14px;
-  }
-  .mobile-msp-finance-split-lbl {
-    font-size: 12px;
-    color: var(--ink-3);
-  }
-  .mobile-msp-finance-split-val {
-    font-size: 13.5px;
-    font-weight: 700;
-    color: #c0392b;
-    font-variant-numeric: tabular-nums;
-  }
-
-  /* Clear-state variant */
-  .mobile-msp-finance.is-clear {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 12px 16px;
-    background: color-mix(in oklch, #6aaa52 6%, var(--surface));
-    border-color: color-mix(in oklch, #6aaa52 20%, var(--ink-4));
-  }
-  .mobile-msp-finance-clear-icon {
-    flex-shrink: 0;
-    width: 30px;
-    height: 30px;
-    border-radius: 999px;
-    background: color-mix(in oklch, #6aaa52 22%, var(--surface));
-    color: #2e6b1e;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-  .mobile-msp-finance-clear-body {
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-  }
-  .mobile-msp-finance-clear-title {
-    font-size: 15px;
-    font-weight: 700;
-    color: #2e6b1e;
-    line-height: 1.2;
-  }
-  .mobile-msp-finance-clear-sub {
-    font-size: 12.5px;
-    color: var(--ink-3);
-  }
-
-  /* ── Activity list (rich rows + date buckets) ── */
-  .mobile-msp-activity {
-    background: var(--surface);
-    border: 1px solid var(--ink-4);
-    border-radius: 14px;
-    overflow: hidden;
-  }
-  .mobile-msp-act-group + .mobile-msp-act-group {
-    border-top: 1px solid var(--ink-4);
-  }
-  .mobile-msp-act-group-label {
-    padding: 9px 14px 5px;
-    font-size: 10.5px;
-    font-weight: 700;
-    color: var(--ink-3);
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    background: color-mix(in oklch, var(--surface-2) 55%, var(--surface));
-    border-bottom: 1px solid var(--ink-4);
-  }
-  .mobile-msp-act-row {
-    display: flex;
-    align-items: flex-start;
-    gap: 12px;
-    padding: 11px 14px;
-    border-bottom: 1px solid var(--ink-4);
-  }
-  .mobile-msp-act-row:last-child { border-bottom: 0; }
-  .mobile-msp-act-main {
-    flex: 1 1 auto;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-  }
-  .mobile-msp-act-title-row {
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    min-width: 0;
-    flex-wrap: wrap;
-  }
-  .mobile-msp-act-title {
-    font-size: 14.5px;
-    font-weight: 600;
-    color: var(--ink);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    max-width: 100%;
-  }
-  .mobile-msp-act-pill {
+  .mobile-msp-hd-badge {
     flex-shrink: 0;
     font-size: 9.5px;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    padding: 2px 7px;
+    padding: 3px 8px;
     border-radius: 999px;
-    line-height: 1.4;
+    background: rgba(255, 255, 255, 0.2);
+    color: #fff;
   }
-  .mobile-msp-act-pill-paid {
-    background: color-mix(in oklch, #6aaa52 16%, var(--surface));
-    color: #2e6b1e;
+  .mobile-msp-hd-badge.is-inactive {
+    background: rgba(255, 255, 255, 0.12);
+    color: rgba(255, 255, 255, 0.75);
   }
-  .mobile-msp-act-pill-open {
-    background: color-mix(in oklch, #c0392b 13%, var(--surface));
-    color: #a02b1e;
-  }
-  .mobile-msp-act-pill-partial {
-    background: color-mix(in oklch, #b8762a 16%, var(--surface));
-    color: #8a5418;
-  }
-  .mobile-msp-act-pill-scheduled {
-    background: color-mix(in oklch, var(--accent) 14%, var(--surface));
-    color: var(--accent);
-  }
-  .mobile-msp-act-pill-muted {
-    background: var(--surface-2);
-    color: var(--ink-3);
-  }
-  .mobile-msp-act-meta {
-    font-size: 12px;
-    color: var(--ink-3);
-    font-variant-numeric: tabular-nums;
-    line-height: 1.3;
-  }
-  .mobile-msp-act-note {
+  .mobile-msp-hd-sub {
     font-size: 12.5px;
-    color: var(--ink-2);
-    font-style: italic;
-    line-height: 1.35;
-    margin-top: 2px;
+    color: rgba(255, 255, 255, 0.78);
+    margin-top: 3px;
     overflow: hidden;
     text-overflow: ellipsis;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    word-break: break-word;
-  }
-  .mobile-msp-act-right {
-    flex-shrink: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 2px;
-    padding-top: 1px;
-  }
-  .mobile-msp-act-amount {
-    font-size: 14.5px;
-    font-weight: 700;
-    font-variant-numeric: tabular-nums;
-    color: var(--ink);
-    text-align: right;
     white-space: nowrap;
-    line-height: 1.1;
-  }
-  .mobile-msp-act-amount-warn {
-    color: #c0392b;
-  }
-  .mobile-msp-act-amount-muted {
-    color: var(--ink-2);
-    font-weight: 600;
-  }
-  .mobile-msp-act-amount-quiet {
-    color: var(--ink-3);
-    font-weight: 500;
-  }
-  .mobile-msp-act-discount {
-    font-size: 11px;
-    font-weight: 600;
-    color: #2e6b1e;
-    background: color-mix(in oklch, #6aaa52 14%, var(--surface));
-    padding: 1px 6px;
-    border-radius: 999px;
-    line-height: 1.3;
-    font-variant-numeric: tabular-nums;
-  }
-  .mobile-msp-act-more {
-    padding: 10px 14px;
-    text-align: center;
-    font-size: 12px;
-    color: var(--ink-3);
-    background: color-mix(in oklch, var(--surface-2) 50%, var(--surface));
-    border-top: 1px solid var(--ink-4);
   }
 
-  /* ── Action buttons ── */
-  .mobile-msp-actions {
+  /* Bakiye bloğu */
+  .mobile-msp-hd-bal {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 16px;
+  }
+  .mobile-msp-hd-bal-lbl {
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: rgba(255, 255, 255, 0.7);
+  }
+  .mobile-msp-hd-bal-val {
+    font-family: var(--f-mono);
+    font-size: 42px;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    line-height: 1.05;
+    margin-top: 4px;
+  }
+  .mobile-msp-hd-bal-brk {
+    font-family: var(--f-mono);
+    font-size: 12.5px;
+    color: rgba(255, 255, 255, 0.78);
+    margin-top: 6px;
+  }
+
+  /* Aksiyonlar */
+  .mobile-msp-hd-actions {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 8px;
+    gap: 9px;
   }
-  .mobile-msp-action-primary,
-  .mobile-msp-action-secondary {
+  .mobile-msp-hd-btn {
     appearance: none;
     border: 0;
-    border-radius: 14px;
-    font-size: 14px;
+    border-radius: 13px;
+    min-height: 48px;
+    font-family: var(--f-sans);
+    font-size: 14.5px;
     font-weight: 700;
-    min-height: 52px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 7px;
+    gap: 8px;
     cursor: pointer;
-    transition: transform 60ms ease, opacity 60ms ease;
+    transition: transform 60ms ease;
   }
-  .mobile-msp-action-primary {
-    background: var(--accent);
-    color: #fff;
-  }
-  .mobile-msp-action-secondary {
-    background: var(--surface);
-    color: var(--ink);
-    border: 1px solid var(--ink-4);
-  }
-  .mobile-msp-action-primary:active,
-  .mobile-msp-action-secondary:active { transform: scale(0.97); }
-  .mobile-msp-action-primary:disabled {
-    background: var(--surface-2);
-    color: var(--ink-3);
+  .mobile-msp-hd-btn:active { transform: scale(0.98); }
+  .mobile-msp-hd-btn.solid { background: #fff; }
+  .mobile-msp-hd.is-debt .mobile-msp-hd-btn.solid { color: var(--warn-deep); }
+  .mobile-msp-hd.is-clear .mobile-msp-hd-btn.solid { color: var(--accent-deep); }
+  .mobile-msp-hd-btn.solid:disabled {
+    background: rgba(255, 255, 255, 0.4);
+    color: rgba(255, 255, 255, 0.85) !important;
     cursor: not-allowed;
     transform: none;
   }
-
-  /* ── Info section ── */
-  .mobile-msp-section {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
+  .mobile-msp-hd-btn.outline {
+    background: transparent;
+    color: #fff;
+    border: 1.5px solid rgba(255, 255, 255, 0.55);
   }
-  .mobile-msp-section-label {
-    font-size: 11px;
-    font-weight: 700;
+  .mobile-msp-hd-btn.outline:active { background: rgba(255, 255, 255, 0.12); }
+
+  /* ── Sekme barı ── */
+  .mobile-msp-tabs {
+    flex: 0 0 auto;
+    display: flex;
+    padding: 0 8px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--line);
+  }
+  .mobile-msp-tab {
+    flex: 1;
+    position: relative;
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+    padding: 13px 4px;
+    font-family: var(--f-sans);
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--ink-3);
+    white-space: nowrap;
+  }
+  .mobile-msp-tab.on { color: var(--accent); }
+  .mobile-msp-tab.on::after {
+    content: '';
+    position: absolute;
+    left: 14px;
+    right: 14px;
+    bottom: -1px;
+    height: 2.5px;
+    border-radius: 3px 3px 0 0;
+    background: var(--accent);
+  }
+
+  /* ── Kayan içerik ── */
+  .mobile-msp-scroll {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 14px 16px calc(64px + env(safe-area-inset-bottom) + 20px);
+  }
+  .mobile-msp-ov { display: flex; flex-direction: column; }
+
+  .mobile-msp-seclbl {
+    font-family: var(--f-mono);
+    font-size: 10.5px;
+    font-weight: 600;
     color: var(--ink-3);
     text-transform: uppercase;
-    letter-spacing: 0.08em;
-    padding: 0 4px;
-    margin-bottom: 2px;
+    letter-spacing: 0.1em;
+    padding: 16px 2px 8px;
   }
-  .mobile-msp-rows {
+  .mobile-msp-ov > .mobile-msp-seclbl:first-child { padding-top: 4px; }
+
+  /* Durum pill'i (ortak) */
+  .mobile-msp-pill {
+    flex-shrink: 0;
+    font-size: 9.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 2px 7px;
+    border-radius: 999px;
+    line-height: 1.5;
+  }
+  .mobile-msp-pill.t-paid { background: var(--paid-2); color: var(--paid-ink); }
+  .mobile-msp-pill.t-open { background: var(--warn-2); color: var(--warn-ink); }
+  .mobile-msp-pill.t-partial { background: var(--amber-2); color: var(--amber-ink); }
+  .mobile-msp-pill.t-scheduled { background: var(--accent-2); color: var(--accent-ink); }
+  .mobile-msp-pill.t-muted { background: var(--surface-2); color: var(--ink-3); }
+
+  /* Son katılım — takvim çipi kartı */
+  .mobile-msp-last {
+    display: flex;
+    align-items: center;
+    gap: 13px;
     background: var(--surface);
-    border: 1px solid var(--ink-4);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 12px 14px;
+    margin-bottom: 12px;
+  }
+  .mobile-msp-last.is-empty { border-style: dashed; }
+  .mobile-msp-last-cal {
+    flex-shrink: 0;
+    width: 46px;
+    height: 50px;
+    border-radius: 11px;
+    background: var(--surface-2);
+    color: var(--ink-3);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+  }
+  .mobile-msp-last.t-paid .mobile-msp-last-cal { background: var(--paid-2); color: var(--paid-ink); }
+  .mobile-msp-last.t-open .mobile-msp-last-cal { background: var(--warn-2); color: var(--warn-ink); }
+  .mobile-msp-last.t-partial .mobile-msp-last-cal { background: var(--amber-2); color: var(--amber-ink); }
+  .mobile-msp-last.t-scheduled .mobile-msp-last-cal { background: var(--accent-2); color: var(--accent-ink); }
+  .mobile-msp-last.t-muted .mobile-msp-last-cal { background: var(--surface-2); color: var(--ink-3); }
+  .mobile-msp-last-cal b { font-family: var(--f-mono); font-size: 20px; font-weight: 700; }
+  .mobile-msp-last-cal span {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-top: 3px;
+  }
+  .mobile-msp-last-body { flex: 1; min-width: 0; }
+  .mobile-msp-last-top { display: flex; align-items: center; gap: 8px; }
+  .mobile-msp-last-title { font-size: 15px; font-weight: 700; color: var(--ink); }
+  .mobile-msp-last-meta { font-size: 12px; color: var(--ink-3); margin-top: 3px; }
+  .mobile-msp-last-amt {
+    flex-shrink: 0;
+    font-family: var(--f-mono);
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--paid-ink);
+    white-space: nowrap;
+  }
+  .mobile-msp-last-amt.open { color: var(--warn-ink); }
+
+  /* Aylık katılım hedefi — mini halkalar */
+  .mobile-msp-goalcard {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 4px 16px 14px;
+    margin-bottom: 12px;
+  }
+  .mobile-msp-goalcard-lbl {
+    font-family: var(--f-mono);
+    font-size: 10.5px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--ink-3);
+    padding: 12px 0 4px;
+  }
+  .mobile-msp-mrings {
+    display: flex;
+    justify-content: space-between;
+    gap: 4px;
+    padding: 6px 0 2px;
+  }
+  .mobile-msp-mring {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+  }
+  .mobile-msp-mring-svg { position: relative; }
+  .mobile-msp-mring-n {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--f-mono);
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--ink);
+  }
+  .mobile-msp-mring-l { font-size: 10.5px; color: var(--ink-3); }
+  .mobile-msp-mring.is-now .mobile-msp-mring-l { color: var(--accent-ink); font-weight: 700; }
+
+  /* Son hareketler — kompakt liste */
+  .mobile-msp-mvlist {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 12px;
+    background: var(--surface);
+    border: 1px solid var(--line);
     border-radius: 14px;
     overflow: hidden;
+  }
+  .mobile-msp-mvrow {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    padding: 11px 14px;
+    border-bottom: 1px solid var(--line);
+  }
+  .mobile-msp-mvrow:last-child { border-bottom: 0; }
+  .mobile-msp-mvrow-ic {
+    flex-shrink: 0;
+    width: 30px;
+    height: 30px;
+    border-radius: 9px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--surface-2);
+    color: var(--ink-3);
+  }
+  .mobile-msp-mvrow-ic.t-paid { background: var(--paid-2); color: var(--paid-ink); }
+  .mobile-msp-mvrow-ic.t-open { background: var(--warn-2); color: var(--warn-ink); }
+  .mobile-msp-mvrow-ic.t-partial { background: var(--amber-2); color: var(--amber-ink); }
+  .mobile-msp-mvrow-ic.t-scheduled,
+  .mobile-msp-mvrow-ic.t-accent { background: var(--accent-2); color: var(--accent-ink); }
+  .mobile-msp-mvrow-ic.t-muted { background: var(--surface-2); color: var(--ink-3); }
+  .mobile-msp-mvrow-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .mobile-msp-mvrow-title {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--ink);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .mobile-msp-mvrow-meta {
+    font-size: 11.5px;
+    color: var(--ink-3);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .mobile-msp-mvrow-amt {
+    flex-shrink: 0;
+    font-family: var(--f-mono);
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--ink-2);
+    font-variant-numeric: tabular-nums;
+  }
+  .mobile-msp-mvrow-amt.open { color: var(--warn-ink); }
+  .mobile-msp-mvrow-amt.neutral { color: var(--ink-2); }
+
+  /* İletişim listesi */
+  .mobile-msp-info {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    overflow: hidden;
+    margin-bottom: 12px;
   }
   .mobile-msp-info-row {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 0 16px;
-    min-height: 46px;
-    border-bottom: 1px solid var(--ink-4);
+    gap: 10px;
+    padding: 0 14px;
+    min-height: 48px;
+    border-bottom: 1px solid var(--line);
   }
   .mobile-msp-info-row:last-child { border-bottom: 0; }
-  .mobile-msp-info-label {
-    flex: 0 0 auto;
-    font-size: 14px;
-    color: var(--ink-2);
-  }
-  .mobile-msp-info-value {
-    flex: 1 1 auto;
+  .mobile-msp-info-ic { color: var(--ink-3); display: flex; flex-shrink: 0; }
+  .mobile-msp-info-k { font-size: 13.5px; color: var(--ink-2); }
+  .mobile-msp-info-v {
+    margin-left: auto;
     text-align: right;
-    font-size: 14px;
+    font-size: 13.5px;
     font-weight: 500;
     color: var(--ink);
     word-break: break-word;
   }
-  .mobile-msp-rows-empty {
-    padding: 14px 16px;
-    font-size: 14px;
-    color: var(--ink-3);
-  }
+  .mobile-msp-info-empty { padding: 14px; font-size: 13.5px; color: var(--ink-3); }
+
+  /* Not */
   .mobile-msp-note {
     background: var(--surface);
-    border: 1px solid var(--ink-4);
+    border: 1px solid var(--line);
     border-radius: 14px;
-    padding: 12px 16px;
-    font-size: 14px;
+    padding: 12px 14px;
+    font-size: 13.5px;
     line-height: 1.5;
     color: var(--ink);
     white-space: pre-wrap;
     word-break: break-word;
+    margin-bottom: 12px;
   }
+
+  .mobile-msp-empty {
+    padding: 28px 16px;
+    text-align: center;
+    color: var(--ink-3);
+    font-size: 13.5px;
+  }
+
+  /* ── Ekstre satırları (Dersler · Satışlar · Hareketler) ── */
+  .mobile-msp-chips {
+    display: flex;
+    gap: 7px;
+    margin-bottom: 14px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding-bottom: 2px;
+  }
+  .mobile-msp-chips::-webkit-scrollbar { display: none; }
+  .mobile-msp-chip {
+    flex: 0 0 auto;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    cursor: pointer;
+    border-radius: 999px;
+    padding: 7px 12px;
+    font-family: var(--f-sans);
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--ink-2);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+    min-height: 34px;
+  }
+  .mobile-msp-chip.on { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+  .mobile-msp-chip-n {
+    font-size: 10.5px;
+    font-weight: 700;
+    opacity: 0.65;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .mobile-msp-grp { margin-bottom: 18px; }
+  .mobile-msp-grp-lbl {
+    font-family: var(--f-mono);
+    font-size: 10.5px;
+    font-weight: 600;
+    color: var(--ink-3);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    padding: 0 2px 8px;
+  }
+  .mobile-msp-stmt-grp { display: flex; flex-direction: column; }
+  .mobile-msp-stmt {
+    display: grid;
+    grid-template-columns: 42px 1fr auto;
+    align-items: center;
+    gap: 14px;
+    padding: 13px 4px;
+    border-bottom: 1px solid var(--line);
+  }
+  .mobile-msp-stmt:last-child { border-bottom: 0; }
+  .mobile-msp-stmt-date {
+    text-align: center;
+    font-family: var(--f-mono);
+    color: var(--ink-2);
+    line-height: 1;
+  }
+  .mobile-msp-stmt-date b { display: block; font-size: 19px; font-weight: 700; color: var(--ink); }
+  .mobile-msp-stmt-date span {
+    font-size: 10px;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    letter-spacing: 0.04em;
+  }
+  .mobile-msp-stmt-mid { min-width: 0; }
+  .mobile-msp-stmt-title { font-size: 14.5px; font-weight: 600; color: var(--ink); }
+  .mobile-msp-stmt-sub {
+    font-size: 12px;
+    color: var(--ink-3);
+    margin-top: 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .mobile-msp-stmt-right {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+  }
+  .mobile-msp-stmt-amt {
+    font-family: var(--f-mono);
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+  .mobile-msp-stmt-amt.open { color: var(--warn-ink); }
+  .mobile-msp-stmt-amt.credit { color: var(--paid-ink); }
 
   /* Error */
   .mobile-msp-error {
     background: color-mix(in oklch, #c0392b 10%, var(--surface));
-    border: 1px solid color-mix(in oklch, #c0392b 30%, var(--ink-4));
+    border: 1px solid color-mix(in oklch, #c0392b 30%, var(--line));
     color: #c0392b;
     border-radius: 12px;
     padding: 10px 14px;
     font-size: 14px;
+    margin-bottom: 12px;
   }
 
   /* Skeleton */
   .mobile-msp-skel {
     background: var(--surface-2);
-    border-radius: 14px;
+    border-radius: 12px;
     animation: mobile-msp-skel-pulse 1.4s ease-in-out infinite;
   }
-  .mobile-msp-skel-hero     { height: 68px; }
-  .mobile-msp-skel-finance  { height: 92px; }
-  .mobile-msp-skel-actions  { height: 52px; }
-  .mobile-msp-skel-activity { height: 220px; }
-  .mobile-msp-skel-info     { height: 140px; }
+  .mobile-msp-hd .mobile-msp-skel { background: rgba(255, 255, 255, 0.22); }
+  .mobile-msp-skel-id   { height: 42px; margin-bottom: 18px; }
+  .mobile-msp-skel-bal  { height: 62px; margin-bottom: 16px; }
+  .mobile-msp-skel-acts { height: 48px; }
   @keyframes mobile-msp-skel-pulse {
     0%, 100% { opacity: 0.55; }
     50%       { opacity: 0.85; }
