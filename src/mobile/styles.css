@@ -3437,52 +3437,61 @@
   }
 
   .mobile-students-topbar {
+    position: sticky;
+    top: 0;
+    z-index: 6;
     display: flex;
-    align-items: center;
+    align-items: flex-end;
     justify-content: space-between;
-    gap: 12px;
-    padding: 12px 12px 4px 16px;
+    gap: 10px;
+    padding: 10px 12px 10px 16px;
+    background: color-mix(in oklch, var(--bg) 88%, transparent);
+    backdrop-filter: saturate(180%) blur(10px);
+    -webkit-backdrop-filter: saturate(180%) blur(10px);
+    border-bottom: 1px solid var(--line);
   }
 
   .mobile-students-topbar-title {
     display: flex;
     align-items: baseline;
-    gap: 8px;
+    gap: 9px;
     min-width: 0;
   }
 
   .mobile-students-topbar-title h1 {
     font-family: var(--f-sans);
-    font-size: 26px;
-    font-weight: 600;
+    font-size: 27px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
     color: var(--ink);
     margin: 0;
-    line-height: 1.2;
+    line-height: 1;
   }
 
-  .mobile-students-toolbar {
-    position: sticky;
-    top: 0;
-    z-index: 5;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin: 4px 16px 12px;
-    padding: 4px 0;
-    background: var(--bg);
+  .mobile-students-topbar-count {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink-3);
+    font-variant-numeric: tabular-nums;
+    background: var(--surface-2);
+    padding: 2px 9px;
+    border-radius: 999px;
+  }
+
+  /* Arama alanı — triyaj listesinin üstünde, scroll ile birlikte kayar. */
+  .mobile-students-searchwrap {
+    padding: 12px 16px 0;
   }
 
   .mobile-students-search {
-    flex: 1;
-    min-width: 0;
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 0 12px;
-    height: 40px;
+    gap: 9px;
+    height: 42px;
+    padding: 0 13px;
     background: var(--surface);
     border: 1px solid var(--line-2);
-    border-radius: 10px;
+    border-radius: 12px;
     color: var(--ink-3);
   }
 
@@ -3496,155 +3505,21 @@
     height: 100%;
     padding: 0;
     font-family: var(--f-sans);
+    font-size: 15px;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+
+  .mobile-students-search input::-webkit-search-decoration,
+  .mobile-students-search input::-webkit-search-cancel-button,
+  .mobile-students-search input::-webkit-search-results-button,
+  .mobile-students-search input::-webkit-search-results-decoration {
+    -webkit-appearance: none;
+    display: none;
   }
 
   .mobile-students-search input::placeholder {
     color: var(--ink-3);
-  }
-
-  .mobile-students-filter-chip {
-    flex: 0 0 auto;
-    height: 40px;
-    padding: 0 12px;
-    background: var(--surface);
-    border: 1px solid var(--line-2);
-    border-radius: 10px;
-    color: var(--ink-2);
-    font-family: var(--f-sans);
-    font-size: 12px;
-    font-weight: 500;
-    cursor: pointer;
-    white-space: nowrap;
-  }
-  .mobile-students-filter-chip:active {
-    background: var(--surface-2);
-  }
-  .mobile-students-filter-chip.is-active {
-    background: var(--sage-2);
-    border-color: var(--sage);
-    color: var(--sage-ink);
-  }
-
-  .mobile-students-sort-wrap {
-    position: relative;
-    flex: 0 0 auto;
-  }
-  .mobile-students-sort {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    height: 40px;
-    padding: 0 10px;
-    background: var(--surface);
-    border: 1px solid var(--line-2);
-    border-radius: 10px;
-    color: var(--ink-2);
-    font-family: var(--f-sans);
-    font-size: 12px;
-    font-weight: 500;
-    cursor: pointer;
-    white-space: nowrap;
-  }
-  .mobile-students-sort:active {
-    background: var(--surface-2);
-  }
-  .mobile-students-sort-caret {
-    font-size: 10px;
-    color: var(--ink-3);
-  }
-  .mobile-students-sort-menu {
-    position: absolute;
-    top: calc(100% + 4px);
-    right: 0;
-    z-index: 10;
-    min-width: 180px;
-    background: var(--surface);
-    border: 1px solid var(--line-2);
-    border-radius: 10px;
-    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
-    padding: 4px;
-    display: flex;
-    flex-direction: column;
-  }
-  .mobile-students-sort-item {
-    text-align: left;
-    padding: 10px 12px;
-    background: transparent;
-    border: 0;
-    border-radius: 8px;
-    color: var(--ink);
-    font-family: var(--f-sans);
-    font-size: 14px;
-    cursor: pointer;
-  }
-  .mobile-students-sort-item:active {
-    background: var(--surface-2);
-  }
-  .mobile-students-sort-item.is-selected {
-    background: var(--sage-2);
-    color: var(--sage-ink);
-    font-weight: 600;
-  }
-
-  /* KPI yatay scroll şeridi (Students page-spesifik) */
-  .mobile-students-kpi {
-    padding: 0 0 14px;
-  }
-
-  .mobile-students-kpi-strip {
-    display: flex;
-    gap: 10px;
-    overflow-x: auto;
-    scroll-snap-type: x mandatory;
-    scroll-padding-left: 16px;
-    padding: 0 16px;
-    -ms-overflow-style: none;
-    scrollbar-width: none;
-  }
-
-  .mobile-students-kpi-strip::-webkit-scrollbar {
-    display: none;
-  }
-
-  .mobile-students-kpi-strip .mobile-kpi-card {
-    flex: 0 0 calc(50% - 5px);
-    scroll-snap-align: start;
-    padding: 14px;
-  }
-
-  .mobile-students-kpi-strip button.mobile-kpi-card {
-    text-align: left;
-    font: inherit;
-    color: inherit;
-    cursor: pointer;
-  }
-  .mobile-students-kpi-strip .mobile-kpi-card.is-tappable:active {
-    background: var(--surface-2);
-  }
-  .mobile-students-kpi-strip .mobile-kpi-card.is-selected {
-    border-color: var(--sage);
-    box-shadow: 0 0 0 1px var(--sage) inset;
-    background: var(--sage-2);
-  }
-
-  .mobile-students-kpi .mobile-kpi-label {
-    margin-bottom: 8px;
-    font-size: 10px;
-  }
-
-  .mobile-students-kpi-delta {
-    font-variant-numeric: tabular-nums;
-  }
-  .mobile-students-kpi-delta.tone-up    { color: var(--sage, var(--ink-2)); }
-  .mobile-students-kpi-delta.tone-down  { color: var(--warn); }
-  .mobile-students-kpi-delta.tone-flat  { color: var(--ink-3); }
-
-  /* Liste */
-  .mobile-students-list {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    padding: 0 12px;
   }
 
   .mobile-students-state {
@@ -3668,339 +3543,199 @@
     color: var(--ink-3);
   }
 
-  /* Kart */
-  .mobile-students-card {
-    position: relative;
-    display: grid;
-    grid-template-columns: 1fr auto auto;
-    align-items: center;
-    gap: 10px;
+  /* ── Triyaj grupları (açılır/kapanır öğrenci listesi) ── */
+  .mobile-tri-groups {
+    display: flex;
+    flex-direction: column;
+    padding-top: 4px;
+  }
+
+  .mobile-tri-group {
+    margin: 12px 16px 0;
+  }
+
+  .mobile-tri-group-head {
     width: 100%;
-    padding: 12px 12px 12px 16px;
-    background: var(--surface);
-    border: 1px solid var(--line-2);
-    border-radius: 12px;
-    color: var(--ink);
-    text-align: left;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 5px 4px 9px;
+    background: transparent;
+    border: 0;
     cursor: pointer;
+  }
+
+  .mobile-tri-group-ic {
+    display: inline-flex;
+    width: 22px;
+    height: 22px;
+    border-radius: 7px;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .mobile-tri-group-head.mobile-tri-tone-warn .mobile-tri-group-ic {
+    background: var(--warn-2);
+    color: var(--warn-ink);
+  }
+  .mobile-tri-group-head.mobile-tri-tone-amber .mobile-tri-group-ic {
+    background: var(--amber-2);
+    color: var(--amber-ink);
+  }
+  .mobile-tri-group-head.mobile-tri-tone-accent .mobile-tri-group-ic {
+    background: var(--accent-2);
+    color: var(--accent-ink);
+  }
+  .mobile-tri-group-head.mobile-tri-tone-mute .mobile-tri-group-ic {
+    background: var(--surface-2);
+    color: var(--ink-3);
+  }
+
+  .mobile-tri-group-label {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--ink-2);
+  }
+
+  .mobile-tri-group-n {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--ink-3);
+    background: var(--surface-2);
+    padding: 1px 7px;
+    border-radius: 999px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .mobile-tri-group-chev {
+    color: var(--ink-3);
+    margin-left: auto;
+    transition: transform 0.25s ease;
+  }
+  .mobile-tri-group.is-collapsed .mobile-tri-group-chev {
+    transform: rotate(-90deg);
+  }
+
+  /* CSS grid yüksekliği ile JS-siz yumuşak katlanma. */
+  .mobile-tri-group-body {
+    display: grid;
+    grid-template-rows: 1fr;
+    transition: grid-template-rows 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .mobile-tri-group.is-collapsed .mobile-tri-group-body {
+    grid-template-rows: 0fr;
+  }
+  .mobile-tri-group-body > div {
+    overflow: hidden;
     min-height: 0;
   }
-  .mobile-students-card:active {
+
+  .mobile-tri-group-card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    overflow: hidden;
+  }
+
+  /* Öğrenci satırı */
+  .mobile-tri-row {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 11px 13px;
+    background: transparent;
+    border: 0;
+    border-top: 1px solid var(--line);
+    cursor: pointer;
+    text-align: left;
+  }
+  .mobile-tri-row:first-child {
+    border-top: 0;
+  }
+  .mobile-tri-row:active {
     background: var(--surface-2);
   }
 
-  /* Sol kenar tone bandı (devam durumu) */
-  .mobile-students-card::before {
-    content: '';
-    position: absolute;
-    left: 0;
-    top: 10px;
-    bottom: 10px;
-    width: 3px;
-    border-radius: 0 2px 2px 0;
-    background: var(--ink-4);
-  }
-  .mobile-students-card.mobile-students-att-high::before    { background: var(--sage, var(--accent)); }
-  .mobile-students-card.mobile-students-att-medium::before  { background: var(--accent); }
-  .mobile-students-card.mobile-students-att-low::before     { background: var(--ink-3); }
-  .mobile-students-card.mobile-students-att-absent::before  { background: var(--warn); }
-  .mobile-students-card.mobile-students-att-inactive::before { background: var(--ink-4); }
-  .mobile-students-card.mobile-students-att-new::before     { background: var(--accent); opacity: 0.5; }
-
-  .mobile-students-card.is-inactive {
-    opacity: 0.6;
-  }
-
-  .mobile-students-card-lead {
+  .mobile-tri-avatar {
+    width: 38px;
+    height: 38px;
+    border-radius: 999px;
+    flex-shrink: 0;
     display: flex;
     align-items: center;
-    gap: 10px;
-    min-width: 0;
+    justify-content: center;
+    font-size: 14px;
+    font-weight: 700;
+    background: var(--surface-2);
+    color: var(--ink-2);
   }
+  .mobile-tri-avatar.mobile-tri-tone-high     { background: var(--paid-2);    color: var(--paid-ink); }
+  .mobile-tri-avatar.mobile-tri-tone-medium   { background: var(--accent-2);  color: var(--accent-ink); }
+  .mobile-tri-avatar.mobile-tri-tone-low      { background: var(--amber-2);   color: var(--amber-ink); }
+  .mobile-tri-avatar.mobile-tri-tone-absent   { background: var(--warn-2);    color: var(--warn-ink); }
+  .mobile-tri-avatar.mobile-tri-tone-inactive { background: var(--surface-2); color: var(--ink-3); }
+  .mobile-tri-avatar.mobile-tri-tone-new      { background: var(--accent-2);  color: var(--accent-ink); }
 
-  .mobile-students-card-identity {
+  .mobile-tri-row-body {
+    flex: 1;
     min-width: 0;
     display: flex;
     flex-direction: column;
     gap: 2px;
   }
 
-  .mobile-students-card-name {
-    display: flex;
-    align-items: baseline;
-    gap: 6px;
-    flex-wrap: wrap;
-    font-family: var(--f-sans);
+  .mobile-tri-row-name {
     font-size: 15px;
     font-weight: 600;
     color: var(--ink);
-    line-height: 1.2;
-  }
-
-  .mobile-students-card-nick {
-    font-size: 12px;
-    font-weight: 400;
-    color: var(--ink-3);
-  }
-
-  .mobile-students-card-inactive {
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.6px;
-    padding: 1px 6px;
-    border-radius: 4px;
-    background: var(--ink-4);
-    color: var(--ink-2);
-    font-weight: 500;
-  }
-
-  .mobile-students-card-sub {
-    font-size: 12px;
-    color: var(--ink-3);
-    line-height: 1.3;
+    display: flex;
+    align-items: baseline;
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  .mobile-students-card-tail {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 4px;
-    min-width: 0;
-  }
-
-  .mobile-students-fin-badge {
-    display: inline-block;
-    padding: 4px 8px;
-    border-radius: 6px;
-    font-size: 12px;
-    font-weight: 500;
-    font-variant-numeric: tabular-nums;
-    white-space: nowrap;
-  }
-
-  .mobile-students-fin-debt {
-    background: color-mix(in oklch, var(--warn) 14%, var(--surface));
-    color: var(--warn);
-  }
-
-  .mobile-students-fin-clear {
-    background: var(--surface-2);
+  .mobile-tri-row-nick {
+    font-size: 0.82em;
+    font-weight: 400;
     color: var(--ink-3);
-  }
-
-  .mobile-students-card-last {
-    font-size: 11px;
-    color: var(--ink-3);
-    font-variant-numeric: tabular-nums;
-  }
-
-  .mobile-students-card > svg {
-    color: var(--ink-3);
+    margin-left: 5px;
     flex-shrink: 0;
   }
 
-  /* ── Students filterbar ─────────────────────────────── */
-  .mobile-students-filterbar {
-    position: sticky;
-    top: 0;
-    z-index: 5;
+  .mobile-tri-row-sub {
+    font-size: 12.5px;
+    color: var(--ink-3);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mobile-tri-row-tail {
     display: flex;
     align-items: center;
-    gap: 8px;
-    margin: 4px 16px 12px;
-    padding: 4px 0;
-    background: var(--bg);
+    gap: 6px;
+    flex-shrink: 0;
+    color: var(--ink-4);
   }
 
-  .mobile-students-filter-input {
-    flex: 1 1 0;
-    min-width: 0;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 0 12px;
-    height: 40px;
-    background: var(--surface);
-    border: 1px solid var(--line-2);
-    border-radius: 10px;
-    color: var(--ink-3);
-  }
-
-  .mobile-students-filter-input input {
-    flex: 1;
-    min-width: 0;
-    width: 100%;
-    border: 0;
-    outline: 0;
-    background: transparent;
-    color: var(--ink);
-    height: 100%;
-    padding: 0;
-    font-family: var(--f-sans);
-    -webkit-appearance: none;
-    appearance: none;
-  }
-
-  .mobile-students-filter-input input::-webkit-search-decoration,
-  .mobile-students-filter-input input::-webkit-search-cancel-button,
-  .mobile-students-filter-input input::-webkit-search-results-button,
-  .mobile-students-filter-input input::-webkit-search-results-decoration {
-    -webkit-appearance: none;
-    display: none;
-  }
-
-  .mobile-students-filter-input input::placeholder {
-    color: var(--ink-3);
-  }
-
-  .mobile-students-iconbtn {
-    position: relative;
-    flex: 0 0 40px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 40px;
-    height: 40px;
-    background: var(--surface);
-    border: 1px solid var(--line-2);
-    border-radius: 10px;
-    color: var(--ink-2);
-    cursor: pointer;
-    padding: 0;
-  }
-
-  .mobile-students-iconbtn:active {
-    background: var(--surface-2);
-  }
-
-  .mobile-students-iconbtn.has-active {
-    border-color: var(--accent);
-    color: var(--accent);
-  }
-
-  .mobile-students-iconbtn.has-active::after {
-    content: '';
-    position: absolute;
-    top: 6px;
-    right: 6px;
-    width: 8px;
-    height: 8px;
-    background: var(--accent);
-    border-radius: 50%;
-    border: 1.5px solid var(--bg);
-  }
-
-  .mobile-students-reset-filter-btn {
-    margin-top: 12px;
-    padding: 8px 20px;
-    background: var(--surface);
-    border: 1px solid var(--line-2);
-    border-radius: 20px;
-    color: var(--ink-2);
-    font-family: var(--f-sans);
+  .mobile-tri-amt {
     font-size: 14px;
-    cursor: pointer;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
   }
-
-  .mobile-students-reset-filter-btn:active {
-    background: var(--surface-2);
+  .mobile-tri-amt.is-warn {
+    color: var(--warn-ink);
   }
-
-  /* ── Students filter/sort menu (iOS-style pull-down) ── */
-  .mobile-students-menu-scrim {
-    position: fixed;
-    inset: 0;
-    background: transparent;
-    z-index: 40;
-  }
-
-  .mobile-students-menu {
-    position: fixed;
-    z-index: 41;
-    min-width: 240px;
-    max-width: calc(100vw - 16px);
-    max-height: calc(100vh - 80px);
-    overflow-y: auto;
-    padding: 6px;
-    background: var(--surface);
-    border: 1px solid var(--line-2);
-    border-radius: 14px;
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.16), 0 2px 8px rgba(0, 0, 0, 0.08);
-    animation: mobile-students-menu-in 120ms ease-out;
-    transform-origin: top right;
-  }
-
-  @keyframes mobile-students-menu-in {
-    from { opacity: 0; transform: scale(0.96) translateY(-4px); }
-    to   { opacity: 1; transform: scale(1) translateY(0); }
-  }
-
-  .mobile-students-menu-title {
-    padding: 8px 10px 6px;
-    margin-bottom: 2px;
-    font-family: var(--f-sans);
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--ink-2);
-    border-bottom: 1px solid var(--line-2);
-  }
-
-  .mobile-students-menu-item {
-    display: flex;
-    align-items: center;
-    width: 100%;
-    text-align: left;
-    padding: 10px 10px;
-    background: transparent;
-    border: 0;
-    border-radius: 8px;
-    color: var(--ink);
-    font-family: var(--f-sans);
-    font-size: 15px;
-    cursor: pointer;
-    gap: 8px;
-  }
-
-  .mobile-students-menu-item:active {
-    background: var(--surface-2);
-  }
-
-  .mobile-students-menu-item.is-selected {
-    color: var(--sage-ink);
-  }
-
-  .mobile-students-menu-check {
-    flex: 0 0 16px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--sage-ink);
-  }
-
-  .mobile-students-menu-label {
-    flex: 1;
-    min-width: 0;
-  }
-
-  .mobile-students-menu-count {
-    font-size: 13px;
+  .mobile-tri-amt.is-mute {
     color: var(--ink-3);
     font-weight: 500;
-    margin-left: 8px;
-  }
-
-  .mobile-students-menu-item.is-selected .mobile-students-menu-count {
-    color: var(--sage-ink);
-    opacity: 0.75;
-  }
-
-  .mobile-students-menu-divider {
-    height: 1px;
-    background: var(--line-2);
-    margin: 6px 4px;
+    font-size: 13px;
   }
 
   /* ─── Mobile Menu (Faz F.2 — sağ alttaki tab'in açtığı sayfa) ─── */
