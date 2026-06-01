@@ -402,165 +402,72 @@
     margin: 6px 0 0 0;
   }
 
-  /* ---------- Finance summary (birleşik pano) ---------- */
+  /* ======================================================
+     Mobil Ana Sayfa — "B Temel" (design_handoff_mobile_home)
+     Başlık + hero (aylık tahsilat) + iki pill.
+     Bugünün dersleri ayrı bileşen (.mobile-agenda).
+     Renkler mevcut token'lardan; --accent-deep & --warn-ink :root'ta.
+     ====================================================== */
 
-  .mobile-finance {
-    padding: 4px 16px 16px;
+  /* gövde sarmalayıcı (safe-area top korunur) */
+  .mh-wrap { padding: calc(env(safe-area-inset-top) + 8px) 16px 0; }
+
+  /* başlık (tarih + bugünkü ders sayısı + profil) */
+  .mh-head {
+    padding: 12px 4px 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
   }
+  .mh-date { font-size: 12px; font-weight: 500; color: var(--ink-3); margin: 0 0 2px; }
+  .mh-hi { font-size: 20px; font-weight: 600; letter-spacing: -0.02em; color: var(--ink); margin: 0; }
 
-  .mobile-finance-card {
-    position: relative;
-    overflow: hidden;
-    background: var(--surface);
-    border: 1px solid var(--line-2);
-    border-radius: 16px;
-    padding: 18px 16px 16px;
-    box-shadow: 0 2px 8px oklch(0 0 0 / 0.04);
+  /* HERO: aylık tahsilat (sage gradient) */
+  .mh-hero {
+    background: linear-gradient(155deg, var(--accent) 0%, var(--accent-deep) 100%);
+    border-radius: 26px;
+    padding: 18px 20px;
+    color: var(--surface); position: relative; overflow: hidden;
+    box-shadow: 0 12px 28px -10px color-mix(in oklch, var(--accent) 50%, transparent);
     transition: opacity 200ms ease;
   }
-
-  .mobile-finance-card::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 3px;
-    background: linear-gradient(
-      90deg,
-      var(--accent) 0%,
-      color-mix(in oklch, var(--accent) 50%, transparent) 100%
-    );
+  .mh-hero.is-loading { opacity: 0.6; }
+  .mh-hero::after {
+    content: ''; position: absolute; right: -30px; top: -34px;
+    width: 140px; height: 140px; border-radius: 999px;
+    background: color-mix(in oklch, var(--surface) 8%, transparent);
   }
-
-  .mobile-finance-card.is-loading { opacity: 0.55; }
-
-  .mobile-finance-label {
-    font-family: var(--f-sans);
-    font-size: 11px;
-    font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 1.2px;
-    color: var(--ink-3);
-    margin: 0 0 10px 0;
+  .mh-hero-top { display: flex; justify-content: space-between; align-items: flex-start; position: relative; z-index: 1; }
+  .mh-hero-label { font-size: 11px; font-weight: 500; color: color-mix(in oklch, var(--surface) 82%, transparent); margin: 0 0 6px; }
+  .mh-hero-big {
+    font-family: var(--f-sans); font-size: 34px; font-weight: 600;
+    letter-spacing: -0.03em; line-height: 1; margin: 0; font-variant-numeric: tabular-nums;
   }
+  .mh-hero-sub { font-size: 12px; color: color-mix(in oklch, var(--surface) 82%, transparent); margin: 7px 0 0; position: relative; z-index: 1; }
+  .mh-hero-prog { height: 5px; background: color-mix(in oklch, var(--surface) 22%, transparent); border-radius: 999px; overflow: hidden; margin: 14px 0 0; position: relative; z-index: 1; }
+  .mh-hero-prog-fill { height: 100%; background: var(--surface); border-radius: 999px; transition: width 300ms ease; }
 
-  .mobile-finance-hero {
-    display: flex;
-    align-items: baseline;
-    gap: 8px;
-    flex-wrap: wrap;
-    line-height: 1;
+  /* iki mini pill: bekleyen tahsilat + haftalık doluluk */
+  .mh-pills { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 12px 0 8px; }
+  .mh-pill {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: 20px; padding: 13px 15px;
+    box-shadow: 0 1px 2px oklch(0.4 0.03 150 / 0.05);
+    transition: opacity 200ms ease;
   }
-
-  .mobile-finance-hero-value {
-    font-family: var(--f-sans);
-    font-size: 30px;
-    font-weight: 500;
-    color: var(--ink);
-    font-variant-numeric: tabular-nums;
-    line-height: 1;
+  .mh-pill.is-loading { opacity: 0.6; }
+  .mh-pill-label { font-size: 11px; font-weight: 500; color: var(--ink-3); margin: 0 0 7px; }
+  .mh-pill-val {
+    font-family: var(--f-sans); font-size: 21px; font-weight: 600; letter-spacing: -0.02em;
+    color: var(--ink); font-variant-numeric: tabular-nums; line-height: 1;
   }
-
-  .mobile-finance-hero-divider {
-    font-family: var(--f-sans);
-    font-size: 18px;
-    color: var(--ink-3);
+  .mh-pill.warn .mh-pill-val { color: var(--warn-ink); }
+  .mh-pill-tag {
+    display: inline-block; margin-top: 7px; font-size: 10px; font-weight: 600;
+    padding: 3px 8px; border-radius: 999px; background: var(--accent-2); color: var(--accent-ink);
     font-variant-numeric: tabular-nums;
   }
-
-  .mobile-finance-progress {
-    height: 4px;
-    background: var(--line-2);
-    border-radius: 2px;
-    overflow: hidden;
-    margin-top: 10px;
-  }
-
-  .mobile-finance-progress-fill {
-    height: 100%;
-    background: var(--accent);
-    border-radius: 2px;
-    transition: width 300ms ease;
-  }
-
-  .mobile-finance-context {
-    font-size: 12.5px;
-    color: var(--ink-2);
-    margin: 6px 0 0 0;
-  }
-
-  .mobile-finance-divider-line {
-    height: 1px;
-    background: var(--line-2);
-    margin: 14px -2px 14px;
-    opacity: 0.5;
-  }
-
-  .mobile-finance-secondary {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-  }
-
-  .mobile-finance-metric {
-    position: relative;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    min-width: 0;
-    background: var(--surface-2);
-    border-radius: 12px;
-    padding: 14px 14px 12px;
-  }
-
-  .mobile-finance-metric::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 2px;
-    background: var(--accent);
-  }
-
-  .mobile-finance-metric.warn::before {
-    background: var(--warn);
-  }
-
-  .mobile-finance-metric-head {
-    font-size: 11px;
-    font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    color: var(--ink-3);
-    line-height: 1.2;
-  }
-
-  .mobile-finance-metric-dot {
-    display: none;
-  }
-
-  .mobile-finance-metric-value {
-    font-family: var(--f-sans);
-    font-size: 18px;
-    font-weight: 600;
-    color: var(--ink);
-    font-variant-numeric: tabular-nums;
-    line-height: 1.2;
-    letter-spacing: -0.01em;
-  }
-
-  .mobile-finance-metric.warn .mobile-finance-metric-value {
-    color: var(--warn);
-  }
-
-  .mobile-finance-metric-sub {
-    font-size: 12px;
-    color: var(--ink-3);
-    line-height: 1.3;
-  }
+  .mh-pill.warn .mh-pill-tag { background: var(--warn-2); color: var(--warn-ink); }
 
   /* ---------- Agenda (home) ---------- */
 
