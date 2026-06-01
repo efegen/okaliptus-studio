@@ -42,6 +42,13 @@ function ChevronLeftIcon({ size = 22 }) {
     </svg>
   );
 }
+function ChevronRightIcon({ size = 18 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
 function MoreIcon({ size = 20 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -346,19 +353,18 @@ function MiniRing({ n, pct, label, now }) {
   );
 }
 
-function LastLessonCard({ lesson }) {
+function LastLessonCard({ lesson, onOpen }) {
   const st = lessonStatus(lesson);
   const dm = dayMon(lesson.starts_at);
   const d = new Date(lesson.starts_at);
   const time = `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-  const dur = lesson.duration_minutes ? `${lesson.duration_minutes} dk` : null;
-  const metaParts = [TR_WEEKDAYS[d.getDay()], time, dur, relativeDay(lesson.starts_at)].filter(Boolean);
+  const metaParts = [TR_WEEKDAYS[d.getDay()], time, relativeDay(lesson.starts_at)].filter(Boolean);
   const open = st.tone === 'open' || st.tone === 'partial';
   let right = null;
   if (open) right = <span className="mobile-msp-last-amt open">{fmtTL(parseMoney(lesson.remaining_receivable))}</span>;
   else if (st.tone === 'paid') right = <span className="mobile-msp-last-amt">Ödendi</span>;
   return (
-    <div className={'mobile-msp-last t-' + st.tone}>
+    <button type="button" className={'mobile-msp-last is-link t-' + st.tone} onClick={onOpen}>
       <div className="mobile-msp-last-cal"><b>{dm.d}</b><span>{dm.m}</span></div>
       <div className="mobile-msp-last-body">
         <div className="mobile-msp-last-top">
@@ -368,7 +374,8 @@ function LastLessonCard({ lesson }) {
         <div className="mobile-msp-last-meta">{metaParts.join(' · ')}</div>
       </div>
       {right}
-    </div>
+      <span className="mobile-msp-last-chev" aria-hidden="true"><ChevronRightIcon /></span>
+    </button>
   );
 }
 
@@ -505,7 +512,7 @@ function StatementGroup({ group, children }) {
 
 // ─── Tab content ──────────────────────────────────────────────────────────────
 
-function OverviewTab({ student, lastLesson, months, recent }) {
+function OverviewTab({ student, lastLesson, months, recent, onOpenLessons }) {
   const phone = student.phone ? formatPhoneTr(student.phone) : null;
   const birthday = student.birthday ? fmtShortDate(student.birthday) : null;
   const joined = fmtJoinedDate(student.joined_at);
@@ -515,7 +522,7 @@ function OverviewTab({ student, lastLesson, months, recent }) {
     <div className="mobile-msp-ov">
       <div className="mobile-msp-seclbl">Son katılım</div>
       {lastLesson ? (
-        <LastLessonCard lesson={lastLesson} />
+        <LastLessonCard lesson={lastLesson} onOpen={onOpenLessons} />
       ) : (
         <div className="mobile-msp-last is-empty">
           <div className="mobile-msp-last-cal"><b>—</b><span /></div>
@@ -820,7 +827,13 @@ function ProfileBody({ student, lessons, sales, onClose, onOpenPayment, onOpenSa
       <div className="mobile-msp-scroll" ref={scrollRef}>
         {error && <div className="mobile-msp-error" role="alert">{error}</div>}
         {tab === 'overview' && (
-          <OverviewTab student={student} lastLesson={lastLesson} months={months} recent={recent} />
+          <OverviewTab
+            student={student}
+            lastLesson={lastLesson}
+            months={months}
+            recent={recent}
+            onOpenLessons={() => setTab('lessons')}
+          />
         )}
         {tab === 'lessons' && <LessonsTab lessons={lessons} />}
         {tab === 'sales' && <SalesTab sales={sales} />}

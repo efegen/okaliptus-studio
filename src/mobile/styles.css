@@ -3106,13 +3106,24 @@
     display: flex;
     align-items: center;
     gap: 13px;
+    width: 100%;
     background: var(--surface);
     border: 1px solid var(--line);
     border-radius: 14px;
     padding: 12px 14px;
     margin-bottom: 12px;
+    font: inherit;
+    text-align: left;
+    color: inherit;
   }
   .mobile-msp-last.is-empty { border-style: dashed; }
+  .mobile-msp-last.is-link { cursor: pointer; }
+  .mobile-msp-last.is-link:active { background: var(--surface-2); }
+  .mobile-msp-last-chev {
+    flex-shrink: 0;
+    display: inline-flex;
+    color: var(--ink-4);
+  }
   .mobile-msp-last-cal {
     flex-shrink: 0;
     width: 46px;
@@ -3677,7 +3688,7 @@
   .mobile-tri-avatar.mobile-tri-tone-low      { background: var(--amber-2);   color: var(--amber-ink); }
   .mobile-tri-avatar.mobile-tri-tone-absent   { background: var(--warn-2);    color: var(--warn-ink); }
   .mobile-tri-avatar.mobile-tri-tone-inactive { background: var(--surface-2); color: var(--ink-3); }
-  .mobile-tri-avatar.mobile-tri-tone-new      { background: var(--accent-2);  color: var(--accent-ink); }
+  .mobile-tri-avatar.mobile-tri-tone-new      { background: oklch(0.93 0.03 245); color: oklch(0.45 0.08 245); }
 
   .mobile-tri-row-body {
     flex: 1;
@@ -3705,6 +3716,20 @@
     color: var(--ink-3);
     margin-left: 5px;
     flex-shrink: 0;
+  }
+
+  /* Pasif (arşivli) öğrenci için sönük etiket — ayrı bölüm yerine satır içinde. */
+  .mobile-tri-pasif-tag {
+    flex-shrink: 0;
+    margin-left: 6px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--ink-3);
+    background: var(--surface-2);
+    padding: 1px 6px;
+    border-radius: 999px;
   }
 
   .mobile-tri-row-sub {
@@ -5656,4 +5681,11 @@
   cursor: pointer; margin-top: 2px;
 }
 .mobile-mvd-collect:active { filter: brightness(0.95); }
+
+/* Ödeme alıcısı seçici — mobil dokunma boyutları (sheet'ler #mobile-palette-root içine render olur) */
+#mobile-palette-root .rbp { gap: 12px; }
+#mobile-palette-root .rbp-select {
+  min-height: 46px; border-radius: 12px; font-size: 16px; padding: 11px 13px;
+}
+#mobile-palette-root .rbp-note-warn { font-size: 13px; }
 

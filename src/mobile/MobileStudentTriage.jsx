@@ -8,17 +8,12 @@ import {
   fmtTL,
 } from './shared/studentMeta';
 
-// Triyaj ikonları — projenin Icon seti çoğunu karşılıyor; ₺ (lira) ve ay
-// (moon) sette yok, satır içi tanımlanır (referans tasarımla aynı çizim).
+// Triyaj ikonları — projenin Icon seti çoğunu karşılıyor; ₺ (lira) ve parıltı
+// (yeni öğrenci) sette yok, satır içi tanımlanır.
 const TriIcon = {
   Lira: (p) => (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}>
       <path d="M8 4v15c4 0 7-2.2 7-6M6.5 9.5l6-2.4M6.5 13l6-2.4" />
-    </svg>
-  ),
-  Moon: (p) => (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}>
-      <path d="M20 14.5A8 8 0 019.5 4 8 8 0 1020 14.5z" />
     </svg>
   ),
 };
@@ -39,6 +34,7 @@ function decorate(student) {
     isActive: student.is_active,
     totalDebt,
     hasDebt: totalDebt > 0.01,
+    hasLessons: !!student.last_lesson_at,
     att: getAttendanceStatus(student),
     initials: previewInitials(student.full_name),
     lastLabel: formatLastLessonShort(student.last_lesson_at),
@@ -54,48 +50,46 @@ function matchesQuery(s, q) {
   );
 }
 
-// Aramayla süzülmüş havuzu, birbirini dışlayan 4 triyaj grubuna böler (sırayla):
-// Borçlu → Aksayan → Düzenli gelenler → Pasif. Boş gruplar dışarıda çağrı
-// tarafından elenir.
+// Aramayla süzülmüş havuzu iki gruba böler: Borçlular (önce, tutara göre azalan)
+// ve Diğer öğrenciler (kalan herkes; aktifler ada göre üstte, pasifler en altta).
+// Yeni öğrenci / devam durumu ayrı bölüm değil — satır üzerinde işaretlenir.
 function buildTriageGroups(pool) {
-  const debtors = pool.filter(s => s.hasDebt).sort((a, b) => b.totalDebt - a.totalDebt);
+  const debtors = pool
+    .filter(s => s.hasDebt)
+    .sort((a, b) => b.totalDebt - a.totalDebt);
   const used = new Set(debtors.map(s => s.id));
-  const lapsed = pool.filter(s =>
-    !used.has(s.id) && s.isActive && (s.att.tone === 'absent' || s.att.tone === 'low'),
-  );
-  lapsed.forEach(s => used.add(s.id));
-  const regular = pool
-    .filter(s => !used.has(s.id) && s.isActive)
-    .sort((a, b) => trCmp(a.fullName, b.fullName));
-  regular.forEach(s => used.add(s.id));
-  const passive = pool.filter(s => !used.has(s.id));
+  const others = pool
+    .filter(s => !used.has(s.id))
+    .sort((a, b) => {
+      if (a.isActive !== b.isActive) return a.isActive ? -1 : 1; // pasifler en altta
+      return trCmp(a.fullName, b.fullName);
+    });
   return [
-    { key: 'debt', label: 'Borçlu', tone: 'warn', icon: TriIcon.Lira, items: debtors },
-    { key: 'lapsed', label: 'Aksayan', tone: 'amber', icon: Icon.Clock, items: lapsed },
-    { key: 'regular', label: 'Düzenli gelenler', tone: 'accent', icon: Icon.Check, items: regular },
-    { key: 'passive', label: 'Pasif', tone: 'mute', icon: TriIcon.Moon, items: passive },
+    { key: 'debt', label: 'Borçlular', tone: 'warn', icon: TriIcon.Lira, items: debtors },
+    { key: 'others', label: 'Diğer öğrenciler', tone: 'mute', icon: Icon.Users, items: others },
   ];
 }
 
-function TriageRow({ s, groupKey, onOpen }) {
+function TriageRow({ s, onOpen }) {
+  // Pasif öğrenci sönük (mute) avatar; aktiflerde devam tonu korunur.
+  const avatarTone = s.isActive ? s.att.tone : 'inactive';
   return (
     <button type="button" className="mobile-tri-row" onClick={() => onOpen(s.id)}>
-      <div className={'mobile-tri-avatar mobile-tri-tone-' + s.att.tone}>{s.initials}</div>
+      <div className={'mobile-tri-avatar mobile-tri-tone-' + avatarTone}>{s.initials}</div>
       <div className="mobile-tri-row-body">
         <div className="mobile-tri-row-name">
           {s.fullName}
           {s.nickname && <span className="mobile-tri-row-nick">"{s.nickname}"</span>}
+          {!s.isActive && <span className="mobile-tri-pasif-tag">pasif</span>}
         </div>
-        <div className="mobile-tri-row-sub">
-          {groupKey === 'passive' ? `${s.lastLabel} · son ders` : s.att.sub}
-        </div>
+        <div className="mobile-tri-row-sub">{s.att.sub}</div>
       </div>
       <div className="mobile-tri-row-tail">
         {s.hasDebt ? (
           <span className="mobile-tri-amt is-warn">{fmtTL(s.totalDebt)}</span>
-        ) : (
+        ) : s.hasLessons ? (
           <span className="mobile-tri-amt is-mute">{s.lastLabel}</span>
-        )}
+        ) : null}
         <Icon.ChevronR width="15" height="15" />
       </div>
     </button>
@@ -121,7 +115,7 @@ function TriageGroup({ group, collapsed, onToggle, onOpen }) {
         <div>
           <div className="mobile-tri-group-card">
             {group.items.map(s => (
-              <TriageRow key={s.id} s={s} groupKey={group.key} onOpen={onOpen} />
+              <TriageRow key={s.id} s={s} onOpen={onOpen} />
             ))}
           </div>
         </div>
