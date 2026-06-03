@@ -1,8 +1,9 @@
 /**
- * Frontend Smoke — StudentProfilePage
+ * Frontend Smoke — StudentProfilePage (A11 web yeniden tasarımı)
  *
- * - Render: API çağrıları yapılır, öğrenci ismi ekrana basılır
- * - FinanceStrip: net borç > 0 → "borç" görünür, =0 → "Güncel" / "Borç yok"
+ * - Render: API çağrıları yapılır, öğrenci ismi durum bandında basılır
+ * - Durum bandı: net borç > 0 → "Toplam borç" + tutar, =0 → "Güncel"
+ * - Sekmeler: Özet / Dersler / Satışlar / Hareketler (Paket sekmesi YOK — A11)
  * - Bakiye hareketleri sekmesi YOK (v1 sadeleştirme regression koruma)
  */
 import React from "react";
@@ -66,11 +67,27 @@ describe("StudentProfilePage", () => {
     expect(getStudentMovements).toHaveBeenCalledWith("1");
   });
 
-  it("shows debt headline when lesson_debt > 0", async () => {
-    setupMocks({ studentOverrides: { lesson_debt: "300" } });
+  it("shows 'Toplam borç' on the status band when a completed lesson is unpaid", async () => {
+    setupMocks({
+      lessons: [
+        {
+          id: "l1", status: "completed", mode: "online",
+          starts_at: "2026-05-01T10:00:00Z",
+          price_snapshot: "300", discount_amount: "0", net_amount: "300",
+          paid_amount: "0", remaining_receivable: "300", prepaid_package_id: null,
+        },
+      ],
+    });
     render(<StudentProfilePage studentId="1" onBack={() => {}} />);
     await screen.findByText(/Test Student/i);
-    expect(screen.getByText(/borç/i)).toBeInTheDocument();
+    expect(screen.getByText(/Toplam borç/i)).toBeInTheDocument();
+  });
+
+  it("shows 'Güncel' on the status band when there is no debt", async () => {
+    setupMocks();
+    render(<StudentProfilePage studentId="1" onBack={() => {}} />);
+    await screen.findByText(/Test Student/i);
+    expect(screen.getByText(/Güncel/i)).toBeInTheDocument();
   });
 
   it("does NOT render a 'Bakiye hareketleri' tab (v1 simplification)", async () => {
@@ -80,13 +97,14 @@ describe("StudentProfilePage", () => {
     expect(screen.queryByText(/bakiye hareketleri/i)).not.toBeInTheDocument();
   });
 
-  it("renders Paket as a top-level tab next to Kayıtlar/Dersler/Ürün Satışı/Hareketler", async () => {
+  it("renders A11 tabs (Özet/Dersler/Satışlar/Hareketler) with no Paket tab", async () => {
     setupMocks();
     render(<StudentProfilePage studentId="1" onBack={() => {}} />);
     await screen.findByText(/Test Student/i);
-    const tablist = document.querySelector('.sp-tabs');
+    const tablist = document.querySelector('.wp-tabs');
     expect(tablist).not.toBeNull();
-    const labels = Array.from(tablist.querySelectorAll('.sp-tab > span:first-child')).map(el => el.textContent);
-    expect(labels).toEqual(['Kayıtlar', 'Dersler', 'Ürün Satışı', 'Paket', 'Hareketler']);
+    const labels = Array.from(tablist.querySelectorAll('.wp-tab .wp-tab-l')).map(el => el.textContent);
+    expect(labels).toEqual(['Özet', 'Dersler', 'Satışlar', 'Hareketler']);
+    expect(labels).not.toContain('Paket');
   });
 });

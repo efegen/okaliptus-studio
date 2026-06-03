@@ -4,7 +4,7 @@
 
 import React from 'react';
 import { fmtTL } from './data';
-import { Icon, Avatar } from './layout';
+import { Icon } from './layout';
 import {
   getStudentById,
   getStudentLessons,
@@ -25,20 +25,6 @@ const LESSON_STATUS_TR = {
 };
 
 const LESSON_MODE_TR = { online: 'Online', onsite: 'Yüzyüze' };
-
-const ModeIcon = {
-  Onsite: (p) => (
-    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" {...p}>
-      <path d="M2.5 7L8 2l5.5 5v6.5h-3.5V9.5h-4V13.5H2.5V7z"/>
-    </svg>
-  ),
-  Online: (p) => (
-    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" {...p}>
-      <rect x="1.5" y="3" width="13" height="8.5" rx="1.5"/>
-      <path d="M5.5 14h5M8 11.5V14" strokeLinecap="round"/>
-    </svg>
-  ),
-};
 
 function money(v) { return parseFloat(v ?? '0') || 0; }
 
@@ -279,7 +265,7 @@ export function StudentProfilePage({ studentId, onBack, onOpenSale }) {
   const [productSales, setProductSales] = React.useState([]);
   const [packages, setPackages] = React.useState([]);
   const [movements, setMovements] = React.useState([]);
-  const [tab, setTab] = React.useState('all');
+  const [tab, setTab] = React.useState('stats');
   const [paymentOpen, setPaymentOpen] = React.useState(false);
   const [deleteOpen, setDeleteOpen] = React.useState(false);
 
@@ -348,12 +334,9 @@ export function StudentProfilePage({ studentId, onBack, onOpenSale }) {
 
   const fin = computeFinancials({ lessons, productSales, packages });
   const activity = buildActivity({ lessons, packages, productSales });
-  const activePackages = packages.filter(p => Number(p.remaining_credits || 0) > 0);
   const counts = {
-    all:       activity.length,
     lessons:   activity.filter(i => i.kind === 'lesson').length,
     products:  activity.filter(i => i.kind === 'sale').length,
-    packages:  activity.filter(i => i.kind === 'package').length,
     movements: movements.length,
   };
 
@@ -361,34 +344,29 @@ export function StudentProfilePage({ studentId, onBack, onOpenSale }) {
     <div className="page page-sp">
       <ProfileBackLink onBack={onBack} />
 
-      <ProfileHeader
+      <BandHeader
         student={student}
+        fin={fin}
         onPayment={() => setPaymentOpen(true)}
         onOpenSale={onOpenSale ? () => onOpenSale(student) : undefined}
         onSetActive={handleSetActive}
         onDelete={() => setDeleteOpen(true)}
       />
 
-      <FinanceStrip fin={fin} />
+      <Tabs tab={tab} setTab={setTab} counts={counts} />
 
-      <div className="sp-body">
-        <div className="sp-main">
-          <Tabs tab={tab} setTab={setTab} counts={counts} />
-
-          <div className="card sp-tab-card">
-            {tab === 'movements'
-              ? <MovementsView items={movements} />
-              : <ActivityView items={activity} tab={tab} />}
-          </div>
-        </div>
-
-        <aside className="sp-aside">
-          {activePackages.length > 0 && <ActivePackageCard packages={activePackages} />}
-          <ContactCard student={student} />
-          <NoteCard note={student.note} />
-          <SummaryCard student={student} lessons={lessons} />
-        </aside>
-      </div>
+      {tab === 'stats' ? (
+        <OverviewTab
+          student={student}
+          lessons={lessons}
+          sales={productSales}
+          movements={movements}
+        />
+      ) : tab === 'movements' ? (
+        <div className="card sp-tab-card"><MovementsView items={movements} /></div>
+      ) : (
+        <div className="card sp-tab-card"><ActivityView items={activity} tab={tab} /></div>
+      )}
 
       {paymentOpen && (
         <ReceivePaymentModal
@@ -421,81 +399,108 @@ function ProfileBackLink({ onBack }) {
   );
 }
 
-// ─── Identity header ──────────────────────────────────────────────────────────
+// ─── A11 durum bandı + Özet (web yeniden tasarımı) ────────────────────────────
 
-function ProfileHeader({ student, onPayment, onOpenSale, onSetActive, onDelete }) {
-  const modeMeta = student.preferred_mode === 'onsite'
-    ? { icon: ModeIcon.Onsite, text: 'Yüzyüze tercih' }
-    : student.preferred_mode === 'online'
-      ? { icon: ModeIcon.Online, text: 'Online tercih' }
-      : null;
+// A11 (devir paketi) ikon seti — durum bandı, Özet kartları ve iletişim için.
+// Liste sekmeleri hâlâ layout'tan gelen `Icon`'u kullanır.
+const G = {
+  pay:    (p) => (<svg viewBox="0 0 16 16" fill="none" {...p}><rect x="1.5" y="3" width="13" height="10" rx="1.6" stroke="currentColor" strokeWidth="1.4"/><path d="M1.5 6.5h13" stroke="currentColor" strokeWidth="1.4"/><path d="M4 10h3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>),
+  cart:   (p) => (<svg viewBox="0 0 16 16" fill="none" {...p}><path d="M1.5 2.5h1.6l1.5 7.4a1.3 1.3 0 001.3 1h5a1.3 1.3 0 001.3-1l.9-4.6H4.2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/><circle cx="6.5" cy="13.5" r="1" fill="currentColor"/><circle cx="11.5" cy="13.5" r="1" fill="currentColor"/></svg>),
+  online: (p) => (<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" {...p}><rect x="1.5" y="3" width="13" height="8.5" rx="1.5"/><path d="M5.5 14h5M8 11.5V14" strokeLinecap="round"/></svg>),
+  onsite: (p) => (<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" {...p}><path d="M2.5 7L8 2l5.5 5v6.5h-3.5V9.5h-4V13.5H2.5V7z"/></svg>),
+  phone:  (p) => (<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" {...p}><path d="M4.5 2h2l1 3-1.3.9a8 8 0 003.5 3.5l.9-1.3 3 1v2a1.3 1.3 0 01-1.5 1.3A11 11 0 013.2 4.5 1.3 1.3 0 014.5 2z" strokeLinejoin="round"/></svg>),
+  mail:   (p) => (<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" {...p}><rect x="1.5" y="3" width="13" height="10" rx="1.5"/><path d="M2.5 4.5L8 9l5.5-4.5" strokeLinecap="round"/></svg>),
+  cake:   (p) => (<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" {...p}><path d="M2.5 13.5h11v-4a1.3 1.3 0 00-1.3-1.3H3.8A1.3 1.3 0 002.5 9.5v4z" strokeLinejoin="round"/><path d="M8 5V3M5.5 5.5V4M10.5 5.5V4M2.5 10.5h11" strokeLinecap="round"/></svg>),
+  cal:    (p) => (<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" {...p}><rect x="2" y="3" width="12" height="11" rx="1.5"/><path d="M2 6h12M5.5 1.8V4M10.5 1.8V4" strokeLinecap="round"/></svg>),
+  more:   (p) => (<svg viewBox="0 0 16 16" fill="currentColor" {...p}><circle cx="8" cy="3.5" r="1.2"/><circle cx="8" cy="8" r="1.2"/><circle cx="8" cy="12.5" r="1.2"/></svg>),
+};
+const MODE_ICON = { online: G.online, onsite: G.onsite };
+const WD = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt'];
 
-  const meta = [
-    student.phone ? { icon: Icon.Phone, text: student.phone } : null,
-    student.email ? { icon: Icon.Mail,  text: student.email } : null,
-    student.joined_at
-      ? { icon: Icon.Calendar, text: `Üye: ${fmtDate(student.joined_at)}` }
-      : null,
-    student.birthday
-      ? { icon: Icon.Cake, text: fmtDate(student.birthday, { year: false }) }
-      : null,
-    modeMeta,
-  ].filter(Boolean);
+// ── Tarih yardımcıları (A11 kartları için, gerçek "now" ile) ──
+function dayStart(x) { const d = new Date(x); d.setHours(0, 0, 0, 0); return d; }
+function fmtDayLong(iso, { withTime = false } = {}) {
+  const d = new Date(iso);
+  let s = WD[d.getDay()] + ' · ' + d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' });
+  if (withTime) s += ' · ' + d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+  return s;
+}
+function agoLabel(iso) {
+  const n = Math.round((dayStart(new Date()) - dayStart(new Date(iso))) / 86_400_000);
+  if (n <= 0) return 'bugün';
+  if (n === 1) return 'dün';
+  if (n < 7) return n + ' gün önce';
+  if (n < 14) return '1 hafta önce';
+  if (n < 30) return Math.floor(n / 7) + ' hafta önce';
+  return Math.floor(n / 30) + ' ay önce';
+}
+function inDaysLabel(iso) {
+  const n = Math.round((dayStart(new Date(iso)) - dayStart(new Date())) / 86_400_000);
+  if (n <= 0) return 'bugün';
+  if (n === 1) return 'yarın';
+  if (n < 7) return n + ' gün sonra';
+  return Math.floor(n / 7) + ' hafta sonra';
+}
+
+function Initials({ name }) {
+  const txt = (name || '').split(' ').filter(Boolean).map(w => w[0]).slice(0, 2).join('');
+  return txt.toLocaleUpperCase('tr-TR') || '?';
+}
+
+function Badge({ tone, children }) {
+  return <span className={'wp-badge t-' + tone}>{children}</span>;
+}
+
+// Ders durum + ödeme tonu (A11 kart/rozet için).
+function lessonTone(l) {
+  if (l.status === 'scheduled') return { label: 'Planlı', tone: 'scheduled' };
+  if (l.status === 'cancelled') return { label: 'İptal', tone: 'neutral' };
+  if (l.status === 'no_show')   return { label: 'Gelmedi', tone: 'neutral' };
+  if (l.prepaid_package_id)     return { label: 'Krediden', tone: 'credit' };
+  const remaining = money(l.remaining_receivable);
+  const paid = money(l.paid_amount);
+  if (remaining > 0.01 && paid > 0.01) return { label: 'Kısmi', tone: 'partial' };
+  if (remaining > 0.01)                return { label: 'Açık', tone: 'open' };
+  return { label: 'Ödendi', tone: 'paid' };
+}
+
+// ─── Durum renkli başlık bandı (A11) ──────────────────────────────────────────
+function BandHeader({ student, fin, onPayment, onOpenSale, onSetActive, onDelete }) {
+  const isDebt = fin.totalDebt > 0.01;
+  const breakdown = isDebt
+    ? [
+        fin.lessonDebt > 0.01  ? `${fmtTL(fin.lessonDebt)} ders` : null,
+        fin.productDebt > 0.01 ? `${fmtTL(fin.productDebt)} ürün` : null,
+      ].filter(Boolean).join(' · ')
+    : 'Ödenmemiş borç yok';
+
+  const modeText = student.preferred_mode === 'onsite' ? 'Yüzyüze tercih'
+                 : student.preferred_mode === 'online' ? 'Online tercih'
+                 : null;
 
   return (
-    <header className="sp-header">
-      <div className="sp-id">
-        <Avatar name={student.full_name} size="xl" soft />
-        <div className="sp-id-text">
-          <div className="sp-id-row">
-            <h1 className="sp-name">{student.full_name}</h1>
-            {student.nickname && (
-              <span className="sp-nick" title="Lakap">“{student.nickname}”</span>
-            )}
-            <span className={'sp-status ' + (student.is_active ? 'sp-status-on' : 'sp-status-off')}>
-              <span className="sp-status-dot" />
-              {student.is_active ? 'Aktif' : 'Pasif'}
-            </span>
-          </div>
-          {meta.length > 0 && (
-            <div className="sp-meta">
-              {meta.map((m, i) => {
-                const I = m.icon;
-                return (
-                  <span key={i} className="sp-meta-item">
-                    <I width="13" height="13" />
-                    <span>{m.text}</span>
-                  </span>
-                );
-              })}
-
+    <div className={'wp-banner ' + (isDebt ? 'debt' : 'clear')}>
+      <div className="wp-banner-top">
+        <div className="wp-id light">
+          <div className="wp-av light"><Initials name={student.full_name} /></div>
+          <div>
+            <div className="wp-id-row">
+              <h1 className="wp-name light">{student.full_name}</h1>
+              <span className="wp-status light"><i />{student.is_active ? 'Aktif' : 'Pasif'}</span>
             </div>
-          )}
+            <div className="wp-id-meta light">
+              {student.phone && <span>{student.phone}</span>}
+              {student.phone && modeText && <span>·</span>}
+              {modeText && <span>{modeText}</span>}
+            </div>
+          </div>
         </div>
-      </div>
 
-      <div className="sp-actions">
-        <button className="btn btn-ghost" type="button" title="Bu turda eklenmedi">
-          <Icon.Plus width="14" height="14" /> Ders ekle
-        </button>
-        <button className="btn btn-accent" type="button" onClick={onPayment}>
-          Ödeme al
-        </button>
         <div className="sp-more">
-          <button className="iconbtn sp-more-btn" aria-label="Diğer işlemler">
-            <Icon.ChevronDown width="14" height="14" />
+          <button className="wp-icbtn light" type="button" aria-label="Diğer işlemler">
+            <G.more width="16" height="16" />
           </button>
           <div className="sp-more-menu">
-            <button
-              type="button"
-              className="sp-more-item"
-              onClick={onOpenSale}
-              disabled={!onOpenSale}
-            >
-              Ürün satışı ekle
-            </button>
-            <button type="button" className="sp-more-item">Paket oluştur</button>
-            <button type="button" className="sp-more-item">Düzenle</button>
             <button
               type="button"
               className="sp-more-item"
@@ -504,78 +509,289 @@ function ProfileHeader({ student, onPayment, onOpenSale, onSetActive, onDelete }
               {student.is_active ? 'Pasife al' : 'Tekrar aktif et'}
             </button>
             {!student.is_active && (
-              <button
-                type="button"
-                className="sp-more-item sp-more-item-warn"
-                onClick={onDelete}
-              >
+              <button type="button" className="sp-more-item sp-more-item-warn" onClick={onDelete}>
                 Tamamen sil
               </button>
             )}
           </div>
         </div>
       </div>
-    </header>
-  );
-}
 
-// ─── Finance strip ────────────────────────────────────────────────────────────
-// Headline is *always* a single number (net debt) — no co-equal "overpayment"
-// to confuse. The breakdown line below shows how the net was computed so the
-// operator can still see the parts. Active package is the only right-side
-// extra, since it's a separate concept (credits, not cash).
-
-function FinanceStrip({ fin }) {
-  const breakdown = [];
-  if (fin.lessonDebt > 0.01)  breakdown.push(`${fmtTL(fin.lessonDebt)} ders`);
-  if (fin.productDebt > 0.01) breakdown.push(`${fmtTL(fin.productDebt)} ürün`);
-  if (breakdown.length === 0) breakdown.push('Borç / alacak yok');
-
-  return (
-    <section className={'sp-fin sp-fin-' + fin.state}>
-      <div className="sp-fin-lead">
-        <div className="eyebrow">Finansal Durum</div>
-        <div className="sp-fin-headline">{fin.headline}</div>
-        <div className="sp-fin-breakdown">{breakdown.join(' · ')}</div>
-      </div>
-
-      {fin.activeCredits > 0 && (
-        <div className="sp-fin-extras">
-          <div className="sp-fin-ex sp-fin-ex-neutral">
-            <div className="sp-fin-ex-k">Aktif paket</div>
-            <div className="sp-fin-ex-v">
-              {fin.activeCredits} ders · {fmtTL(fin.activeCreditValue)}
-            </div>
-          </div>
+      <div className="wp-banner-bottom">
+        <div className="wp-banner-bal">
+          <span className="wp-banner-lbl">{isDebt ? 'Toplam borç' : 'Hesap durumu'}</span>
+          <span className="wp-banner-val">{isDebt ? fmtTL(fin.totalDebt) : 'Güncel'}</span>
+          <span className="wp-banner-brk">{breakdown}</span>
         </div>
-      )}
-    </section>
+        <div className="wp-actions onbanner">
+          <button className="wp-btn light-solid" type="button" disabled={!isDebt} onClick={onPayment}>
+            <G.pay width="15" height="15" /> Ödeme al
+          </button>
+          {onOpenSale && (
+            <button className="wp-btn light-outline" type="button" onClick={onOpenSale}>
+              <G.cart width="15" height="15" /> Ürün satışı
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
-// ─── Tabs ─────────────────────────────────────────────────────────────────────
+// ─── Özet sekmesi (A11) ───────────────────────────────────────────────────────
+// Üstte 3 kart (son katılım · sıradaki ders · aylık hedef), altta hesap
+// hareketleri zaman tüneli + hızlı bilgiler / iletişim / not.
 
-function Tabs({ tab, setTab, counts }) {
-  const items = [
-    { id: 'all',       label: 'Kayıtlar',    n: counts.all },
-    { id: 'lessons',   label: 'Dersler',     n: counts.lessons },
-    { id: 'products',  label: 'Ürün Satışı', n: counts.products },
-    { id: 'packages',  label: 'Paket',       n: counts.packages },
-    { id: 'movements', label: 'Hareketler',  n: counts.movements },
+function SectCard({ title, sub, children, className }) {
+  return (
+    <div className={'wp-card ' + (className || '')}>
+      <div className="wp-sect-head">
+        <span className="wp-side-title">{title}</span>
+        {sub && <span className="wp-sect-sub">{sub}</span>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function Ring({ n, pct, label, now, size = 52 }) {
+  const st = 6, r = (size - st) / 2, c = 2 * Math.PI * r, off = c * (1 - pct / 100), full = pct >= 100;
+  return (
+    <div className={'wp-ring' + (now ? ' now' : '')}>
+      <div className="wp-ring-svg" style={{ width: size, height: size }}>
+        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+          <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--bg-2)" strokeWidth={st} />
+          <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={full ? 'var(--sage)' : 'var(--accent)'} strokeWidth={st} strokeLinecap="round" strokeDasharray={c} strokeDashoffset={off} transform={`rotate(-90 ${size / 2} ${size / 2})`} />
+        </svg>
+        <span className="wp-ring-n">{n}</span>
+      </div>
+      <span className="wp-ring-l">{label}</span>
+    </div>
+  );
+}
+
+function pastCompleted(lessons) {
+  return lessons
+    .filter(l => !l.deleted_at && l.status === 'completed')
+    .sort((a, b) => new Date(b.starts_at) - new Date(a.starts_at))[0] || null;
+}
+function upcomingScheduled(lessons) {
+  const t = Date.now();
+  return lessons
+    .filter(l => !l.deleted_at && l.status === 'scheduled' && new Date(l.starts_at).getTime() >= t)
+    .sort((a, b) => new Date(a.starts_at) - new Date(b.starts_at))[0] || null;
+}
+
+function LastLessonCard({ lessons }) {
+  const l = pastCompleted(lessons);
+  if (!l) return <div className="wp-mute-row">Henüz tamamlanan ders yok</div>;
+  const st = lessonTone(l);
+  const Ic = MODE_ICON[l.mode] || G.onsite;
+  const open = st.tone === 'open' || st.tone === 'partial';
+  const d = new Date(l.starts_at);
+  return (
+    <div className={'wp-last t-' + st.tone}>
+      <div className="wp-last-cal"><b>{d.getDate()}</b><span>{d.toLocaleDateString('tr-TR', { month: 'short' }).replace('.', '')}</span></div>
+      <div className="wp-last-mid">
+        <div className="wp-last-eyebrow">Son katılım · {agoLabel(l.starts_at)}</div>
+        <div className="wp-last-title"><Ic width="14" height="14" /> {LESSON_MODE_TR[l.mode] || 'Ders'} ders</div>
+        <div className="wp-last-meta">{fmtDayLong(l.starts_at, { withTime: true })}</div>
+      </div>
+      <div className="wp-last-right">
+        <Badge tone={st.tone}>{st.label}</Badge>
+        <span className={'wp-last-amt' + (open ? ' open' : '')}>
+          {open ? fmtTL(money(l.remaining_receivable)) : (l.prepaid_package_id ? 'Krediden' : 'Ödendi')}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function NextLessonCard({ lessons }) {
+  const l = upcomingScheduled(lessons);
+  if (!l) return <div className="wp-mute-row">Planlı ders bulunmuyor</div>;
+  const Ic = MODE_ICON[l.mode] || G.onsite;
+  const d = new Date(l.starts_at);
+  const note = l.note?.trim();
+  return (
+    <div className="wp-last t-scheduled">
+      <div className="wp-last-cal"><b>{d.getDate()}</b><span>{d.toLocaleDateString('tr-TR', { month: 'short' }).replace('.', '')}</span></div>
+      <div className="wp-last-mid">
+        <div className="wp-last-eyebrow">Sıradaki ders · {inDaysLabel(l.starts_at)}</div>
+        <div className="wp-last-title"><Ic width="14" height="14" /> {LESSON_MODE_TR[l.mode] || 'Ders'} ders</div>
+        <div className="wp-last-meta">{fmtDayLong(l.starts_at, { withTime: true })}{note ? ' · ' + note : ''}</div>
+      </div>
+      <div className="wp-last-right"><Badge tone="scheduled">Planlı</Badge></div>
+    </div>
+  );
+}
+
+// Aylık hedef + üyelik/ortalama (4 ders/ay = %100). Gerçek "now" üzerinden.
+function computeAttendance(lessons, student) {
+  const now = new Date();
+  const months = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const n = lessons.filter(l => {
+      if (l.deleted_at || l.status !== 'completed') return false;
+      const x = new Date(l.starts_at);
+      return x.getMonth() === d.getMonth() && x.getFullYear() === d.getFullYear();
+    }).length;
+    months.push({ m: d.toLocaleDateString('tr-TR', { month: 'short' }).replace('.', ''), n, pct: Math.min(n / 4, 1) * 100 });
+  }
+  const avgMonthly = Math.round((months.reduce((s, m) => s + m.n, 0) / months.length) * 10) / 10;
+  let memberMonths = 1;
+  if (student.joined_at) {
+    const j = new Date(student.joined_at);
+    memberMonths = Math.max(1, (now.getFullYear() - j.getFullYear()) * 12 + (now.getMonth() - j.getMonth()) + 1);
+  }
+  return { months, avgMonthly, memberMonths };
+}
+
+function richStats(lessons, sales) {
+  const done = lessons.filter(l => !l.deleted_at && l.status === 'completed');
+  const lifetimePaid =
+    lessons.reduce((s, l) => s + money(l.paid_amount), 0) +
+    (sales || []).reduce((s, x) => s + money(x.paid_amount), 0);
+  const avgFee = done.length
+    ? Math.round(done.reduce((s, l) => s + money(l.net_amount ?? (money(l.price_snapshot) - money(l.discount_amount))), 0) / done.length)
+    : 0;
+  return { lifetimePaid, avgFee, doneCount: done.length };
+}
+
+function KeyFacts({ lessons, sales, att }) {
+  const r = richStats(lessons, sales);
+  const rows = [
+    { k: 'Üyelik süresi', v: att.memberMonths + ' ay' },
+    { k: 'Bugüne dek ödenen', v: fmtTL(r.lifetimePaid) },
+    { k: 'Ortalama ders ücreti', v: fmtTL(r.avgFee) },
+    { k: 'Aylık ortalama', v: att.avgMonthly + ' ders' },
   ];
   return (
-    <div className="sp-tabs">
-      {items.map(it => (
-        <button
-          key={it.id}
-          type="button"
-          className={'sp-tab' + (tab === it.id ? ' is-active' : '')}
-          onClick={() => setTab(it.id)}
-        >
-          <span>{it.label}</span>
-          <span className="sp-tab-n">{it.n}</span>
-        </button>
-      ))}
+    <dl className="wp-kv">
+      {rows.map(x => <div key={x.k} className="wp-kv-row"><dt>{x.k}</dt><dd>{x.v}</dd></div>)}
+    </dl>
+  );
+}
+
+function ContactCard({ student }) {
+  const rows = [
+    { ic: G.phone, k: 'Telefon', v: student.phone },
+    { ic: G.mail, k: 'E-posta', v: student.email },
+    { ic: G.cake, k: 'Doğum günü', v: student.birthday ? new Date(student.birthday).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' }) : null },
+    { ic: G.cal, k: 'Üyelik', v: student.joined_at ? new Date(student.joined_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' }) : null },
+  ];
+  return (
+    <div className="wp-card">
+      <div className="wp-side-title">İletişim</div>
+      <dl className="wp-kv">
+        {rows.map(r => (
+          <div key={r.k} className="wp-kv-row">
+            <span className="wp-kv-ic"><r.ic width="14" height="14" /></span>
+            <dt>{r.k}</dt>
+            <dd>{r.v || <span className="sp-muted">—</span>}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
+}
+
+// Hesap hareketleri zaman tüneli — gerçek movements'ı describeMovement ile çevirir.
+function Timeline({ movements, limit = 7 }) {
+  if (!movements || movements.length === 0) return <div className="wp-mute-row">Henüz hareket yok</div>;
+  const items = [...movements]
+    .sort((a, b) => new Date(b.occurred_at) - new Date(a.occurred_at))
+    .slice(0, limit);
+  return (
+    <div className="wp-tl">
+      {items.map((m, idx) => {
+        const desc = describeMovement(m);
+        const Icn = MV_PILL_ICON[desc.pillTone] || Icon.Calendar;
+        const tn = desc.amountTone === 'paid' ? 'paid' : desc.amountTone === 'discount' ? 'disc' : 'mute';
+        const d = new Date(m.occurred_at);
+        const sub = [
+          desc.title,
+          d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' }),
+          d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
+        ].filter(Boolean).join(' · ');
+        const showAmt = desc.amount != null && desc.amountTone !== 'mute';
+        return (
+          <div key={`${m.kind}-${idx}-${m.occurred_at}`} className="wp-tl-row">
+            <div className="wp-tl-spine"><span className={'wp-tl-dot ' + tn}><Icn width="11" height="11" /></span></div>
+            <div className="wp-tl-body">
+              <div className="wp-tl-top">
+                <span className="wp-tl-label">{desc.typeLabel}</span>
+                {showAmt && (
+                  <span className={'wp-amt' + (desc.amountTone === 'paid' ? ' credit' : '')}>
+                    {desc.amountTone === 'paid' ? '+' : desc.amountTone === 'discount' ? '−' : ''}{fmtTL(Math.abs(desc.amount))}
+                  </span>
+                )}
+              </div>
+              <div className="wp-tl-sub">{sub}</div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function OverviewTab({ student, lessons, sales, movements }) {
+  const att = React.useMemo(() => computeAttendance(lessons, student), [lessons, student]);
+  const m4 = att.months.slice(-4);
+  const note = student.note?.trim();
+  return (
+    <>
+      <div className="wp-ov-3">
+        <SectCard title="Son katılım"><LastLessonCard lessons={lessons} /></SectCard>
+        <SectCard title="Sıradaki ders"><NextLessonCard lessons={lessons} /></SectCard>
+        <SectCard title="Aylık hedef" sub="4 ders = %100">
+          <div className="wp-rings">
+            {m4.map((mm, i) => <Ring key={i} n={mm.n} pct={mm.pct} label={mm.m} now={i === m4.length - 1} size={44} />)}
+          </div>
+        </SectCard>
+      </div>
+      <div className="wp-ov-2b">
+        <SectCard title="Hesap hareketleri" sub="zaman tüneli"><Timeline movements={movements} limit={7} /></SectCard>
+        <div className="wp-ov-col">
+          <SectCard title="Hızlı bilgiler"><KeyFacts lessons={lessons} sales={sales} att={att} /></SectCard>
+          <ContactCard student={student} />
+          {note && <SectCard title="Not"><p className="wp-note">{note}</p></SectCard>}
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ─── Tabs (A11) ───────────────────────────────────────────────────────────────
+// Özet (landing) · Dersler · Satışlar · Hareketler. Paket sekmesi A11 düzeninde
+// yok (paket akışı kaldırılıyor); paket geçmişi Hareketler tünelinde görünür.
+
+const TAB_DEFS = [
+  { id: 'stats',     label: 'Özet' },
+  { id: 'lessons',   label: 'Dersler' },
+  { id: 'products',  label: 'Satışlar' },
+  { id: 'movements', label: 'Hareketler' },
+];
+
+function Tabs({ tab, setTab, counts }) {
+  return (
+    <div className="wp-tabs">
+      {TAB_DEFS.map(t => {
+        const n = t.id === 'stats' ? null : counts[t.id];
+        return (
+          <button
+            key={t.id}
+            type="button"
+            className={'wp-tab' + (tab === t.id ? ' on' : '')}
+            onClick={() => setTab(t.id)}
+          >
+            <span className="wp-tab-l">{t.label}</span>
+            {n != null && <span className="wp-tab-n">{n}</span>}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -1146,106 +1362,6 @@ function MovementRow({ entry }) {
         )}
       </div>
     </li>
-  );
-}
-
-// ─── Sidebar cards ────────────────────────────────────────────────────────────
-
-function ActivePackageCard({ packages }) {
-  return (
-    <div className="card sp-side-card sp-active-pkg-card">
-      <div className="sp-side-title">Aktif Paket{packages.length > 1 ? 'ler' : ''}</div>
-      <div className="sp-active-pkg-list">
-        {packages.map(p => {
-          const used = Number(p.used_credits || 0);
-          const total = Number(p.credit_count || 0);
-          const remaining = Number(p.remaining_credits || 0);
-          const pct = total > 0 ? Math.min(100, Math.round((used / total) * 100)) : 0;
-          return (
-            <div key={p.package_id} className="sp-active-pkg">
-              <div className="sp-active-pkg-head">
-                <div className="sp-active-pkg-rem">{remaining} kredi kaldı</div>
-                <div className="sp-active-pkg-val">{fmtTL(money(p.remaining_value))}</div>
-              </div>
-              <div className="sp-pkg-bar">
-                <div className="sp-pkg-bar-fill" style={{ width: pct + '%' }} />
-              </div>
-              <div className="sp-active-pkg-foot">
-                <span>{used} / {total} kullanıldı</span>
-                <span>{fmtDate(p.purchased_at)}</span>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function ContactCard({ student }) {
-  const rows = [
-    { k: 'Telefon',     v: student.phone,    mono: true },
-    { k: 'E-posta',     v: student.email },
-    { k: 'Doğum günü',  v: student.birthday ? fmtDate(student.birthday) : null },
-    { k: 'Üyelik',      v: student.joined_at ? fmtDate(student.joined_at) : null },
-  ];
-  return (
-    <div className="card sp-side-card">
-      <div className="sp-side-title">İletişim</div>
-      <dl className="sp-kv">
-        {rows.map(r => (
-          <div key={r.k} className="sp-kv-row">
-            <dt>{r.k}</dt>
-            <dd className={r.mono ? 'sp-kv-mono' : ''}>
-              {r.v || <span className="sp-muted">—</span>}
-            </dd>
-          </div>
-        ))}
-      </dl>
-    </div>
-  );
-}
-
-function NoteCard({ note }) {
-  return (
-    <div className="card sp-side-card">
-      <div className="sp-side-title">Not</div>
-      {note?.trim() ? (
-        <p className="sp-note">{note}</p>
-      ) : (
-        <p className="sp-note sp-muted">Bu öğrenci için not eklenmedi.</p>
-      )}
-    </div>
-  );
-}
-
-function SummaryCard({ student, lessons }) {
-  const completed = lessons.filter(l => l.status === 'completed').length;
-  const scheduled = lessons.filter(l => l.status === 'scheduled').length;
-  const lastCompleted = lessons
-    .filter(l => l.status === 'completed')
-    .sort((a, b) => new Date(b.starts_at) - new Date(a.starts_at))[0];
-
-  return (
-    <div className="card sp-side-card">
-      <div className="sp-side-title">Özet</div>
-      <div className="sp-stats">
-        <div className="sp-stat">
-          <div className="sp-stat-k">Tamamlanan ders</div>
-          <div className="sp-stat-v">{completed}</div>
-        </div>
-        <div className="sp-stat">
-          <div className="sp-stat-k">Planlı ders</div>
-          <div className="sp-stat-v">{scheduled}</div>
-        </div>
-        <div className="sp-stat">
-          <div className="sp-stat-k">Son ders</div>
-          <div className="sp-stat-v sp-stat-v-sm">
-            {lastCompleted ? fmtDate(lastCompleted.starts_at) : '—'}
-          </div>
-        </div>
-      </div>
-    </div>
   );
 }
 

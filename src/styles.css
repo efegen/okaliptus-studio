@@ -7224,3 +7224,190 @@ input, select { font-family: inherit; }
 .app .tweak-seg button.on { background: var(--ink-fill); }
 .app .wk-day-h.today    { background: var(--ink-fill); }
 .app .wk-col.today      { background: color-mix(in oklab, var(--accent) 7%, var(--surface)); }
+
+/* ════════════════════════════════════════════════════════════════════════════
+   Öğrenci profili — A11 (web/masaüstü yeniden tasarımı, devir paketi)
+   Durum renkli başlık bandı + Özet/Dersler/Satışlar/Hareketler sekmeleri.
+   Token'lar :root'tan gelir; palette swatch'ı ile birlikte değişir.
+   ════════════════════════════════════════════════════════════════════════════ */
+
+.wp-card {
+  background: var(--surface); border: 1px solid var(--line-2);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); padding: 16px 18px;
+}
+
+/* Kimlik */
+.wp-id { display: flex; align-items: center; gap: 16px; min-width: 0; }
+.wp-av {
+  width: 52px; height: 52px; border-radius: 999px; flex-shrink: 0;
+  background: var(--accent-2); color: var(--accent-ink);
+  display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 18px;
+}
+.wp-av.light { background: rgba(255,255,255,.22); color: #fff; }
+.wp-id-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.wp-name {
+  font-family: var(--f-serif); font-size: 27px; font-weight: 500;
+  letter-spacing: -.02em; margin: 0; line-height: 1.1; color: var(--ink);
+}
+.wp-name.light { color: #fff; }
+.wp-status {
+  display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px;
+  border-radius: 999px; font-size: 11px; font-weight: 600;
+  background: var(--sage-2); color: var(--sage-ink);
+}
+.wp-status i { width: 6px; height: 6px; border-radius: 50%; background: var(--sage); }
+.wp-status.light { background: rgba(255,255,255,.2); color: #fff; }
+.wp-status.light i { background: #fff; }
+.wp-id-meta { margin-top: 7px; display: flex; flex-wrap: wrap; gap: 4px 10px; color: var(--ink-3); font-size: 12.5px; }
+.wp-id-meta.light { color: rgba(255,255,255,.8); }
+
+/* Butonlar */
+.wp-actions { display: flex; gap: 9px; flex-shrink: 0; }
+.wp-actions.onbanner { align-items: flex-end; }
+.wp-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  padding: 9px 16px; border-radius: var(--radius); font-family: var(--f-sans);
+  font-size: 13.5px; font-weight: 600; border: 1px solid transparent; cursor: pointer;
+  transition: background .12s, transform .05s; white-space: nowrap;
+}
+.wp-btn:active { transform: scale(.985); }
+.wp-btn:disabled { cursor: not-allowed; }
+.wp-btn.light-solid { background: #fff; color: var(--warn-deep); }
+.wp-btn.light-solid:disabled { background: rgba(255,255,255,.45); color: rgba(255,255,255,.85); }
+.wp-btn.light-outline { background: transparent; color: #fff; border-color: rgba(255,255,255,.55); }
+.wp-btn.light-outline:hover { background: rgba(255,255,255,.12); }
+.wp-icbtn {
+  width: 34px; height: 34px; border-radius: var(--radius); border: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--bg-2); color: var(--ink-2); cursor: pointer;
+}
+.wp-icbtn.light { background: rgba(255,255,255,.16); color: #fff; }
+
+/* Rozetler */
+.wp-badge {
+  display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 999px;
+  font-size: 10.5px; font-weight: 600; letter-spacing: .01em;
+}
+.wp-badge.t-paid { background: var(--sage-2); color: var(--sage-ink); }
+.wp-badge.t-open { background: var(--warn-2); color: var(--warn-ink); }
+.wp-badge.t-partial { background: var(--amber-2); color: var(--amber-ink); }
+.wp-badge.t-scheduled { background: var(--accent-2); color: var(--accent-ink); }
+.wp-badge.t-neutral { background: var(--bg-2); color: var(--ink-3); }
+.wp-badge.t-credit { background: var(--accent-2); color: var(--accent-ink); }
+
+/* Sekmeler */
+.wp-tabs {
+  display: flex; gap: 2px; padding: 4px; background: var(--bg-2);
+  border-radius: var(--radius); border: 1px solid var(--line); width: fit-content;
+}
+.wp-tab {
+  display: inline-flex; align-items: center; gap: 7px; padding: 7px 14px;
+  background: none; border: 0; border-radius: var(--radius-sm);
+  font-size: 13px; font-weight: 600; color: var(--ink-3); cursor: pointer;
+}
+.wp-tab.on { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-sm); }
+.wp-tab-n {
+  font-size: 11px; font-weight: 600; color: var(--ink-4); background: var(--surface-2);
+  padding: 0 6px; border-radius: 999px; font-variant-numeric: tabular-nums;
+}
+.wp-tab.on .wp-tab-n { background: var(--accent-2); color: var(--accent-ink); }
+
+/* Bölüm başlığı + anahtar/değer */
+.wp-side-title {
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .07em; color: var(--ink-3); margin-bottom: 12px;
+}
+.wp-sect-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 12px; }
+.wp-sect-head .wp-side-title { margin-bottom: 0; }
+.wp-sect-sub { font-size: 11px; color: var(--ink-3); }
+.wp-kv { margin: 0; display: flex; flex-direction: column; }
+.wp-kv-row { display: flex; align-items: center; gap: 9px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.wp-kv-row:last-child { border-bottom: 0; }
+.wp-kv-ic { color: var(--ink-4); display: flex; flex-shrink: 0; }
+.wp-kv dt { font-size: 12.5px; color: var(--ink-3); }
+.wp-kv dd { margin: 0 0 0 auto; font-size: 13px; font-weight: 500; color: var(--ink); text-align: right; }
+
+/* Tutar (mono) */
+.wp-amt { font-family: var(--f-mono); font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+.wp-amt.open { color: var(--warn-ink); }
+.wp-amt.credit { color: var(--sage-ink); }
+.wp-amt.mute { color: var(--ink-4); }
+
+/* Son / sıradaki ders kartı */
+.wp-last { display: flex; align-items: center; gap: 14px; }
+.wp-last.t-open { --tn2: var(--warn-2); --tni: var(--warn-ink); }
+.wp-last.t-partial { --tn2: var(--amber-2); --tni: var(--amber-ink); }
+.wp-last.t-paid { --tn2: var(--sage-2); --tni: var(--sage-ink); }
+.wp-last.t-scheduled, .wp-last.t-neutral, .wp-last.t-credit { --tn2: var(--accent-2); --tni: var(--accent-ink); }
+.wp-last-cal {
+  flex-shrink: 0; width: 50px; height: 54px; border-radius: 11px;
+  background: var(--tn2); color: var(--tni);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1;
+}
+.wp-last-cal b { font-family: var(--f-mono); font-size: 21px; font-weight: 600; }
+.wp-last-cal span { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; margin-top: 3px; }
+.wp-last-mid { flex: 1; min-width: 0; }
+.wp-last-eyebrow { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-3); }
+.wp-last-title { display: flex; align-items: center; gap: 6px; font-size: 15px; font-weight: 600; color: var(--ink); margin-top: 3px; }
+.wp-last-meta { font-size: 12px; color: var(--ink-3); margin-top: 3px; }
+.wp-last-right { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex-shrink: 0; }
+.wp-last-amt { font-family: var(--f-mono); font-size: 14px; font-weight: 600; color: var(--sage-ink); }
+.wp-last-amt.open { color: var(--warn-ink); }
+
+/* Aylık hedef halkaları */
+.wp-rings { display: flex; justify-content: space-between; gap: 4px; }
+.wp-rings > .wp-ring { flex: 0 1 auto; min-width: 0; }
+.wp-ring { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.wp-ring-svg { position: relative; }
+.wp-ring-n {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-family: var(--f-mono); font-size: 13px; font-weight: 600; color: var(--ink);
+}
+.wp-ring-l { font-size: 10.5px; color: var(--ink-3); }
+.wp-ring.now .wp-ring-l { color: var(--accent-ink); font-weight: 700; }
+
+/* Durum renkli başlık bandı */
+.wp-banner { border-radius: var(--radius-lg); padding: 20px 24px 22px; color: #fff; box-shadow: var(--shadow-sm); }
+/* Web banner'a özel daha derin kırmızı — geniş banner'da 135° gradyan çoğunlukla
+   başlangıç rengini gösterir; sol taraf açık kalmasın diye start koyulaştırıldı.
+   --warn token'ı bilerek kullanılmadı (mobil durum başlığı etkilenmesin). */
+.wp-banner.debt { background: linear-gradient(135deg, oklch(0.46 0.16 30) 0%, oklch(0.32 0.115 33) 100%); }
+.wp-banner.clear { background: linear-gradient(135deg, var(--accent) 0%, var(--accent-deep) 100%); }
+.wp-banner-top { display: flex; align-items: flex-start; justify-content: space-between; }
+.wp-banner-bottom { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-top: 20px; }
+.wp-banner-bal { display: flex; flex-direction: column; }
+.wp-banner-lbl { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; color: rgba(255,255,255,.72); }
+.wp-banner-val { font-family: var(--f-mono); font-size: 40px; font-weight: 600; letter-spacing: -.03em; line-height: 1.1; margin-top: 3px; }
+.wp-banner-brk { font-size: 12.5px; color: rgba(255,255,255,.8); margin-top: 5px; }
+
+/* Özet ızgaraları */
+.wp-ov-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; align-items: start; }
+.wp-ov-2b { display: grid; grid-template-columns: 1.4fr 1fr; gap: 14px; align-items: start; }
+.wp-ov-col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+
+/* Zaman tüneli */
+.wp-tl { display: flex; flex-direction: column; }
+.wp-tl-row { display: grid; grid-template-columns: 26px 1fr; gap: 12px; }
+.wp-tl-spine { display: flex; flex-direction: column; align-items: center; }
+.wp-tl-dot { width: 26px; height: 26px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; background: var(--accent-2); color: var(--accent-ink); }
+.wp-tl-dot.paid { background: var(--sage-2); color: var(--sage-ink); }
+.wp-tl-dot.disc { background: var(--amber-2); color: var(--amber-ink); }
+.wp-tl-dot.mute { background: var(--bg-2); color: var(--ink-3); }
+.wp-tl-row:not(:last-child) .wp-tl-spine::after { content: ''; flex: 1; width: 2px; background: var(--line); margin: 3px 0; border-radius: 2px; }
+.wp-tl-body { padding-bottom: 16px; min-width: 0; }
+.wp-tl-row:last-child .wp-tl-body { padding-bottom: 0; }
+.wp-tl-top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.wp-tl-label { font-size: 13.5px; font-weight: 600; color: var(--ink); }
+.wp-tl-sub { font-size: 11.5px; color: var(--ink-3); margin-top: 2px; }
+
+/* Boş satır + not */
+.wp-mute-row { font-size: 13px; color: var(--ink-4); padding: 8px 0; }
+.wp-note { margin: 0; font-size: 13px; line-height: 1.55; color: var(--ink-2); white-space: pre-wrap; }
+
+/* Dar ekran — Özet ızgaralarını ve bandı yatay daralt */
+@media (max-width: 880px) {
+  .wp-ov-3, .wp-ov-2b { grid-template-columns: 1fr; }
+  .wp-banner-bottom { flex-direction: column; align-items: stretch; gap: 16px; }
+  .wp-actions.onbanner { align-items: stretch; }
+  .wp-actions.onbanner .wp-btn { flex: 1; }
+}
