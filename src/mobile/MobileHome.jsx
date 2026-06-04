@@ -53,8 +53,8 @@ export function MobileHome({ user, onLogout }) {
     return sessions.filter(s => s.day === todayIndex).length;
   }, [sessions, todayIndex]);
 
-  const collected = parseNumericValue(kpi?.monthlyCashInflow?.total, 0);
-  const revenue = parseNumericValue(kpi?.monthlyRevenue?.total, 0);
+  const collected = parseNumericValue(kpi?.last30CashInflow?.total, 0);
+  const revenue = parseNumericValue(kpi?.last30Revenue?.total, 0);
   const collectionRate = revenue > 0 ? Math.round((collected / revenue) * 100) : 0;
 
   const receivable = parseNumericValue(kpi?.receivable, 0);

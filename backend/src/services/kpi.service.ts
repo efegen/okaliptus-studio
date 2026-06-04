@@ -31,6 +31,13 @@ type WeeklyKpiResult = {
   monthlyRevenue: {
     total: string;
   };
+  last30Start: string;
+  last30CashInflow: {
+    total: string;
+  };
+  last30Revenue: {
+    total: string;
+  };
 };
 
 export async function getWeeklyKpi(): Promise<WeeklyKpiResult> {
@@ -52,6 +59,13 @@ export async function getWeeklyKpi(): Promise<WeeklyKpiResult> {
             AT TIME ZONE 'Europe/Istanbul') AS month_start,
           (date_trunc('month', now() AT TIME ZONE 'Europe/Istanbul')
             AT TIME ZONE 'Europe/Istanbul' + INTERVAL '1 month') AS month_end
+      ),
+
+      -- Son 30 gün penceresi: now() - 30 gün → now()
+      last30_window AS (
+        SELECT
+          (now() - INTERVAL '30 days') AS last30_start,
+          now()                        AS last30_end
       ),
 
       -- §4.1 Tahsilat (cash + iban payments in the week)
@@ -162,6 +176,34 @@ export async function getWeeklyKpi(): Promise<WeeklyKpiResult> {
         WHERE ps.sold_at >= month_window.month_start
           AND ps.sold_at <  month_window.month_end
           AND ps.deleted_at IS NULL
+      ),
+
+      -- Son 30 gün tahsilat (cash + iban)
+      last30_inflow AS (
+        SELECT COALESCE(SUM(amount), 0) AS total
+        FROM payments, last30_window
+        WHERE paid_at >= last30_window.last30_start
+          AND paid_at <  last30_window.last30_end
+          AND source IN ('cash', 'iban')
+          AND deleted_at IS NULL
+      ),
+
+      -- Son 30 gün ciro (tamamlanmış dersler + ürün satışları)
+      last30_lesson_rev AS (
+        SELECT COALESCE(SUM(l.price_snapshot - l.discount_amount), 0) AS lesson_revenue
+        FROM lessons l, last30_window
+        WHERE l.status = 'completed'
+          AND l.starts_at >= last30_window.last30_start
+          AND l.starts_at <  last30_window.last30_end
+          AND l.deleted_at IS NULL
+      ),
+
+      last30_product_rev AS (
+        SELECT COALESCE(SUM(ps.total_amount), 0) AS product_revenue
+        FROM product_sales ps, last30_window
+        WHERE ps.sold_at >= last30_window.last30_start
+          AND ps.sold_at <  last30_window.last30_end
+          AND ps.deleted_at IS NULL
       )
 
     SELECT
@@ -204,10 +246,16 @@ export async function getWeeklyKpi(): Promise<WeeklyKpiResult> {
       -- aylık finansal
       month_window.month_start::text                                                              AS month_start,
       monthly_inflow.total::text                                                                  AS monthly_cash_inflow_total,
-      (monthly_lesson_rev.lesson_revenue + monthly_product_rev.product_revenue)::text             AS monthly_revenue_total
+      (monthly_lesson_rev.lesson_revenue + monthly_product_rev.product_revenue)::text             AS monthly_revenue_total,
 
-    FROM date_window, month_window, inflow, lesson_rev, product_rev, lesson_counts, receivable, deferred, debtor_students, total_students,
-         monthly_inflow, monthly_lesson_rev, monthly_product_rev
+      -- son 30 gün finansal
+      last30_window.last30_start::text                                                            AS last30_start,
+      last30_inflow.total::text                                                                   AS last30_cash_inflow_total,
+      (last30_lesson_rev.lesson_revenue + last30_product_rev.product_revenue)::text               AS last30_revenue_total
+
+    FROM date_window, month_window, last30_window, inflow, lesson_rev, product_rev, lesson_counts, receivable, deferred, debtor_students, total_students,
+         monthly_inflow, monthly_lesson_rev, monthly_product_rev,
+         last30_inflow, last30_lesson_rev, last30_product_rev
   `);
 
   const row = result.rows[0];
@@ -246,6 +294,13 @@ export async function getWeeklyKpi(): Promise<WeeklyKpiResult> {
     },
     monthlyRevenue: {
       total: r["monthly_revenue_total"] as string,
+    },
+    last30Start: r["last30_start"] as string,
+    last30CashInflow: {
+      total: r["last30_cash_inflow_total"] as string,
+    },
+    last30Revenue: {
+      total: r["last30_revenue_total"] as string,
     },
   };
 }

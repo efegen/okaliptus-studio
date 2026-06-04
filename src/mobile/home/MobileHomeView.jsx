@@ -59,7 +59,7 @@ function ProfileMenu({ user, onLogout }) {
 }
 
 /**
- * "B Temel" mobil ana sayfa üst kısmı — başlık + hero (aylık tahsilat) + iki pill.
+ * "B Temel" mobil ana sayfa üst kısmı — başlık + hero (son 30 gün tahsilat) + iki pill.
  * Bugünün dersleri ayrı bir bileşendir (MobileAgenda). Veri MobileHome'dan gelir.
  */
 export function MobileHomeView({
@@ -88,7 +88,7 @@ export function MobileHomeView({
       <div className={`mh-hero${kpiDim}`}>
         <div className="mh-hero-top">
           <div>
-            <p className="mh-hero-label">Bu ay tahsil edilen</p>
+            <p className="mh-hero-label">Son 30 günde tahsil edilen</p>
             <p className="mh-hero-big">{kpiLoading ? '—' : fmtTL(collected)}</p>
           </div>
         </div>
