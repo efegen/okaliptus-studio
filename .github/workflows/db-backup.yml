@@ -1,0 +1,56 @@
+name: Nightly DB backup
+
+# Off-site backup (3-2-1): Railway Postgres -> Cloudflare R2, nightly + on-demand.
+#
+# One-time setup (you do this):
+#   1. Create a private R2 bucket (e.g. "okaliptus-backups") in the Cloudflare dashboard.
+#   2. Create an R2 API token (Object Read & Write) -> note the Access Key ID + Secret.
+#   3. Repo -> Settings -> Secrets and variables -> Actions -> add these repo secrets:
+#        DATABASE_URL          the SAME Railway connection string that works locally (public host, not *.railway.internal)
+#        R2_ACCESS_KEY_ID      R2 API token access key id
+#        R2_SECRET_ACCESS_KEY  R2 API token secret
+#        R2_BUCKET             bucket name, e.g. okaliptus-backups
+#        R2_ENDPOINT           https://<account-id>.r2.cloudflarestorage.com
+#   4. In R2 -> bucket -> Settings, add a lifecycle rule: delete objects older than 30 days.
+#
+# NOTE: GitHub only runs scheduled workflows from the DEFAULT branch (main). This file
+# must be on main for the nightly cron (and the manual "Run workflow" button) to appear.
+
+on:
+  schedule:
+    - cron: "0 21 * * *" # 21:00 UTC = 00:00 Europe/Istanbul
+  workflow_dispatch: {} # manual trigger from the Actions tab
+
+concurrency:
+  group: db-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dump database (pg_dump 18 via Docker, matches the 18.x server)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          FILE="okaliptus-$(date -u +%Y%m%d-%H%M%S).dump"
+          echo "FILE=$FILE" >> "$GITHUB_ENV"
+          # -e DATABASE_URL passes the host secret into the container env (not argv/logs).
+          docker run --rm -e DATABASE_URL postgres:18 \
+            sh -c 'pg_dump "$DATABASE_URL" --format=custom --no-owner --no-privileges' > "$FILE"
+          SIZE=$(stat -c%s "$FILE")
+          echo "Dump size: $SIZE bytes"
+          # Guard against a silent empty/failed dump getting uploaded.
+          if [ "$SIZE" -lt 1024 ]; then echo "Dump suspiciously small — aborting."; exit 1; fi
+
+      - name: Upload to Cloudflare R2 (S3-compatible)
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+        run: |
+          set -euo pipefail
+          aws s3 cp "$FILE" "s3://${{ secrets.R2_BUCKET }}/$FILE" \
+            --endpoint-url "${{ secrets.R2_ENDPOINT }}"
+          echo "Uploaded $FILE to R2 bucket ${{ secrets.R2_BUCKET }}."
