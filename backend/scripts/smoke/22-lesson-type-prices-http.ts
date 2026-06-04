@@ -9,7 +9,7 @@
  * Senaryolar:
  *   - Auth guard: cookie'siz istek 401.
  *   - GET /lesson-types/:id/prices boş başlar.
- *   - PUT .../prices/:studentId (0 ve 250) → upsert, yanıt doğru.
+ *   - PATCH .../prices/:studentId (0 ve 250) → upsert, yanıt doğru.
  *   - Validation: negatif fiyat → 400.
  *   - POST /lessons → price_snapshot override'ı yansıtır (250).
  *   - DELETE override → 200; ikinci DELETE → 404.
@@ -101,10 +101,10 @@ async function run(): Promise<void> {
     assertEqual(g0.status, 200, "GET 200");
     assertEqual(Array.isArray(g0.json?.data) ? g0.json.data.length : -1, 0, "başlangıçta 0 override");
 
-    // ── PUT override = 0 ──────────────────────────────────────────────────────
-    step("PUT override = 0 (ücretsiz)");
-    const p1 = await req("PUT", `/lesson-types/${type.id}/prices/${student.id}`, { body: { custom_price: 0 } });
-    assertEqual(p1.status, 200, "PUT 200");
+    // ── PATCH override = 0 ──────────────────────────────────────────────────────
+    step("PATCH override = 0 (ücretsiz)");
+    const p1 = await req("PATCH", `/lesson-types/${type.id}/prices/${student.id}`, { body: { custom_price: 0 } });
+    assertEqual(p1.status, 200, "PATCH 200");
     assertMoney(p1.json?.data?.custom_price, "0", "yanıt custom_price=0");
 
     const g1 = await req("GET", `/lesson-types/${type.id}/prices`);
@@ -113,12 +113,12 @@ async function run(): Promise<void> {
 
     // ── Validation: negatif → 400 ─────────────────────────────────────────────
     step("Validation: negatif fiyat 400");
-    const bad = await req("PUT", `/lesson-types/${type.id}/prices/${student.id}`, { body: { custom_price: -5 } });
+    const bad = await req("PATCH", `/lesson-types/${type.id}/prices/${student.id}`, { body: { custom_price: -5 } });
     assertEqual(bad.status, 400, "negatif → 400");
 
     // ── Güncelle: 250 ─────────────────────────────────────────────────────────
-    step("PUT override = 250 (upsert güncelleme)");
-    const p2 = await req("PUT", `/lesson-types/${type.id}/prices/${student.id}`, { body: { custom_price: 250 } });
+    step("PATCH override = 250 (upsert güncelleme)");
+    const p2 = await req("PATCH", `/lesson-types/${type.id}/prices/${student.id}`, { body: { custom_price: 250 } });
     assertMoney(p2.json?.data?.custom_price, "250", "güncelleme 250");
 
     // ── POST /lessons → override fiyatı uygulanır ─────────────────────────────

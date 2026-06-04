@@ -123,8 +123,9 @@ lessonTypesRouter.get("/:id/prices", async (req, res) => {
   }
 });
 
-// PUT /lesson-types/:id/prices/:studentId — öğrenciye özel fiyat ayarla (upsert)
-lessonTypesRouter.put("/:id/prices/:studentId", async (req, res) => {
+// PATCH /lesson-types/:id/prices/:studentId — öğrenciye özel fiyat ayarla (upsert)
+// (PATCH; CORS izinli metotlar GET/POST/PATCH/DELETE — PUT tarayıcıda bloke olur)
+lessonTypesRouter.patch("/:id/prices/:studentId", async (req, res) => {
   try {
     const id = parseId(req.params.id);
     const studentId = parseId(req.params.studentId);

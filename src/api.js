@@ -459,7 +459,7 @@ export async function setLessonTypeStudentPrice(lessonTypeId, studentId, customP
   const payload = await apiRequest(
     `/lesson-types/${encodeURIComponent(lessonTypeId)}/prices/${encodeURIComponent(studentId)}`,
     {
-      method: "PUT",
+      method: "PATCH",
       body: JSON.stringify({ custom_price: customPrice }),
     },
   );
