@@ -1,6 +1,6 @@
 # Yoga Stüdyosu Dashboard — v1 Spesifikasyonu
 
-**Spec versiyonu:** 1.5 · son revizyon kapsamı için bkz. §11.
+**Spec versiyonu:** 1.6 · son revizyon kapsamı için bkz. §11.
 
 ## 0. Bağlam ve Hedef
 
@@ -19,13 +19,15 @@ V1 üretim sistemidir, "logging-only observation mode" gibi ara aşama yoktur. T
 
 **v1 sadeleştirmesi (önceki revizyonlardan fark):** "Öğrenci bakiyesi / fazla ödeme / mahsup" sistemi v1 kapsamından çıkarılmıştır. Fazla ödeme kabul edilmez, reddedilir. Detay: §2.6.
 
-**v1 multi-entity + discount altyapısı:** `instructors` ve `lesson_types` tabloları + `lessons.instructor_id / lesson_type_id / duration_minutes / discount_amount` kolonları + `prepaid_packages.lesson_type_id` (nullable) kolonu eklenmiştir. v1 deployment'ında tek aktif eğitmen + tek aktif ders tipi seed edilir; isim/etiket gibi operasyonel veriler bootstrap aşamasında doldurulur (§10 "Bootstrap" bölümü). Ders tipi v1 deployment'ı için sabit varsayılan: **"Yoga & Meditasyon" (60 dk)**. v1.2'den itibaren UI eğitmen/ders tipi seçimine açık: `CreateLessonModal` aktif eğitmen ve aktif ders türlerini select olarak sunar; tek aktif kayıt varsa otomatik dolu gelir. Ayrıca `LessonTypesPage` ders türü CRUD ekranını sağlar (yeni tip oluşturma, fiyat/süre/aktiflik düzenleme); `InstructorsPage` read-only listedir. Servis seçim gönderilmediğinde aktif tek seed'i otomatik atamaya devam eder (geriye dönük uyum). Ders indirimi (net tutar = `price_snapshot - discount_amount`) ayrı endpoint ile yönetilir. Detay: §2.12 (indirim), §2.13 (duration + multi-entity UI), §3.10/§3.11 (yeni tablolar), §5.8 (set discount), §10 (endpoint listesi + hata sınıfları + bootstrap).
+**v1 multi-entity + discount altyapısı:** `instructors` ve `lesson_types` tabloları + `lessons.instructor_id / lesson_type_id / duration_minutes / discount_amount` kolonları + `prepaid_packages.lesson_type_id` (nullable) kolonu eklenmiştir. v1 deployment'ında tek aktif eğitmen + tek aktif ders tipi seed edilir; isim/etiket gibi operasyonel veriler bootstrap aşamasında doldurulur (§10 "Bootstrap" bölümü). Ders tipi v1 deployment'ı için sabit varsayılan: **"Yoga & Meditasyon" (60 dk)**. v1.2'den itibaren UI eğitmen/ders tipi seçimine açık: `CreateLessonModal` aktif eğitmen ve aktif ders türlerini select olarak sunar; tek aktif kayıt varsa otomatik dolu gelir. Ayrıca `LessonTypesPage` ders türü CRUD ekranını sağlar (yeni tip oluşturma, fiyat/süre/aktiflik düzenleme); `InstructorsPage` **v1.6'dan itibaren tam CRUD'dur** (oluştur/düzenle/soft-delete + audit, §3.10). Servis seçim gönderilmediğinde aktif tek seed'i otomatik atamaya devam eder (geriye dönük uyum). Ders indirimi (net tutar = `price_snapshot - discount_amount`) ayrı endpoint ile yönetilir. Detay: §2.12 (indirim), §2.13 (duration + multi-entity UI), §3.10/§3.11 (yeni tablolar), §5.8 (set discount), §10 (endpoint listesi + hata sınıfları + bootstrap).
 
-**v1 ürün satışı ↔ ders bağı (v1.2 → v1.6):** `product_sales.lesson_id` (nullable) kolonu v1.2'de eklenmişti; ders tamamlama akışı opsiyonel olarak aynı transaction'da satış oluştururdu. v1.6'da bu kavram tamamen kaldırıldı: tüm satışlar v2 ürün satış modülünden (kalem bazlı, ürün katalogundan) bağımsız olarak (lesson_id NULL) yaratılır ve ders bloğu/modal'ı ile **hiçbir görsel ya da veri ilişkisi taşımaz**. Migration 0233 mevcut bağları temizler. Ders bloğu yalnız ders verilerini gösterir; ürün satışı operatör tarafından öğrenci profilinden ya da ürün satış modülünden takip edilir. Kolon ve FK constraint geriye dönük olarak korunur ama yeni satırlarda doldurulmaz.
+**v1 ürün satışı ↔ ders bağı (v1.2 → v1.6):** `product_sales.lesson_id` (nullable) kolonu v1.2'de eklenmişti; ders tamamlama akışı opsiyonel olarak aynı transaction'da satış oluştururdu. v1.6'da bu kavram tamamen kaldırıldı: tüm satışlar v1.6 kalemli ürün satış modülünden (ürün katalogundan, §3.4/§3.14) bağımsız olarak (lesson_id NULL) yaratılır ve ders bloğu/modal'ı ile **hiçbir görsel ya da veri ilişkisi taşımaz**. Migration 0233 mevcut bağları temizler. Ders bloğu yalnız ders verilerini gösterir; ürün satışı operatör tarafından öğrenci profilinden ya da ürün satış modülünden takip edilir. Kolon ve FK constraint geriye dönük olarak korunur ama yeni satırlarda doldurulmaz.
 
 **v1 takvim etkileşimi (v1.2):** Önceki revizyonun "ders bloğu tıklanmaz" kuralı kaldırıldı. Bloklar artık `LessonModal`'ı açar; modal içinden tamamlama, iptal, kısmi/tam ödeme ve indirim akışları çalışır. Detay: §8.4.
 
 **v1 kimlik doğrulama (v1.3):** Önceki revizyonların "v1'de tek kullanıcı varsayımı" kuralı kaldırıldı. Sistem artık 3 admin user ile çalışır; hepsi tüm kaynaklara erişir (rol kavramı v1'de tek seviye). Username + password ile login. WebAuthn/passkey **v1'de yok** — iOS Keychain/Safari ve macOS Keychain'in varsayılan şifre autofill + Face/Touch ID akışı zaten "Face ID ile giriş" UX'ini parasız sağlıyor; ekstra ceremony eklemek 3 yakın admin için marjinal kazançtı (§9). Email kolonu v1.3'te yok — password reset email'i, notification gibi kullanım yok; ileride gerekirse nullable kolon olarak eklenir. Audit log her mutating işlem için `actor_user_id` taşır. Detay: §2.14, §3.7 (audit güncellemesi), §3.12–§3.13 (yeni tablolar), §5.9–§5.11 (auth servis akışları), §8.6 (login UI), §10 (yeni endpoint listesi + hata sınıfları).
+
+**v1.6 ürün katalogu + operasyonel sertleştirme:** Ürün satışı artık serbest tutar değil **kalemli (cart) satış**tır. Kalıcı bir **ürün katalogu** (`products` — barkod, fiyat, görsel, Trendyol/Hepsiburada listing URL'leri, varyant/kategori) + satış kalemleri (`product_sale_items`, snapshot'lı) + kendi barındırılan ürün görseli (`product_images`, ≤5MB WebP/JPEG/PNG) eklendi. Aynı revizyonda: **eğitmen CRUD** UI + API + audit (v1.2'deki "read-only" kuralı kaldırıldı), stüdyo geneli **hareketler akışı** (`/movements`), **öğrenci hard-delete** (cascade, §2.9 istisnası), **auth login/logout audit** (v1.4'te "kapsam dışı" denen karar güvenlik denetimi için geri alındı — migration 0236), kullanılmayan ayar kolonlarının temizliği (`default_lesson_mode` + `payment_method_*` + `default_lesson_duration` drop) ve web+mobil öğrenci profilinin A11 düzenine taşınması. Migration 0226–0237. Detay: §11 v1.6 sürüm notu.
 
 ---
 
@@ -37,7 +39,9 @@ V1 üretim sistemidir, "logging-only observation mode" gibi ara aşama yoktur. T
 | **Eğitmen (Instructor)** | Dersi veren kişi. V1'de tek aktif eğitmen seed'i; isim deployment'a özgüdür ve bootstrap'ta atanır (§10). Tablo + FK ileriye dönük altyapı. |
 | **Ders Tipi (LessonType)** | Dersin türü ve varsayılan süresi (ör. "Yoga & Meditasyon", 60 dk). V1'de tek aktif tip. |
 | **Ders (Lesson)** | Özel ders. `scheduled`, `completed`, `cancelled`, `no_show` durumlarından birinde olabilir. Her ders bir instructor_id + lesson_type_id + duration_minutes taşır. |
-| **Ürün Satışı (ProductSale)** | V1'de kalem bazında değil, toplam tutar olarak kaydedilir. Mutlaka bir öğrenciye bağlı. |
+| **Ürün Satışı (ProductSale)** | Bir öğrenciye yapılan ürün satışı. v1.6'dan itibaren **kalemli (cart)**: `product_sale_items` her kalemin snapshot'ını tutar, `total_amount = SUM(line_total)`. Legacy (item'sız, sadece toplam tutar) satışlar geriye dönük okunur. Mutlaka bir öğrenciye bağlı. |
+| **Ürün (Product)** | v1.6 ürün katalogu kaydı: barkod (opsiyonel, UNIQUE), ad, fiyat, görsel, Trendyol/Hepsiburada listing URL'i, varyant/kategori meta'sı. Silinmez, **arşivlenir** (`archived_at`); arşivli ürün kalıcı silinebilir. |
+| **Satış Kalemi (ProductSaleItem)** | Bir ürün satışının tek kalemi: `name_snapshot` + `unit_price_snapshot` (immutable, §2.3 felsefesi) + `quantity` + `line_total`. `product_id` opsiyonel (katalog-dışı serbest kalem). |
 | **Ön Ödemeli Paket (PrepaidPackage)** | Öğrencinin önceden N ders için yaptığı ödeme. Her completed ders 1 kredi tüketir. Paket = ön ödeme (oluşturulurken payment ile atomik). Opsiyonel olarak bir ders tipine bağlanabilir (NULL = generic). |
 | **Ödeme (Payment)** | Tek hedefli (XOR). Hedef: lesson, product_sale veya prepaid_package. Source: cash, iban. Kısmi ödeme serbest, fazla ödeme yasak. |
 | **İndirim (Discount)** | Tek ders üzerine uygulanan, yalnızca tamamlanmış ve paket-dışı derslerde geçerli bir ince ayar. `discount_amount` kolonu olarak tutulur; brüt fiyat değişmez. |
@@ -62,6 +66,7 @@ Aşağıdaki kurallar şemayı ve servis katmanını yöneten otoritedir. Uyumsu
 
 ### 2.1 Borç oluşumu
 - **Borç yalnızca iki kaynaktan oluşur:** completed lesson (net tutar = `price_snapshot - discount_amount`) ve product_sale (`total_amount`).
+- **product_sale `total_amount` (v1.6):** kalemli satışlarda `total_amount = SUM(product_sale_items.line_total)` olarak servis tarafından hesaplanır; legacy (item'sız) satışlarda doğrudan girilen toplam tutardır. Borç/receivable her durumda `total_amount` üzerinden yürür — kalem kırılımı yalnız raporlama/snapshot içindir.
 - `scheduled`, `cancelled`, `no_show` statüsündeki dersler **borç oluşturmaz**.
 - Kredi ile karşılanan (`prepaid_package_id IS NOT NULL`) completed dersler **borç oluşturmaz** (çünkü para zaten tahsil edilmiş durumda).
 - Ayrı `debts` tablosu YOK. Borç türev bir kavram, her an sorguyla hesaplanır.
@@ -139,8 +144,10 @@ V1'de "öğrenci bakiyesi" veya "mahsup" kavramı yoktur. Fazla ödeme yapısal 
 - Planlanan ders sayımında cancelled hariç, no_show dahil (çünkü slot tüketildi).
 
 ### 2.9 Silme politikası
-- **Finansal tablolarda hard delete yasak.** Soft delete: `deleted_at timestamptz NULL`.
+- **Genel kural — finansal tablolarda hard delete yasak.** Soft delete: `deleted_at timestamptz NULL`.
 - FK'lar `ON DELETE RESTRICT` (güvenlik katmanı).
+- **İstisna 1 — Öğrenci hard-delete (v1.6):** Bir öğrenci, tüm geçmişiyle birlikte **kalıcı (cascade) silinebilir** (disiplin / KVKK veri-sahibi talebi / hatalı kayıt / test temizliği). Servis akışı (`hardDeleteStudent`, §5.7c) tek transaction'da şu sırayla fiziksel siler: `payments` (lesson/product_sale/package referansları) → `product_sales` (`product_sale_items` `ON DELETE CASCADE` ile birlikte) → `lessons` → `prepaid_packages` → `students`. Geri alınamaz; geçmiş raporları (ciro/tahsilat) değişir. Tek iz: `audit_logs` (`student_deleted`, `note = 'hard_delete · lessons=… · product_sales=… · prepaid_packages=… · payments=… · paid_total=…'`). Soft delete (arşivleme) hâlâ varsayılan; hard-delete bilinçli, ayrı bir aksiyondur.
+- **İstisna 2 — Ürün hard-delete (v1.6):** Bir ürün (`products`) silinmez, **arşivlenir** (`archived_at`). Yalnız **arşivli** ürün kalıcı silinebilir; aktif ürün silme denemesi `DeleteConflictError` (HTTP 409) döner. Silmede `product_sale_items.product_id` NULL'a düşürülür — geçmiş satış kalemleri `name_snapshot`/`unit_price_snapshot` ile bağımsız okunur kalır.
 - **Paket'e bağlı payment tek başına silinemez** (invariant: ödenmemiş paket olamaz). Silinmesi gereken paket varsa özel akış: (a) paketten düşülmüş completed lesson'lardaki `prepaid_package_id` NULL'a çekilir veya o lesson'lar soft-delete edilir, (b) paket ve bağlı payment aynı transaction'da soft-delete edilir (§5.6b).
 - Silme işlemleri `audit_logs`'a düşer.
 
@@ -187,7 +194,7 @@ V1'de bir dersin fiyatından indirim yapma gereksinimi için `lessons.discount_a
 - `CreateLessonModal` `<select>` ile aktif `instructors` ve aktif `lesson_types` listesini sunar. Tek aktif kayıt varsa otomatik seçili gelir; birden fazla varsa kullanıcı seçer.
 - `POST /lessons` çağrısında `instructorId` ve `lessonTypeId` opsiyoneldir: gönderilmediğinde servis aktif tek kaydı otomatik atar (geriye dönük uyum + tek aktif kayıt için sessiz default).
 - Body'de gönderilen `instructorId` veya `lessonTypeId` aktif değil veya silinmişse `ValidationError` döner.
-- Ders türü yönetimi `LessonTypesPage` üzerinden yapılır: yeni tip oluşturma + isim/süre/fiyat/aktiflik düzenleme. Eğitmen yönetimi v1.2'de read-only listedir; CRUD ileri revizyona bırakıldı.
+- Ders türü yönetimi `LessonTypesPage` üzerinden yapılır: yeni tip oluşturma + isim/süre/fiyat/aktiflik düzenleme. **Eğitmen yönetimi v1.6'dan itibaren tam CRUD'dur** (`InstructorsPage` / `src/instructors.jsx`): yeni eğitmen oluşturma + isim/aktiflik düzenleme + soft-delete; her işlem audit'a yazılır (`instructor_*`, migration 0226). v1.2'deki "read-only" notu geçersizdir (§9, §10, §11 v1.6).
 
 **Paket ↔ ders türü:**
 - `prepaid_packages.lesson_type_id` nullable: `NULL = generic paket` (tüm ders tiplerinde geçerli). FIFO kredi tahsisi v1'de bu kolonu filtrelemez (§3.5).
@@ -210,10 +217,10 @@ V1.3'ten itibaren sistem birden fazla admin user ile çalışır (deploy seed'i 
 | Session token | Opaque (`crypto.randomBytes(32).toString('hex')` — 64 hex char); httpOnly + secure (production) + SameSite (production: `none`, dev: `lax`) cookie. JWT **değil** — server-side `sessions` tablosunda tutulur, revoke edilebilir (§3.13). Cross-origin (Vercel + Railway) dağıtımı için prod'da SameSite=None zorunludur. |
 | Session TTL | Sliding 30 gün: her korumalı request `last_seen_at = now()` ve `expires_at = now() + 30d` günceller. 30 gün hareketsizlik = session ölü. |
 | Password kuralı | bcrypt cost 12, **min 6 char**, max 100 char. Plaintext hiçbir log/audit'e düşmez. **Min 6 kararı:** kapalı admin sistemi + bcrypt cost 12 birleşimi 6-haneli PIN'i pratik olarak kırılamaz yapar; mobil klavyede hızlı girilir. Validation `auth.service.ts` ve bootstrap script'inde. |
-| Rate limit | **v1 dışı.** Kapalı admin sistemi için brute force riski düşük kabul edildi; ileride `express-rate-limit` ile eklenir. Şu an `POST /auth/login`'da rate limit yoktur. |
+| Rate limit | **v1.5'te eklendi.** `POST /auth/login` `express-rate-limit` ile korunur: 5 başarısız deneme / 15 dk / IP, başarılı login sayaçtan düşmez (`skipSuccessfulRequests: true`), hata kodu `RATE_LIMITED` (HTTP 429). Store in-memory (process-local); horizontal scale gerekirse Redis. v1.4'teki "rate limit yok" ifadesi geçersizdir (§11 v1.5). |
 | Şifre değişimi (UI) | **v1 dışı.** Settings → Hesap bölümü v1.4'te yok (§8.5, §9). Şifre reset gerekirse sysadmin DB'den manuel günceller (`bcrypt.hash($pw, 12)` + `UPDATE users SET password_hash = ...`). |
 | Logout | Tek session: `DELETE FROM sessions WHERE token = ?`. "Tüm cihazlardan çık" endpoint'i v1.4'te yok (§9). |
-| Auth audit | **v1.4'te yazılmaz.** Login/logout/password değişimi `audit_logs`'a düşmez; `audit_logs.action` CHECK listesi `user_login`/`user_logout`/`password_changed` action'larını **içermez** (§3.7). Mutating *iş* işlemleri (lesson, payment, package, ...) `actor_user_id` taşır ve audit'a yazılır — auth event'leri ayrı kategori sayılır ve v1 kapsamına alınmadı. İleride eklenirse: ayrı action'lar + entity_type=`'user'` + CHECK genişletmesi gerekir. |
+| Auth audit | **Login/logout v1.6'da yazılır (migration 0236).** Başarılı login → `audit_logs` (`action='user_login'`, `entity_type='user'`, `entity_id=actor_user_id=<user id>`, `note='Başarılı giriş — IP: …'`); logout → `action='user_logout'` aynı şekilde. IP yalnız `note` alanında tutulur (sessions tablosunda ip/user_agent kolonu **yok**, §3.13). Audit insert hatası login/logout akışını bozmaz (`.catch` ile yutulur). **`password_changed` hâlâ kapsam dışı** (şifre değişimi UI'sı yok, §5.11/§9). v1.4'teki "auth audit yazılmaz / kapsam dışı" ifadesi geçersizdir (§11 v1.6). Mutating *iş* işlemleri ayrıca `actor_user_id` taşımaya devam eder. |
 | Audit aktör | Her mutating *iş servisi* çağrısı `actorUserId` parametresi alır ve `audit_logs.actor_user_id` kolonuna yazar. NULL yalnızca v1.3 öncesi legacy satırlar için. |
 | Hesap deaktive | `users.is_active = false` → mevcut session'lar bir sonraki request'te 401 alır; yeni login imkânsız. (`users.deleted_at` kolonu **yok** — soft delete v1'de gerekmedi.) |
 | Self-service password reset | **Yok** (§9). |
@@ -222,7 +229,7 @@ V1.3'ten itibaren sistem birden fazla admin user ile çalışır (deploy seed'i 
 
 **Why:** Kapalı admin senaryosunda Clerk gibi external auth provider'a bağımlı olmak vendor lock-in + maliyet getirisi düşük. Kendi auth'umuz: opaque session + bcrypt, ihtiyaç doğarsa Lucia/Better-Auth gibi kütüphanelere göç ederken DB şeması korunur.
 
-**v1.3 spec ile v1.4 kod arasındaki uyumlama:** v1.3 spec'i auth audit logging, rate limit, sliding-on-mutate, logout-everywhere, password change UI, IP/UA tracking, soft-delete users gibi ek özellikler içeriyordu. v1.4 bunların hepsini **kasıtlı olarak v1 dışına** çıkarttı (kapalı admin sistemi için over-engineering); geride kalan yüzey opaque session + sliding TTL + tek-cihaz logout + bcrypt cost 12. Detay ve gerekçeler §11 v1.4 sürüm notunda.
+**v1.3 spec ile v1.4 kod arasındaki uyumlama:** v1.3 spec'i auth audit logging, rate limit, sliding-on-mutate, logout-everywhere, password change UI, IP/UA tracking, soft-delete users gibi ek özellikler içeriyordu. v1.4 bunların hepsini **kasıtlı olarak v1 dışına** çıkarttı (kapalı admin sistemi için over-engineering); geride kalan yüzey opaque session + sliding TTL + tek-cihaz logout + bcrypt cost 12. **Sonradan iki tanesi geri getirildi:** login rate limit **v1.5'te** (5/15dk/IP) ve login/logout audit **v1.6'da** (migration 0236) — public deploy + güvenlik denetimi gereksinimiyle. Hâlâ v1 dışı: password change UI, logout-everywhere, IP/UA kolonları, soft-delete users, `password_changed` audit. Detay ve gerekçeler §11 v1.4 / v1.5 / v1.6 sürüm notlarında.
 
 ---
 
@@ -243,13 +250,16 @@ CREATE TABLE studio_settings (
 
 **Singleton garantisi:** `CHECK (id = 1)` + PK sayesinde tablo en fazla 1 satır içerir.
 
-**Ek ayar kolonları (sonraki migration'larda eklenen):**
+**Ek ayar kolonları (sonraki migration'larda eklenen, hâlâ canlı):**
 - `calendar_start_hour` / `calendar_end_hour` (0201) — takvim görünür saat aralığı.
-- `default_lesson_mode` (0201) — yeni `CreateLessonModal` açılışında varsayılan mode.
-- `payment_method_cash` / `payment_method_iban` (0201) — UI ödeme yöntemi seçicisinde hangi seçeneklerin göründüğü.
 - `lesson_color_saturation` (0202) — takvim ders blokları için renk doygunluk çarpanı.
 
-**Tarihsel kalıntı:** `default_lesson_duration` kolonu (0201) ve `default_lesson_price` kolonu (0201) tarihsel olarak eklenmişti. `default_lesson_price` 0220'de drop edildi (fiyat tek kaynağı `lesson_types.default_price`). `default_lesson_duration` kolonu hâlâ tabloda ve settings UI'sında görünür ama hiçbir runtime tarafından okunmaz: yeni ders oluşturulurken `duration_minutes` aktif `lesson_type.default_duration_minutes`'tan gelir (§5.1). v1.2 itibarıyla bu kolon kullanılmamaktadır; ileri revizyonda ya bağlanacak ya da düşürülecek (TODO §11).
+Yani güncel `studio_settings` kolon seti: `id, weekly_capacity, timezone, default_currency, week_start, calendar_start_hour, calendar_end_hour, lesson_color_saturation, updated_at` (9 kolon).
+
+**Drop edilmiş tarihsel kolonlar (kullanılmayan ayar temizliği):**
+- `default_lesson_price` (0201) → **0220'de drop** (fiyat tek kaynağı `lesson_types.default_price`).
+- `default_lesson_duration` (0201) → **0228'de drop** (süre tek kaynağı `lesson_type.default_duration_minutes`, §5.1). v1.2/v1.4'teki "hâlâ tabloda / kalıntı kolon" notu geçersizdir.
+- `default_lesson_mode`, `payment_method_cash`, `payment_method_iban` (0201) → **0237'de drop**. Hiçbir runtime/UI okumuyordu ve varsayılanlarında donmuştu: yeni dersler her zaman `'onsite'` varsayılanıyla açılır (operatör modalda değiştirir), ödeme formları her zaman hem Nakit hem IBAN sunar.
 
 Güncel şema için en son migration'a bakılır.
 
@@ -363,6 +373,8 @@ CREATE INDEX idx_product_sales_lesson_id
   WHERE lesson_id IS NOT NULL AND deleted_at IS NULL;
 ```
 
+**Kalemli satış (v1.6):** `product_sales` satırı bir satışın **başlığı**dır; tutarı `total_amount`'tadır ama kalemleri ayrı `product_sale_items` tablosundadır (§3.15). Yeni satışlarda servis `items[]` alır, her kalem için `name_snapshot` + `unit_price_snapshot` (immutable, §2.3 felsefesi) + `quantity` + `line_total` yazar ve `total_amount = SUM(line_total)` hesaplar. Legacy (item'sız, doğrudan `totalAmount`) satışlar geriye dönük okunur; okuyucular `items` boş gelince tek "legacy satır" fallback'i yapar. Borç/receivable/ciro her durumda `total_amount` üzerinden yürür (§2.1, §4.2). Kalemler `products` katalogundan seçilir veya katalog-dışı serbest kalem (product_id NULL) olabilir.
+
 **`lesson_id` semantiği (v1.2):**
 - `NULL` = standalone satış (öğrenci sadece alışveriş yaptı, derse bağlı değil).
 - `NOT NULL` = bir derse bağlı satış. **v1.6 itibarıyla deprecated**: ders tamamlama akışı satış yaratmaz, ürün satış modülü her satışı `lesson_id NULL` yazar. Mevcut bağlar 0233 migration'ı ile temizlendi. Kolon korunur (FK + index) ancak takvim/ders modal hiçbir noktada bu alanı kullanmaz.
@@ -449,17 +461,19 @@ CREATE UNIQUE INDEX ux_payments_one_active_per_package
 ### 3.7 audit_logs
 
 ```sql
--- NOTE: Bu final DDL, 0008 (ilk tablo) + 0203 (balance kayıtları purge) + 0214
--- (lesson_discount_updated action) + 0224 (actor_user_id) + 0225 (lesson_uncompleted,
--- lesson_type_*, settings_updated genişletmeleri) uygulandıktan sonraki durumdur.
--- v1.3 spec'inde teklif edilen 3 auth action'ı (user_login, user_logout,
--- password_changed) ve entity_type='user' v1.4'te kapsama alınmadı (§2.14).
+-- NOTE: Bu final DDL, 0008 (ilk tablo) + 0203 (balance purge) + 0214 (lesson_discount_updated)
+-- + 0224 (actor_user_id) + 0225 (lesson_uncompleted, lesson_type_*, settings_updated)
+-- + 0226 (instructor_*) + 0231 (product_created/updated/archived/unarchived) + 0235 (product_deleted)
+-- + 0236 (user_login, user_logout, entity_type='user') uygulandıktan sonraki durumdur.
+-- Liste 0236'daki tam CHECK ile birebir aynıdır (en güncel kaynak).
+-- v1.4'te "kapsam dışı" denen auth audit (user_login/user_logout) v1.6'da (0236) eklendi;
+-- `password_changed` HÂLÂ yok (§2.14, §9).
 CREATE TABLE audit_logs (
   id              bigserial PRIMARY KEY,
   action          text NOT NULL CHECK (action IN (
                     'lesson_created',
                     'lesson_status_change',
-                    'lesson_uncompleted',     -- v1.4 (migration 0225)
+                    'lesson_uncompleted',            -- v1.4 (0225)
                     'lesson_updated',
                     'lesson_deleted',
                     'lesson_discount_updated',
@@ -475,9 +489,19 @@ CREATE TABLE audit_logs (
                     'student_created',
                     'student_updated',
                     'student_deleted',
-                    'lesson_type_created',     -- v1.4 (migration 0225)
-                    'lesson_type_updated',     -- v1.4 (migration 0225)
-                    'settings_updated'         -- v1.4 (migration 0225)
+                    'lesson_type_created',            -- v1.4 (0225)
+                    'lesson_type_updated',            -- v1.4 (0225)
+                    'instructor_created',             -- v1.6 (0226)
+                    'instructor_updated',             -- v1.6 (0226)
+                    'instructor_deleted',             -- v1.6 (0226)
+                    'product_created',                -- v1.6 (0231)
+                    'product_updated',                -- v1.6 (0231)
+                    'product_archived',               -- v1.6 (0231)
+                    'product_unarchived',             -- v1.6 (0231)
+                    'product_deleted',                -- v1.6 (0235)
+                    'settings_updated',               -- v1.4 (0225)
+                    'user_login',                     -- v1.6 (0236)
+                    'user_logout'                     -- v1.6 (0236)
                   )),
   entity_type     text NOT NULL CHECK (entity_type IN (
                     'student',
@@ -488,8 +512,11 @@ CREATE TABLE audit_logs (
                     'balance_transaction',     -- LEGACY: 0203 ile içerik silindi ama
                                                -- CHECK listesinde kalıntı olarak duruyor.
                                                -- Pratik etki yok; ileride drop edilebilir.
-                    'lesson_type',             -- v1.4 (migration 0225)
-                    'settings'                 -- v1.4 (migration 0225)
+                    'lesson_type',             -- v1.4 (0225)
+                    'instructor',              -- v1.6 (0226)
+                    'product',                 -- v1.6 (0231)
+                    'settings',                -- v1.4 (0225)
+                    'user'                     -- v1.6 (0236)
                   )),
   entity_id       bigint NOT NULL,
   actor_user_id   bigint REFERENCES users(id), -- v1.3, NULL = legacy/system
@@ -508,9 +535,9 @@ CREATE INDEX idx_audit_logs_actor        ON audit_logs (actor_user_id, created_a
 **`actor_user_id` semantiği (v1.3):**
 - NOT NULL servis-level invariant'tır (DB-level değil — legacy satırlar için NULL kabul edilir).
 - Tüm mutating *iş servisleri* (`createLesson`, `completeLesson`, `uncompleteLesson`, `setLessonDiscount`, `createCashPayment`, `createPrepaidPackage`, `createProductSale`, `updateSettings`, `createLessonType`, `updateLessonType`, ...) çağrıldıkları request'in `req.currentUser.id` değerini taşır.
-- **v1.4'te login/logout/password değişimi audit'a yazılmaz** (§2.14). CHECK listesi bu yüzden 3 auth action'ını içermez; ileride eklenirse migration ile genişletilir.
+- **v1.6'da login/logout audit'a yazılıyor** (migration 0236): `user_login` / `user_logout`, `entity_type='user'`, `actor_user_id = entity_id = <user id>`, IP `note`'ta. **`password_changed` hâlâ yok** (şifre değişimi UI'sı kapsam dışı, §2.14, §5.11). Auth audit insert'i `.catch` ile yutulur — login/logout akışını bozmaz.
 
-**Tarihsel not:** Audit action listesi önceki revizyonda balance-ile-ilgili action'ları (`balance_manual_adjustment`, `balance_refund`, `balance_overpayment_credit`, `balance_usage_debit`) içeriyordu; v1 sadeleştirmesi ile kaldırılmıştır. Migration 0008 orijinal listeyi, 0203 daraltma, 0214 `lesson_discount_updated`, 0224 `actor_user_id` kolonu, 0225 `lesson_uncompleted` + `lesson_type_*` + `settings_updated` action'ları ile `lesson_type` + `settings` entity_type'larını ekler. `entity_type='balance_transaction'` CHECK listesinde kaldı ama hiçbir satır yok (0203 purge sonrası).
+**Tarihsel not:** Audit action listesi önceki revizyonda balance-ile-ilgili action'ları (`balance_manual_adjustment`, `balance_refund`, `balance_overpayment_credit`, `balance_usage_debit`) içeriyordu; v1 sadeleştirmesi ile kaldırılmıştır. Liste evrimi: 0008 orijinal → 0203 daraltma → 0214 `lesson_discount_updated` → 0224 `actor_user_id` kolonu → 0225 `lesson_uncompleted` + `lesson_type_*` + `settings_updated` (+ `lesson_type`/`settings` entity_type) → **0226 `instructor_*` (+ `instructor`)** → **0231 `product_created/updated/archived/unarchived` (+ `product`)** → **0235 `product_deleted`** → **0236 `user_login`/`user_logout` (+ `user`)**. Her genişletme migration'ı eski listeyi in-place düzenlemez; tam listeyi yeniden üretir (en güncel tam liste 0236'dadır). `entity_type='balance_transaction'` CHECK listesinde kaldı ama hiçbir satır yok (0203 purge sonrası).
 
 **v1.3 spec sapması:** Spec v1.3 `lessons.actor_user_id` ve `payments.actor_user_id` kolonlarını öngörmüyordu; migration 0223 yanlışlıkla bu iki tabloya da `actor_user_id` ekledi. Kolonlar **kullanılmıyor** (servis sadece `audit_logs.actor_user_id`'ye yazıyor) → ölü kolon. Drop migration'ı v1.5+ kapsamına ertelendi (NULL hep, performans/disk etkisi yok).
 
@@ -716,6 +743,20 @@ Auth + audit genişletmesi (v1.3 → v1.4):
   0223_audit_actor.sql                         (lessons.actor_user_id + payments.actor_user_id — KULLANILMIYOR; spec sapması, drop bekleniyor)
   0224_audit_actor_user.sql                    (audit_logs.actor_user_id kolonu + idx_audit_logs_actor)
   0225_audit_extend_enums.sql                  (action listesi: lesson_uncompleted, lesson_type_created/updated, settings_updated; entity_type listesi: lesson_type, settings; v1.3 spec'indeki 3 auth action ve entity_type='user' EKLENMEDİ — §2.14, §11)
+
+Eğitmen + ürün katalogu + ayar temizliği (0226–0237; ağırlıkla v1.6, 0228 v1.5'te shipped):
+  0226_instructor_audit_and_cleanup.sql        (audit action: instructor_created/updated/deleted + entity_type 'instructor'; eğitmen artık UI'dan yönetilir, .env bootstrap kaldırıldı)
+  0227_soft_delete_bootstrap_instructors.sql   ('Efe' + 'Default Instructor' bootstrap kayıtlarını soft-delete; lessons FK korunur, UI'da görünmez)
+  0228_drop_default_lesson_duration.sql        (studio_settings.default_lesson_duration drop — kullanılmayan kalıntı)
+  0229_products.sql                            (NEW: products tablosu — barkod/ad/fiyat/görsel URL/TY+HB listing URL/arşiv)
+  0230_product_sale_items.sql                  (NEW: product_sale_items — kalemli satış, name/unit_price snapshot)
+  0231_audit_extend_for_products.sql           (audit action: product_created/updated/archived/unarchived + entity_type 'product')
+  0232_products_variants_category.sql          (products + parent_product_code/variant_label/category; Trendyol Model Kodu varyant gruplama)
+  0233_clear_product_sales_lesson_link.sql     (v1.6: tüm product_sales.lesson_id NULL — display-side eşleştirmeye geçiş; kolon korunur)
+  0234_product_images.sql                      (NEW: product_images — kendi barındırılan görsel, ≤5MB WebP/JPEG/PNG bytea)
+  0235_audit_product_deleted.sql               (audit action: product_deleted — arşivli ürün kalıcı silme)
+  0236_audit_auth_events.sql                   (audit action: user_login/user_logout + entity_type 'user'; v1.4'teki "auth audit kapsam dışı" kararı geri alındı — §2.14)
+  0237_drop_lesson_mode_and_payment_methods.sql (studio_settings.default_lesson_mode + payment_method_cash + payment_method_iban drop — kullanılmayan kalıntı)
 ```
 
 **0203 migration'ının işi özetle:**
@@ -747,7 +788,21 @@ Auth + audit genişletmesi (v1.3 → v1.4):
 - 0222: `users` (`display_name` kolonu, `is_active`, `password_hash`) ve `sessions` (`bigserial id` PK + `token text UNIQUE`, `expires_at`, `last_seen_at`) tabloları yaratılır. **Admin kullanıcılar migration'da seed edilmez** (username + şifre PII'dir, public repo'ya commit edilemez); bootstrap aşamasında (§10) `.env`'den okunup yaratılırlar. `users` üzerinde `updated_at` trigger'ı kurulur. `sessions` üzerinde `(token)` ve `(expires_at)` index'leri.
 - 0223: `lessons.actor_user_id` ve `payments.actor_user_id` kolonları eklenir. **v1.4'te kullanılmıyor** (servis sadece `audit_logs.actor_user_id`'ye yazıyor); ölü kolonlar olarak kaldı, drop ertelendi.
 - 0224: `audit_logs.actor_user_id bigint REFERENCES users(id) ON DELETE SET NULL` kolonu + `idx_audit_logs_actor (actor_user_id, created_at DESC)` index'i eklenir.
-- 0225: `audit_logs_action_check` listesi `lesson_uncompleted`, `lesson_type_created`, `lesson_type_updated`, `settings_updated` ile genişletilir. `audit_logs_entity_type_check` `lesson_type`, `settings` ile genişletilir. **v1.3 spec'indeki `user_login`/`user_logout`/`password_changed` action'ları ve `entity_type='user'` eklenmedi** — auth audit logging v1.4'te kapsam dışı (§2.14).
+- 0225: `audit_logs_action_check` listesi `lesson_uncompleted`, `lesson_type_created`, `lesson_type_updated`, `settings_updated` ile genişletilir. `audit_logs_entity_type_check` `lesson_type`, `settings` ile genişletilir. (v1.3 spec'indeki 3 auth action ve `entity_type='user'` o sırada eklenmedi; **0236'da eklendi** — aşağı bak.)
+
+**0226–0237 migration'larının işi özetle (v1.6, §3.4/§3.10/§3.14–§3.16):**
+- 0226: eğitmen yönetimi audit kanalları (`instructor_created/updated/deleted` + `entity_type='instructor'`). `.env` tabanlı eğitmen bootstrap kaldırıldı; eğitmenler artık yalnız UI'dan oluşturulur (§3.10, §9, §10).
+- 0227: bootstrap döneminden kalan `Efe` ve `Default Instructor` eğitmen kayıtları soft-delete edilir; `lessons` FK referansları korunur, dropdown/modal'da görünmezler.
+- 0228: `studio_settings.default_lesson_duration` drop (kullanılmayan kalıntı, §3.1). v1.4/v1.2'deki "kalıntı kolon" hijyen notu kapanır.
+- 0229: `products` tablosu (NEW, §3.14) — ürün katalogu. Stok kolonu yok (kullanıcı kararı), tek elden-satış fiyatı, image_url public URL, barkod UNIQUE+nullable, `archived_at` soft-archive.
+- 0230: `product_sale_items` (NEW, §3.15) — kalemli satış; `name_snapshot`/`unit_price_snapshot` immutable, `product_id` nullable (katalog-dışı kalem). Yeni satışlarda zorunlu, legacy satışlarda boş.
+- 0231: ürün audit kanalları (`product_created/updated/archived/unarchived` + `entity_type='product'`).
+- 0232: `products` + `parent_product_code`/`variant_label`/`category` (Trendyol Model Kodu varyant gruplama + kategori meta; ayrı parent satırı tutulmaz).
+- 0233: tüm `product_sales.lesson_id` NULL'a çekilir (display-side eşleştirmeye geçiş; kolon + FK + index korunur, §3.4).
+- 0234: `product_images` (NEW, §3.16) — kendi barındırılan görsel; ayrı tablo (hot-path payload şişmesin), ≤5MB CHECK, `image_url`'a `…/products/:id/image?v=<ts>` yazılır.
+- 0235: `product_deleted` audit action — arşivli ürün kalıcı silme; silmede `product_sale_items.product_id` NULL'a düşer (snapshot korunur).
+- 0236: `user_login` + `user_logout` audit action'ları + `entity_type='user'`. **v1.4'teki "auth audit kapsam dışı" kararı geri alındı** (güvenlik denetimi; §2.14). `password_changed` hâlâ yok.
+- 0237: `studio_settings.default_lesson_mode` + `payment_method_cash` + `payment_method_iban` drop (kullanılmayan kalıntı; yeni dersler 'onsite' default, ödeme formu her zaman cash+iban; §3.1, §8.5).
 
 **Kurallar:**
 - Her migration idempotent olmamalı (tek seferlik uygulanır); runner tablosu durum takibini yapar.
@@ -774,7 +829,8 @@ CREATE TABLE instructors (
 --   INSERT INTO instructors (full_name, is_active) VALUES ($1, true);
 ```
 
-- V1'de tek aktif eğitmen. `createLesson` aktif seed'i otomatik atar (§5.1).
+- `createLesson` body'de `instructorId` gönderilmezse aktif tek eğitmeni otomatik atar (§5.1); birden fazla aktif eğitmen varsa UI seçtirir.
+- **v1.6 — tam CRUD + audit:** Eğitmenler artık UI'dan yönetilir (`InstructorsPage` / `src/instructors.jsx`): oluştur / isim+aktiflik düzenle / soft-delete. Servis (`instructors.service.ts`) her mutasyonu `instructor_created` / `instructor_updated` / `instructor_deleted` audit action'ı ile yazar (migration 0226). `.env` tabanlı eğitmen bootstrap'ı kaldırıldı; eski bootstrap kayıtları (`Efe`, `Default Instructor`) 0227'de soft-delete edildi. Endpoint'ler §10. v1.2'deki "read-only" kuralı geçersizdir (§9).
 - Kolonlar minimum set: `phone`, `email`, `color_hex` gibi alanlar v1'de yok, ileride eklenir.
 
 ### 3.11 lesson_types
@@ -863,9 +919,82 @@ CREATE INDEX sessions_expires_idx ON sessions (expires_at);
 - **Şema farkı (v1.3 spec → v1.4 kod):** v1.3 spec `id text PRIMARY KEY` (opaque secret = PK) öneriyordu; v1.4 `bigserial id` + ayrı `token text UNIQUE` kullanır. Lookup `token` üstünden, JOIN'lerde `id` (integer FK ucuz). Token ileride hash'lenmek istenirse cookie değişmeden DB tarafı kolayca güncellenir.
 - `token` cookie'de düz tutulur (httpOnly + secure-prod + SameSite=Lax/dev veya None/prod, cross-origin Vercel+Railway için).
 - **Sliding window:** her korumalı request `last_seen_at = now()` ve `expires_at = now() + interval '30 days'` ile güncellenir (`auth.service.ts` `validateSession`).
-- **`user_agent` ve `ip` kolonları yok.** v1.3 spec'i öneriyordu (rate limit + audit IP/UA için); v1.4 rate limit ve auth audit'ı kapsam dışına çıkardığı için bu kolonlar da eklenmedi (§2.14, §11). İleride gerekirse `ALTER TABLE` ile eklenir.
+- **`user_agent` ve `ip` kolonları yok (hâlâ).** v1.3 spec'i öneriyordu. Rate limit (v1.5) ve login/logout audit (v1.6, 0236) sonradan eklendi ama bu kolonlar **eklenmedi**: IP, sessions tablosunda değil, yalnız `audit_logs.note`'ta (`'… — IP: x.x.x.x'`) tutulur; user-agent hiç kaydedilmez. İleride per-session IP/UA gerekirse `ALTER TABLE` ile eklenir (§2.14, §11 v1.6).
 - Cleanup: request-zamanı `s.expires_at > now()` filtresi (`validateSession`) — request-time invalidation yeterli; nightly cron v1'de kurulmadı.
 - `ON DELETE CASCADE`: user hard-delete edilirken session'lar otomatik silinir (`is_active=false` kullanan akışta CASCADE devreye girmez; bir sonraki request 401 alır).
+
+### 3.14 products (v1.6 — ürün katalogu)
+
+```sql
+-- NOTE: Bu final DDL, 0229 (ilk tablo) + 0232 (varyant/kategori kolonları)
+-- uygulandıktan sonraki durumdur.
+CREATE TABLE products (
+  id                   bigserial PRIMARY KEY,
+  barcode              text UNIQUE,                          -- nullable: barkodsuz elden ürün NULL
+  name                 text NOT NULL,
+  price                numeric(10,2) NOT NULL CHECK (price > 0),
+  image_url            text,                                 -- public URL (TY CDN ya da self-host /products/:id/image)
+  ty_listing_url       text,                                 -- Trendyol ilan linki
+  hb_listing_url       text,                                 -- Hepsiburada ilan linki
+  notes                text,
+  parent_product_code  text,                                 -- 0232: Trendyol Model Kodu (varyant grup anahtarı)
+  variant_label        text,                                 -- 0232: "Mavi" / "80x28" gibi UI display
+  category             text,                                 -- 0232: serbest metin (FK tablosu yok)
+  archived_at          timestamptz,                          -- soft-archive (silinmez, arşivlenir)
+  created_at           timestamptz NOT NULL DEFAULT now(),
+  updated_at           timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_products_active_name ON products (name) WHERE archived_at IS NULL;
+CREATE INDEX idx_products_parent_code ON products (parent_product_code)
+  WHERE parent_product_code IS NOT NULL AND archived_at IS NULL;
+CREATE INDEX idx_products_category ON products (category)
+  WHERE category IS NOT NULL AND archived_at IS NULL;
+
+CREATE TRIGGER products_touch_updated_at
+  BEFORE UPDATE ON products FOR EACH ROW EXECUTE FUNCTION trg_touch_updated_at();
+```
+
+- **Stok kolonu YOK** (bilinçli karar) — stok marketplace panellerinde yönetilir. Tek "elden satış" fiyatı; marketplace fiyatları DB'de tutulmaz.
+- **Arşivle, silme:** `archived_at` ile arşivlenir. Yalnız arşivli ürün kalıcı silinebilir (§2.9 İstisna 2). Geçmiş satışlar `product_sale_items.name_snapshot` ile bağımsız okunur.
+- **barcode UNIQUE ama nullable:** aynı ürünün TY/HB/elden hâlleri tek satırda; barkodsuz elden ürün NULL geçer. Çakışma → `BarcodeConflictError` (`PRODUCT_BARCODE_CONFLICT`, 409).
+- Trendyol Excel import: `npm run import:trendyol` (`scripts/import-trendyol-products.ts`, `xlsx`). Canlı API senkronu yok (§9).
+
+### 3.15 product_sale_items (v1.6 — kalemli satış)
+
+```sql
+CREATE TABLE product_sale_items (
+  id                   bigserial PRIMARY KEY,
+  sale_id              bigint NOT NULL REFERENCES product_sales(id) ON DELETE CASCADE,
+  product_id           bigint REFERENCES products(id) ON DELETE RESTRICT,  -- nullable: katalog-dışı serbest kalem
+  name_snapshot        text NOT NULL,                                       -- satış anındaki ad (immutable)
+  unit_price_snapshot  numeric(10,2) NOT NULL CHECK (unit_price_snapshot > 0),
+  quantity             integer NOT NULL CHECK (quantity > 0),
+  line_total           numeric(10,2) NOT NULL CHECK (line_total > 0),
+  created_at           timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_product_sale_items_sale ON product_sale_items (sale_id);
+CREATE INDEX idx_product_sale_items_product ON product_sale_items (product_id) WHERE product_id IS NOT NULL;
+```
+
+- **Snapshot kuralı (§2.3 felsefesi):** ürün katalogu sonradan güncellense bile `name_snapshot` + `unit_price_snapshot` değişmez; rapor immutable kalır.
+- `product_sales.total_amount = SUM(line_total)` (servis hesaplar, §2.1, §3.4). `sale_id` CASCADE: parent satış silinince kalemler otomatik gider. Ürün hard-delete'inde `product_id` NULL'a düşer (§2.9).
+
+### 3.16 product_images (v1.6 — kendi barındırılan görsel)
+
+```sql
+CREATE TABLE product_images (
+  product_id  bigint PRIMARY KEY REFERENCES products(id) ON DELETE CASCADE,
+  mime        text NOT NULL CHECK (mime IN ('image/webp', 'image/jpeg', 'image/png')),
+  bytes       bytea NOT NULL CHECK (octet_length(bytes) > 0 AND octet_length(bytes) <= 5242880),  -- ≤5MB
+  byte_size   integer NOT NULL CHECK (byte_size > 0),
+  updated_at  timestamptz NOT NULL DEFAULT now()
+);
+```
+
+- **Neden ayrı tablo:** `listProducts`/`getProductById` `SELECT *` yapıyor; `bytea`'yı `products`'a koymak her katalog/POS yüklemesini şişirirdi. Ayrı tabloda hot-path bytes'a dokunmaz; görsel yalnız `GET /products/:id/image` ile (ETag + immutable cache) servis edilir.
+- Görsel tarayıcıda ~800×800 WebP'e küçültülüp yüklenir (~30–80KB). Yüklenince `products.image_url`'a `…/products/:id/image?v=<ts>` yazılır (cache-bust). Doğrulama servis katmanında: MIME + magic-byte + boyut (`ValidationError`).
 
 ---
 
@@ -908,7 +1037,8 @@ WHERE status = 'completed'
   AND starts_at <  :week_end
   AND deleted_at IS NULL;
 
--- Ürün satışı cirosu
+-- Ürün satışı cirosu (total_amount = kalemli satışta SUM(line_total), legacy'de
+-- doğrudan toplam; ciro her durumda total_amount üzerinden — §2.1, §3.4)
 SELECT COALESCE(SUM(total_amount), 0) AS product_revenue
 FROM product_sales
 WHERE sold_at >= :week_start
@@ -1330,9 +1460,11 @@ create_prepaid_package(p_student_id, p_purchased_at, p_credit_count, p_unit_pric
 
 ### 5.5 Bulk Price Update
 
-Bu akış v1'de **yoktur**. Brüt fiyat artık `lesson_types.default_price` üzerinden gelir (§2.3); öğrenci başına default fiyat mevcut olmadığı için "bu öğrencinin scheduled derslerini yeni fiyata çek" kavramı anlamsızdır. Bir ders türünün fiyatı değişirse yeni `createLesson` çağrıları yeni değeri kullanır, mevcut snapshot'lar olduğu gibi kalır.
+**Dersler için bu akış v1'de yoktur.** Brüt ders fiyatı `lesson_types.default_price` üzerinden gelir (§2.3); öğrenci başına default fiyat mevcut olmadığı için "bu öğrencinin scheduled derslerini yeni fiyata çek" kavramı anlamsızdır. Bir ders türünün fiyatı değişirse yeni `createLesson` çağrıları yeni değeri kullanır, mevcut snapshot'lar olduğu gibi kalır.
 
-> `audit_logs.action` CHECK listesinde `bulk_price_update` değeri tarihsel tamlık için tutulmaktadır; ama servis katmanında bu action'ı yazan bir akış yoktur.
+> `audit_logs.action` CHECK listesindeki `bulk_price_update` değeri **ders** bağlamında tarihsel tamlık için tutulur; servis katmanında ders için bu action'ı yazan bir akış yoktur.
+
+**Ürün katalogu için bulk fiyat güncelleme v1.6'da MEVCUTtur** (§5.x): `bulkUpdatePrice(ids, mode, value)` — `mode ∈ {set, add, multiply}` (set = sabit fiyat, add = ekle/çıkar, multiply = `value`% zam/indirim). Atomik (tek transaction, per-product), her etkilenen ürün için `product_updated` audit satırı yazılır. **Ürün fiyatı değişimi mevcut `product_sale_items` snapshot'larını etkilemez** (§3.15) — yalnız sonraki satışlar yeni fiyatı görür. Endpoint `POST /products/bulk/price` (§10).
 
 ### 5.6 Payment Silme
 
@@ -1479,6 +1611,38 @@ uncomplete_lesson(p_lesson_id, p_actor_user_id):
 
 **Audit:** `lesson_uncompleted` action (migration 0225 ile CHECK listesine eklendi). `before/after` tüm satırı içerir (paket bağı kopuşu izlenebilir).
 
+### 5.7c Öğrenci Hard Delete (istisna, v1.6)
+
+**Ref:** §2.9 İstisna 1. Endpoint: `DELETE /students/:id`. §2.9'un "finansal tablolarda hard delete yasak" genel kuralının bilinçli istisnası: bir öğrenci tüm geçmişiyle **kalıcı (cascade)** silinir (disiplin / KVKK veri-sahibi talebi / hatalı kayıt / test temizliği). Geri alınamaz; geçmiş ciro/tahsilat raporlarını değiştirir.
+
+```
+hard_delete_student(p_student_id, p_actor_user_id):
+  BEGIN TRANSACTION
+    student = SELECT * FROM students WHERE id = p_student_id FOR UPDATE
+    IF student IS NULL: RAISE StudentNotFoundError
+
+    counts = silinecek kayıt sayıları (lessons, product_sales, prepaid_packages, payments, paid_total)
+
+    -- Fiziksel silme — FK bağımlılık sırasıyla:
+    DELETE FROM payments
+      WHERE lesson_id        IN (SELECT id FROM lessons        WHERE student_id = p_student_id)
+         OR product_sale_id  IN (SELECT id FROM product_sales  WHERE student_id = p_student_id)
+         OR prepaid_package_id IN (SELECT id FROM prepaid_packages WHERE student_id = p_student_id)
+    DELETE FROM product_sales   WHERE student_id = p_student_id   -- product_sale_items ON DELETE CASCADE
+    DELETE FROM lessons         WHERE student_id = p_student_id
+    DELETE FROM prepaid_packages WHERE student_id = p_student_id
+    DELETE FROM students        WHERE id = p_student_id
+
+    INSERT INTO audit_logs (action, entity_type, entity_id, before, note, actor_user_id)
+    VALUES ('student_deleted', 'student', p_student_id, before_student,
+            'hard_delete · lessons=… · product_sales=… · prepaid_packages=… · payments=… · paid_total=…',
+            p_actor_user_id)
+  COMMIT
+```
+
+- Tek kalan iz `audit_logs`'taki `student_deleted` satırı + `note`'taki silinen kayıt özeti.
+- Soft delete (arşivleme, `students.deleted_at`) hâlâ varsayılan günlük akıştır; hard-delete ayrı, bilinçli bir aksiyondur (UI'da ⋮ menüde "tamamen sil" + onay). Detay [project_student_delete] memory'sinde.
+
 ### 5.8 Ders İndirimi (Set Lesson Discount)
 
 **Ref:** §2.12. Endpoint: `PATCH /lessons/:id/discount` (§10). Idempotent set — verilen değer `discount_amount` üzerine yazılır. 0 indirimi kaldırır. Sadece completed & non-prepaid derse uygulanabilir.
@@ -1553,21 +1717,29 @@ login_with_password(p_username, p_password):
   INSERT INTO sessions (user_id, token, expires_at)
   VALUES (user.id, token, now() + interval '30 days')
 
+  -- v1.6 (0236): başarılı login audit'a yazılır. .catch ile yutulur (audit hatası login'i bozmaz).
+  INSERT INTO audit_logs (action, entity_type, entity_id, note, actor_user_id)
+  VALUES ('user_login', 'user', user.id, 'Başarılı giriş — IP: ' || ip, user.id)
+
   RETURN token
 ```
 
 **Cookie set:** HTTP route `Set-Cookie: session=<token>; HttpOnly; Secure(prod); SameSite=None(prod) | Lax(dev); Max-Age=2592000; Path=/`. Cross-origin (Vercel + Railway) deploy'da SameSite=None zorunlu.
 
-**v1.3 sapması:** Spec v1.3 login sırasında `audit_logs`'a `user_login` satırı yazıyordu. v1.4'te yazılmaz (§2.14). User-agent/IP de kayda alınmaz (sessions tablosunda kolon yok).
+**v1.6 değişikliği (auth audit):** Başarılı login artık `audit_logs`'a `user_login` satırı yazar (migration 0236, §2.14): `entity_type='user'`, `entity_id = actor_user_id = user.id`, IP `note`'ta. v1.4'teki "yazılmaz" kararı geri alındı. **User-agent ve session-side IP hâlâ kaydedilmez** (sessions tablosunda ip/user_agent kolonu yok; IP yalnız audit note'unda). Başarısız login denemesi audit'a yazılmaz (yalnız rate-limit sayar).
 
 ### 5.10 Auth: Logout
 
 ```
-logout(p_token):
+logout(p_token, ip):
+  user_id = SELECT user_id FROM sessions WHERE token = p_token   -- audit entity/actor için
   DELETE FROM sessions WHERE token = p_token
+  IF user_id IS NOT NULL:
+    INSERT INTO audit_logs (action, entity_type, entity_id, note, actor_user_id)
+    VALUES ('user_logout', 'user', user_id, 'Çıkış yapıldı — IP: ' || ip, user_id)  -- .catch ile yutulur
 ```
 
-Tek session silme. **`user_logout` audit yazılmaz** (v1.4, §2.14). Cookie route handler tarafından `res.clearCookie('session')` ile temizlenir.
+Tek session silme. **`user_logout` artık audit'a yazılır** (v1.6, migration 0236, §2.14): DELETE öncesi token sahibi okunur ki audit `entity_id`/`actor_user_id` dolsun; token zaten geçersizse audit atlanır. Cookie route handler tarafından `res.clearCookie('session')` ile temizlenir.
 
 **`logout_everywhere` v1.4 dışı:** Tüm cihazlardan çıkış endpoint'i v1 kapsamında değil (§9). Bir admin'in tüm session'larını silmek gerekirse sysadmin DB'den `DELETE FROM sessions WHERE user_id = ?` çalıştırır.
 
@@ -1622,7 +1794,16 @@ requireAuth(req, res, next):
 - v1.3 spec'i 401 verirken `res.clearCookie('session')` öneriyordu; v1.4 sadece 401 döner — frontend `auth:unauthorized` event'i ile login ekranına yönlendirir, ölü cookie bir sonraki login'de üzerine yazılır.
 - v1.4 sliding update **await** edilir (önceki implementasyon fire-and-forget'di → sonraki SELECT eski `expires_at`'ı görüyordu). Latency etkisi tek `UPDATE ... WHERE token` sorgusu mertebesinde; hata `.catch` ile yutulur, oturum invalidate olmaz.
 
-**`actor_user_id` enjeksiyonu:** Mevcut mutating *iş servisleri* (`createLesson`, `completeLesson`, `uncompleteLesson`, `setLessonDiscount`, `createCashPayment`, `createPrepaidPackage`, `createProductSale`, `updateSettings`, `createLessonType`, `updateLessonType`, ...) `actorUserId` parametresi alır; route handler `req.currentUser.id`'yi servise geçirir; servis `insertAuditLog` çağrısında bu değeri `audit_logs.actor_user_id`'ye yazar. Auth event'leri (login/logout) audit'a yazılmaz (§2.14).
+**`actor_user_id` enjeksiyonu:** Mevcut mutating *iş servisleri* (`createLesson`, `completeLesson`, `uncompleteLesson`, `setLessonDiscount`, `createCashPayment`, `createPrepaidPackage`, `createProductSale`, `hardDeleteStudent`, `createProduct`/`updateProduct`/`archiveProduct`/`deleteProduct`, `createInstructor`/`updateInstructor`/`deleteInstructor`, `updateSettings`, `createLessonType`, `updateLessonType`, ...) `actorUserId` parametresi alır; route handler `req.currentUser.id`'yi servise geçirir; servis `insertAuditLog` çağrısında bu değeri `audit_logs.actor_user_id`'ye yazar. Auth event'leri (login/logout) **v1.6'dan itibaren audit'a yazılır** (§2.14, migration 0236); `actor_user_id = entity_id = <user id>`.
+
+### 5.x Ürün Katalogu: CRUD + Görsel + Kalemli Satış (v1.6)
+
+**Ref:** §2.9 İstisna 2, §3.14–§3.16, §10 (endpoint listesi). Tümü `actorUserId` taşır ve audit'a yazar.
+
+- **Ürün CRUD** (`products.service.ts`): `createProduct` (barkod UNIQUE → çakışmada `BarcodeConflictError` 409; `product_created`), `updateProduct` (`product_updated`), `archiveProduct`/`unarchiveProduct` (`archived_at` set/clear; `product_archived`/`product_unarchived`), `deleteProduct` (**yalnız arşivli**; aktif ürün → `DeleteConflictError` 409; silmede `product_sale_items.product_id` NULL'a düşer; `product_deleted`). Bulunamayan ürün → `ProductNotFoundError` (404).
+- **Bulk** (atomik, per-product audit): `bulkArchiveProducts`, `bulkUnarchiveProducts`, `bulkUpdatePrice(set/add/multiply)` (§5.5), `bulkSetCategory`, `renameCategory`. Toplu işlemde ≤200 id.
+- **Görsel** (`product_images`, §3.16): `setProductImage(id, mime, bytes, baseUrl)` — MIME + magic-byte + ≤5MB doğrular (ihlal → `ValidationError`), `image_url`'a versiyonlu URL yazar; `getProductImage` (public `GET /products/:id/image`, ETag + immutable cache); `deleteProductImage`.
+- **Kalemli satış** (`product-sales.service.ts`, §3.4/§3.15): `createProductSale({ studentId, soldAt, items[], ... })` — her item için snapshot yazar, `total_amount = SUM(line_total)`, `lesson_id` her zaman NULL (v1.6). Legacy (item'sız `totalAmount`) gövde geriye dönük kabul edilir.
 
 ---
 
@@ -1773,13 +1954,15 @@ Kısa ve yanıltıcı olabilecek "Öğrenci Alacakları" gibi etiketler tek baş
 
 Apply → `PATCH /lessons/:id/discount` çağırır, modalin lokal state'i yenilenir, net tutar ve kalan borç güncellenir. Ödeme akışı aynı modal içinde devam eder — discount uygulanması ayrı bir ekrana götürmez.
 
+Ödeme yöntemi seçici her zaman hem **Nakit** hem **IBAN** sunar — eski `payment_method_cash`/`payment_method_iban` görünürlük toggle'ları kaldırıldı (0237, §3.1/§8.5).
+
 ### 8.3 Öğrenci profil ekranı
 
-- Finansal durum başlığı **net borç odaklı**: toplam borç varsa "X ₺ borçlu", yoksa "Güncel".
-- Kırılım: `ders borcu + ürün borcu` (varsa).
+- **A11 düzeni (v1.6):** Durum bandı (üst) + dört sekme — **Özet / Dersler / Satışlar / Hareketler**. Web ([src/student-profile.jsx](src/student-profile.jsx)) ve mobil profil aynı yapıyı paylaşır.
+  - **Özet:** finansal durum başlığı **net borç odaklı** ("X ₺ borçlu" / yoksa "Güncel"), kırılım `ders borcu + ürün borcu`, kısa son-hareketler önizlemesi.
+  - **Dersler:** ders listesi; **Satışlar:** ürün satışları (kalemli); **Hareketler:** birleşik aktivite akışı (dersler + satışlar + ödemeler + indirim olayları, kronolojik).
 - "Fazla ödeme / aktif bakiye / mahsup" gibi kavramlar UI'da yer almaz.
-- Aktif paket kenar çubuğunda ayrı kart olarak gösterilir (yalnız varsa): kalan kredi sayısı + parasal değer + kullanım ilerlemesi.
-- Hareketler akışı: "Tüm Hareketler / Dersler / Ürün Satışı" sekmeleri. "Bakiye hareketleri" sekmesi v1'de yoktur.
+- **Paket sekmesi A11 düzeninde web profilden çıkarıldı (v1.6):** ön ödemeli paket alımları ve kredi kullanımı artık ayrı sekme/kenar-kart değil, **Hareketler** akışında görünür. Paket akışının kendisi (FIFO kredi tahsisi, §5.2) arka planda korunur — yalnız profil UI'sından kaldırıldı. Detay [project_web_profile_a11] / [project_mobile_profile_redesign] memory'lerinde.
 - **İndirim olayları** hareketler feed'inde ayrı satır olarak görünür (§2.12, §3.7):
   - İlk uygulama: "**İndirim uygulandı** · {fmtTL(new)}"
   - Güncelleme: "**İndirim güncellendi** · {fmtTL(old)} → {fmtTL(new)}"
@@ -1812,19 +1995,21 @@ Takvim, ana sayfada `WeekCalendar` bileşeni ile gösterilir. Ayrı bir "Program
 
 ### 8.5 Settings ekranı
 
-[src/settings.jsx](src/settings.jsx) `studio_settings` tablosundaki kolonları yönetir:
+[src/settings.jsx](src/settings.jsx) iki sekme sunar (v1.6):
+
+**1) Genel** — `studio_settings` kolonlarını yönetir:
 - `weekly_capacity` — KPI doluluk hesabı (§4.4) bunu kullanır.
 - `calendar_start_hour` / `calendar_end_hour` — `WeekCalendar`'ın `alwaysFrom`/`alwaysTo` propları.
-- `default_lesson_mode` — `CreateLessonModal`'ın açılış varsayılanı.
-- `payment_method_cash` / `payment_method_iban` — `LessonModal` ödeme akışındaki cash/iban butonları.
 - `lesson_color_saturation` — takvim ders bloğu CSS doygunluk çarpanı.
 - **Sabit gösterilenler (v1 spec kısıtlaması):** `timezone` (Europe/Istanbul), `default_currency` (TRY), `week_start` (monday). UI bunları "v1 sabit" rozetiyle gösterir; PATCH endpoint'i bu alanları kabul etmez.
 
-**Görünür ama runtime'da tüketilmeyen:** `default_lesson_duration` alanı UI'da düzenlenebilir görünür ama ders süresinin tek kaynağı `lesson_types.default_duration_minutes`'tır (§3.1 "Tarihsel kalıntı" notu).
+**2) Aktivite** ([src/settings-activity.jsx](src/settings-activity.jsx)) — `audit_logs` görüntüleyici (settings / lesson-type / instructor / product olayları vb.).
+
+**Kaldırılan ayarlar (v1.6 temizliği):** `default_lesson_mode`, `payment_method_cash`/`payment_method_iban` (0237) ve `default_lesson_duration` (0228) kolonları DB'den drop edildi; settings UI'sında artık yer almazlar (§3.1). Yeni dersler `'onsite'` varsayılanıyla açılır (modalda değiştirilir), ödeme formu her zaman hem Nakit hem IBAN sunar, ders süresi `lesson_type.default_duration_minutes`'tan gelir. Eski "görünür ama tüketilmeyen `default_lesson_duration`" notu geçersizdir.
 
 Ödeme akışı ile ilişkili bir ayar (örneğin "Mahsup etkin" toggle'ı) v1'de yoktur (§2.6).
 
-**v1.4 — Hesap bölümü v1 kapsamı dışı (§9).** v1.3 spec'i Settings altında şifre değiştir + tüm cihazlardan çıkış öneriyordu; v1.4 bu UI bölümünü ve karşılığındaki `PATCH /auth/password` / `POST /auth/logout-everywhere` endpoint'lerini kapsam dışına çıkardı. Settings ekranı yalnızca "Genel" + "Aktivite" sekmeleri sunar.
+**v1.4 — Hesap bölümü v1 kapsamı dışı (§9).** v1.3 spec'i Settings altında şifre değiştir + tüm cihazlardan çıkış öneriyordu; v1.4 bu UI bölümünü ve karşılığındaki `PATCH /auth/password` / `POST /auth/logout-everywhere` endpoint'lerini kapsam dışına çıkardı. "Hesap" sekmesi hâlâ yoktur; mevcut sekmeler yukarıdaki ikidir (Genel / Aktivite).
 
 **Face/Touch ID kullanımı:** iOS Safari ve macOS Safari/Chrome şifre kaydetme prompt'unu kendileri sunar; kullanıcı kabul ederse bir sonraki girişte Face/Touch ID ile şifreyi otomatik dolduruluyor. Uygulamanın bunun için ekstra bir akışı yok — login formu standart `<input type="password" autocomplete="current-password">` kullanır, gerisini OS halleder.
 
@@ -1843,19 +2028,32 @@ Takvim, ana sayfada `WeekCalendar` bileşeni ile gösterilir. Ayrı bir "Program
 - Login form mobile-first tasarlanır; username input'unda `autoCapitalize="none"`, `autoCorrect="off"`, `inputMode="text"` + autofill destekli.
 - iOS Safari'de bir kez şifre kaydedildiğinde sonraki girişlerde Face ID/Touch ID prompt'u + autofill otomatik gelir. PWA "Ana ekrana ekle" durumunda da aynı autofill çalışır.
 
+### 8.7 Ürün katalogu ekranı (v1.6)
+
+[src/products.jsx](src/products.jsx) ürün kataloğunu yönetir:
+- Liste: ad araması, kategori filtresi (`GET /products/categories`), arşivli ürünleri dahil etme toggle'ı (`?includeArchived=true`). Varyantlar `parent_product_code` ile gruplanır.
+- Ürün ekle/düzenle: ad, fiyat, barkod (opsiyonel), kategori, varyant etiketi, TY/HB ilan linkleri, not.
+- **Görsel yükleme:** tarayıcıda ~800×800 WebP'e küçültülüp `POST /products/:id/image` ile yüklenir (web'de webcam + dosya, mobilde kamera + galeri). `<img>` `GET /products/:id/image?v=<ts>`'ten okur.
+- Toplu işlemler: seçili ürünlerde arşivle/arşivden çıkar, fiyat güncelle (set/add/multiply), kategori ata/yeniden adlandır.
+- Arşivle/sil: aktif ürün arşivlenir; arşivli ürün kalıcı silinebilir (§2.9 İstisna 2). Satış akışı (kalemli) ürün satış modalinden (`ProductSaleConfirmModal` / mobil `MobileProductSaleConfirmSheet`) yapılır.
+
+### 8.8 Hareketler ekranı (studio geneli, v1.6)
+
+[src/movements.jsx](src/movements.jsx) tüm öğrenciler genelinde tek kronolojik hareket akışı sunar (`GET /movements`, §10): tip filtresi (tümü/satış/ders/ödeme), tarih aralığı, öğrenci adı araması, sayfalama ve özet (satış/ders/ödeme sayıları + toplamlar). Öğrenci profilindeki "Hareketler" sekmesi (§8.3) aynı veriyi tek öğrenciye daraltır (`/students/:id/movements`).
+
 ---
 
 ## 9. Yapılmayacaklar (V1 Dışı)
 
 V1 kapsamı dışında kalan özellikler:
 
-- **Multi-instructor CRUD UI'sı** — `instructors` tablosu ve seed mevcut, `InstructorsPage` v1.2'de read-only listedir. Yeni eğitmen ekleme / düzenleme / pasifleştirme ekranı yoktur; çoklu eğitmen senaryosu DB seed'iyle yapılır. Lesson type CRUD'u v1.2'de UI'da var (§2.13); eğitmen tarafı ileri revizyonun konusudur.
+- **Eğitmen ileri alanları** — eğitmen CRUD UI'sı **v1.6'da eklendi** (§2.13, §3.10, §10); v1.2'deki "read-only / CRUD yok" kuralı geçersizdir. Kapsam dışı kalan: `email` / `phone` / uzmanlık / renk / öğrenci-bazlı oran gibi ileri alanlar ve eğitmen-bazlı KPI ayrıştırması.
 - **Rol bazlı yetkilendirme (RBAC)** — v1.3'te 3 admin user var (§2.14), tek seviye, hepsi her yere erişir. Scheduler/viewer gibi kısıtlı roller v1 kapsamı dışı. Gerekirse `users.role` kolonu + `requireRole(...)` middleware ile genişletilir.
 - **Self-service password reset** — "şifremi unuttum" email akışı yoktur (§2.14). 3 user için sysadmin DB'den manuel reset eder. Email gönderimi altyapısı (SMTP, Resend, SendGrid vb.) v1 kapsamında değildir.
 - **Hesap oluşturma / kayıt UI'sı** — yeni user bootstrap script + `.env` ile yaratılır. Self-signup endpoint yoktur; account provisioning operatöre bağlıdır.
 - **Settings → Hesap UI bölümü** (v1.4'te kapsam dışı) — şifre değiştir + tüm cihazlardan çıkış UI'sı yok; karşılık gelen `PATCH /auth/password` ve `POST /auth/logout-everywhere` endpoint'leri de yok. Sysadmin DB'den manuel halleder (§5.11).
-- **Auth audit logging** (v1.4'te kapsam dışı) — login/logout/password değişimi `audit_logs`'a yazılmaz; CHECK listesi `user_login`/`user_logout`/`password_changed` action'larını içermez (§2.14, §3.7). Mutating *iş* event'leri (lesson, payment, ...) audit'a düşmeye devam eder.
-- **Login rate limit** (v1.4'te kapsam dışı) — `POST /auth/login`'da rate limit middleware'i yok. Kapalı admin sistemi için kabul edildi; ileride `express-rate-limit` ile eklenir (§2.14).
+- **Şifre değişimi audit'ı (`password_changed`)** — login/logout audit **v1.6'da eklendi** (§2.14, §3.7, migration 0236), ama `password_changed` action'ı yoktur çünkü self-service şifre değişimi UI/endpoint'i v1 dışı (§5.11). "Auth audit tümüyle kapsam dışı" ifadesi geçersizdir.
+- **Login rate limit** — `POST /auth/login` rate limit'i **v1.5'te eklendi** (5 başarısız/15dk/IP, `RATE_LIMITED` 429, §2.14). "rate limit yok" ifadesi geçersizdir. Kapsam dışı kalan: per-user / dağıtık (Redis) rate limit store.
 - **Session IP/UA kaydı** (v1.4'te kapsam dışı) — `sessions` tablosunda `user_agent`/`ip` kolonu yok (§3.13). Audit + rate limit gereksinimleri olmadığı için eklenmedi.
 - **SSO / OAuth / sosyal login** — Google/Apple ile giriş v1 kapsamında değil.
 - **WebAuthn / Passkey** — iOS Safari + macOS Keychain'in varsayılan şifre kaydetme + Face/Touch ID autofill akışı 3 admin için yeterli. Ekstra ceremony eklemek (yeni tablo + 4 endpoint + frontend SDK) marjinal kazanç olarak değerlendirildi. İleride dış kullanıcı / phishing endişesi artarsa eklenir.
@@ -1863,7 +2061,7 @@ V1 kapsamı dışında kalan özellikler:
 - **KPI ve takvimde instructor / lesson_type segmentasyonu** — KPI sorguları tek aktif eğitmen + tip varsayımıyla yazılmıştır; "şu eğitmenin haftalık cirosu" gibi parça raporlar yoktur.
 - **Öğrenci başına fiyatlandırma / fiyat motoru** — `student_class_rates` gibi tablolar bilinçli olarak eklenmemiştir. V1'de brüt ders fiyatı `lesson_types.default_price` üzerinden snapshot'lanır (§2.3); öğrenciye özel durumlar `discount_amount` ile modellenir. Mode bazlı (online/yüz yüze) fiyatlandırma da kapsam dışıdır.
 - **Paketlerin ders tipine göre kısıtlanması** — `prepaid_packages.lesson_type_id` kolonu nullable olarak eklenmiştir ama FIFO kredi tahsisi v1'de bu kolonu filtrelemez (§3.5).
-- **Lesson type değişiklikleri için audit log** — `lesson_types_*` action'ları yoktur (§2.13 sonu).
+- **Eğitmen/ders-tipi/ürün ileri yönetimi** — temel CRUD ve audit mevcut (§2.13, §3.10, §3.7); eğitmen-bazlı oran, ders-tipi/eğitmen-bazlı KPI ayrıştırması ve ürün stok takibi (§9 ürün maddesi) kapsam dışı kalır.
 - Takvimde scheduled kredi rezervasyonu
 - Kredi transferi (öğrenciden öğrenciye)
 - Paket iptali / kredi iadesi (manuel süreç dışı)
@@ -1872,7 +2070,8 @@ V1 kapsamı dışında kalan özellikler:
 - **Manuel bakiye düzeltme** (kavram yok)
 - Multi-currency conversion
 - Logging-only observation mode — v1 direkt canlı
-- Ürün kalem bazlı satış (v1'de sadece toplam tutar; ürün satışı opsiyonel olarak bir derse bağlanabilir — §3.4 — ama kalem detayı tutulmaz)
+- ~~Ürün kalem bazlı satış~~ — **v1.6'da eklendi** (kalemli satış `product_sale_items` + ürün katalogu `products`, §3.4/§3.14/§3.15). Kapsam dışı kalan: ürün **stok takibi** (bilinçli yok — stok marketplace panellerinde yönetilir), **çoklu-mağaza katalog** (tek mağaza varsayımı), **canlı Trendyol/Hepsiburada API senkronu** (şu an yalnız Excel import: `npm run import:trendyol`).
+- **Push notification** — `web-push` bağımlılığı `backend/package.json`'da mevcut ama hiçbir yerde kullanılmıyor (ölü dependency); push abonelik tablosu / VAPID akışı yoktur.
 - Abonelik / tekrarlayan ödeme
 - **Takvim bloğu üzerinde drag&drop / yeniden zamanlama** — bloklar tıklanabilir (§8.4) ama saat değiştirme / başka güne taşıma akışı yoktur. Eski "Program" sayfası (drag&drop'lu mock) v1.2'de kaldırıldı.
 - **Kompliman ders kavramı** — "dersten para alınmıyor" durumu v1'de discount ile modellenir (örn. 900 TL ders + 900 TL indirim = net 0). Ayrı bir `is_complimentary` flag'i / waiver modeli v1'de yoktur.
@@ -1902,10 +2101,15 @@ V1 kapsamı dışında kalan özellikler:
    - `DiscountWouldExceedNetError` — discount uygulaması ödemeyi net tutarın üstüne çıkarırdı (§2.12, §5.8)
    - `CurrencyMismatchError` — currency uyuşmazlığı (trigger kaynaklı)
    - `StudentNotFoundError`, `LessonNotFoundError`, `ProductSaleNotFoundError`, `PrepaidPackageNotFoundError`, `PaymentNotFoundError` — not-found
+   - **Ürün katalogu (v1.6):**
+     - `ProductNotFoundError` (`PRODUCT_NOT_FOUND`, 404)
+     - `BarcodeConflictError` (`PRODUCT_BARCODE_CONFLICT`, 409) — barkod zaten kayıtlı
+     - `DeleteConflictError` (`DELETE_CONFLICT`, 409) — aktif ürün silme denemesi (önce arşivle); ayrıca öğrenci/student bağlı-kayıt çakışmaları
+     - Görsel doğrulama (`ValidationError` / `VALIDATION_ERROR`, 400) — desteklenmeyen MIME, magic-byte uyuşmazlığı, >5MB
    - **Auth (v1.3 → v1.4 kod realitesi):**
      - `UnauthorizedError` — geçersiz/expired session veya cookie yok (HTTP 401)
      - `InvalidCredentialsError` — yanlış username/şifre (HTTP 401, message generic — username enumeration koruması)
-     - ~~`RateLimitError`~~ — v1.4'te kapsam dışı; rate limit middleware'i yok (§2.14, §9).
+     - Rate limit — **v1.5'te eklendi**: `POST /auth/login` 5 başarısız/15dk/IP, kod `RATE_LIMITED` (HTTP 429). `express-rate-limit` middleware'i (ayrı AppError sınıfı değil, middleware doğrudan 429 döner). v1.4'teki "kapsam dışı" notu geçersizdir (§2.14, §11 v1.5).
 9. **API disiplini — endpoint listesi:**
 
    **Lessons:**
@@ -1926,8 +2130,21 @@ V1 kapsamı dışında kalan özellikler:
    - `GET /packages/:id`, `DELETE /packages/:id` → §5.6b özel akış.
 
    **Product sales:**
-   - `POST /product-sales` → satış oluşturma (her satış lessonId NULL — v1.6). Body kalemli (items[]) veya legacy total amount (geriye dönük). Detay §3.4.
+   - `POST /product-sales` → satış oluşturma (her satış lessonId NULL — v1.6). Body kalemli (`items[]`) veya legacy `totalAmount` (geriye dönük). Detay §3.4, §5.x.
    - `GET /product-sales/:id`, `PATCH /product-sales/:id`, `DELETE /product-sales/:id`.
+
+   **Products (v1.6, §3.14–§3.16, §5.x):**
+   - `GET /products?search=&category=&includeArchived=` → ürün listesi.
+   - `GET /products/categories` → distinct kategoriler + ürün sayıları.
+   - `POST /products/categories/rename` → body `{ from, to|null }` (to=null → kategori temizler).
+   - `POST /products/bulk/archive` · `/bulk/unarchive` · `/bulk/price` (`{ ids[], mode: set|add|multiply, value }`) · `/bulk/category` (`{ ids[], category|null }`). ids ≤ 200.
+   - `GET /products/:id`, `POST /products`, `PATCH /products/:id`.
+   - `POST /products/:id/archive`, `POST /products/:id/unarchive`.
+   - `DELETE /products/:id` → kalıcı silme. **Yalnız arşivli**; aktif ürün `DELETE_CONFLICT` (409). Barkod çakışması `PRODUCT_BARCODE_CONFLICT` (409); bulunamayan `PRODUCT_NOT_FOUND` (404).
+   - `GET /products/:id/image` → **public** (requireAuth öncesi; ETag + immutable cache). `POST /products/:id/image` → ham bytes (`image/webp|jpeg|png`, ≤5MB). `DELETE /products/:id/image`.
+
+   **Movements (v1.6):**
+   - `GET /movements?from=&to=&type=all|sale|lesson|payment&q=&page=&limit=` → stüdyo geneli hareket akışı (§8.8). Yanıt: `{ data, page, limit, hasMore, summary }`. Tek öğrenci için `/students/:studentId/movements`.
 
    **Students:**
    - `GET /students`, `GET /students/debtors`, `GET /students/:id`.
@@ -1941,8 +2158,9 @@ V1 kapsamı dışında kalan özellikler:
    **Settings:**
    - `GET /settings`, `PATCH /settings` → §3.1 + §8.5.
 
-   **Multi-entity yönetimi (v1.2):**
-   - `GET /instructors` → aktif eğitmen listesi (CreateLessonModal için). v1.2'de CRUD endpoint yok — eğitmen yönetimi DB seed'iyle yapılır.
+   **Multi-entity yönetimi (v1.2 + v1.6):**
+   - `GET /instructors` → aktif eğitmenler (modal/dropdown). `?include=all` → silinmemiş tüm eğitmenler (yönetim sayfası).
+   - `POST /instructors` → `{ full_name }` (v1.6). `PATCH /instructors/:id` → `{ full_name?, is_active? }`. `DELETE /instructors/:id` → soft delete. Hepsi audit'a yazar (§3.10). v1.2'deki "CRUD yok" notu geçersizdir.
    - `GET /lesson-types` → tüm ders türleri (aktif + pasif).
    - `POST /lesson-types` → yeni tip oluşturma. Body: `{ name, default_duration_minutes (1–240), default_price (≥0) }`. Currency `TRY` zorla.
    - `PATCH /lesson-types/:id` → tip güncelleme. Body: yukarıdakiler + `is_active?`. `lesson_type_id` üzerindeki snapshot'lar değişmez (§2.3); değişiklik yalnızca yeni `createLesson` çağrılarını etkiler.
@@ -1951,12 +2169,12 @@ V1 kapsamı dışında kalan özellikler:
    - `POST /lessons/:id/uncomplete` → `uncomplete_lesson()` (§5.7b). Body yok. 24 saat penceresi + ödemesiz olma + bağlı satış kontrolleri servis seviyesinde. Audit: `lesson_uncompleted`. Eski/ödemeli dersler için klasik soft-delete + yeniden oluştur akışı kullanılır.
 
    **Auth (v1.3 → v1.4 kod realitesi, §2.14, §5.9–§5.12):**
-   - `POST /auth/login` → username + password ile login. Body: `{ username, password }`. Başarılı → `Set-Cookie: session=<token>` + `{ ok: true }`. Hata: 401 `INVALID_CREDENTIALS` (mesaj generic — username enumeration koruması). **Rate limit yok** (v1 dışı).
+   - `POST /auth/login` → username + password ile login. Body: `{ username, password }`. Başarılı → `Set-Cookie: session=<token>` + `{ ok: true }` (ayrıca `user_login` audit, v1.6). Hata: 401 `INVALID_CREDENTIALS` (mesaj generic — username enumeration koruması). **Rate limit (v1.5):** 5 başarısız/15dk/IP → `RATE_LIMITED` (429).
    - `POST /auth/logout` → mevcut session'ı sil (`DELETE FROM sessions WHERE token = ?`). Body yok. Cookie temizlenir. `{ ok: true }` döner.
    - `GET /auth/me` → mevcut user bilgisi (frontend hydration için). Yanıt: `{ data: { id, username, displayName } }`. 401 = login gerekli.
    - `POST /auth/logout-everywhere`, `PATCH /auth/password` — **v1.4 dışı** (§9). Tüm cihazlardan çıkış ve self-service şifre değişimi v1 kapsamında değil; sysadmin DB üzerinden halleder.
 
-   **Korumalı endpoint disiplini (v1.3):** `/auth/*` ve `/health` dışındaki **tüm** endpoint'ler `requireAuth` middleware'inden geçer. Cookie yok / session ölü / user pasif → 401 `UNAUTHORIZED`. Servis katmanı `actorUserId` parametresi alır ve audit log'a yazar.
+   **Korumalı endpoint disiplini (v1.3):** `/auth/*`, `/health` ve **`GET /products/:id/image`** (v1.6 — görsel public, cross-site `<img>` third-party cookie engeline takılmasın diye requireAuth öncesi register edilir; yazma uçları authed kalır) dışındaki **tüm** endpoint'ler `requireAuth` middleware'inden geçer. Cookie yok / session ölü / user pasif → 401 `UNAUTHORIZED`. Servis katmanı `actorUserId` parametresi alır ve audit log'a yazar.
 
    **Lesson type yönetimi (v1.4 audit notu):** `POST /lesson-types` ve `PATCH /lesson-types/:id` artık `audit_logs`'a yazar (`lesson_type_created`, `lesson_type_updated`). `PATCH /settings` da `settings_updated` ile audit'a düşer.
 
@@ -1984,7 +2202,7 @@ V1 kapsamı dışında kalan özellikler:
    **`.env` (gitignore'lu, sadece operatörün local'inde / production env'inde):** Gerçek değerler. Bootstrap tamamlanınca `BOOTSTRAP_*` satırları operatör tarafından **silinir**.
 
    **Bootstrap script (`backend/scripts/bootstrap.ts`, git'te, v1.4 kod realitesi):**
-   - `BOOTSTRAP_INSTRUCTOR_NAME` → mevcut "Default Instructor" placeholder satırını gerçek isimle UPDATE eder. Migration 0210 tabloyu seed'siz açar; placeholder'ı 0210'dan sonraki başka bir geçiş veya elle ekleyebilir. (v1.4 kodu: `UPDATE instructors SET full_name = $1 WHERE full_name = 'Default Instructor'`.)
+   - `BOOTSTRAP_INSTRUCTOR_NAME` → **idempotent INSERT** (`backend/scripts/bootstrap.ts`): aktif (is_active, deleted_at IS NULL) eğitmen yoksa bu isimle bir eğitmen ekler; varsa atlar (tekrar çalıştırmada duplicate olmaz). v1.6'dan itibaren eğitmenler asıl olarak **UI'dan** yönetilir (§3.10); bu env yalnız ilk kurulum kolaylığıdır. Eski bootstrap placeholder kayıtları (`Efe`, `Default Instructor`) migration 0227'de soft-delete edildi.
    - `BOOTSTRAP_ADMINS` → her satır için `bcrypt.hash(password, 12)` + `INSERT INTO users (username, display_name, password_hash) VALUES ($1, $1, $2) ON CONFLICT (username) DO NOTHING`. **Display name = username**; operatör DB'den daha sonra manuel `UPDATE users SET display_name = '...'` yapabilir. Idempotent: aynı username yeniden bootstrap'lanırsa skip.
    - Password length < 6 → bootstrap fail.
    - **Bcrypt hash repo'da hardcoded değildir**, runtime'da hesaplanır.
@@ -2007,11 +2225,41 @@ V1 kapsamı dışında kalan özellikler:
 
 13. **`.env.example`** (git'te) yukarıdaki şablon. **`.env`** ve `*.env.local` `.gitignore`'a eklenir. Smoke test scriptleri ve seed komutları da `.env`'i okur — hardcoded PII assertion'ı içermez.
 
+14. **Operasyonel scriptler (`backend/`, v1.6):** günlük iş dışı bakım/içe-aktarma komutları:
+    - `npm run db:backup` → `scripts/backup-db.ts`: yerel `pg_dump` (custom format) → `backend/backups/`, `BACKUP_KEEP_DAYS` (default 14) gün retention. PG18 client gerekir. Off-site R2 yedeği için ayrıca GitHub Actions workflow'u (§11 v1.6 / [project_db_backup] memory).
+    - `npm run import:trendyol` → `scripts/import-trendyol-products.ts`: Trendyol satıcı Excel'ini (`xlsx`) ürün kataloğuna upsert eder (barkod bazlı, varyant/kategori meta'sı dahil). Canlı API senkronu yok.
+    - `npm run products:export` / `products:import` → ürün kataloğunu dışa/içe aktarma.
+    - `npm run archive:zero-stock` → `scripts/archive-zero-stock.ts`: stoğu biten ürünleri toplu arşivler.
+    - `npm run db:size` → `scripts/db-size-check.ts`: DB boyut/tablo raporu (Railway disk takibi).
+
 ---
 
 ## 11. Spec ile kod tabanı arasındaki sürüm notları
 
-### v1.5 (mevcut) — Mobile + PWA + public deploy sertleştirme
+### v1.6 (mevcut) — Ürün katalogu + operasyonel sertleştirme
+
+v1.6, en büyük tek revizyon: ürün satışını "serbest tutar" modelinden **kalemli (cart) + kalıcı ürün katalogu** modeline taşıdı ve aynı pakette birikmiş operasyonel borçları kapattı (eğitmen CRUD, hareketler akışı, öğrenci hard-delete, auth audit, ayar temizliği, profil A11). Spec gövdesinde 0233 için zaten "v1.6" deniyordu ama §11 girişi yoktu — bu sürüm notu o boşluğu da kapatır.
+
+**Şema değişiklikleri (migration 0226–0237):**
+- **Ürün katalogu:** `products` (§3.14, 0229 + 0232 varyant/kategori), `product_sale_items` (§3.15, 0230 — kalemli satış + snapshot), `product_images` (§3.16, 0234 — kendi barındırılan ≤5MB görsel). `product_sales.lesson_id` 0233'te tümüyle NULL'a çekildi (display-side eşleştirme; kolon korunur).
+- **Eğitmen:** audit kanalları (`instructor_*`, 0226) + bootstrap kayıtlarının soft-delete'i (0227).
+- **Auth audit:** `user_login` / `user_logout` + `entity_type='user'` (0236) — v1.4'teki "kapsam dışı" kararının geri alınması.
+- **Ayar temizliği:** `default_lesson_mode` + `payment_method_cash` + `payment_method_iban` (0237) drop. (`default_lesson_duration` drop'u 0228 ile v1.5 sonunda yapılmıştı — bkz. v1.5 notu; bu batch'le aynı temizlik desenini sürdürür.)
+- **Audit CHECK genişlemeleri:** 0226 (instructor), 0231 (product_created/updated/archived/unarchived + entity 'product'), 0235 (product_deleted), 0236 (auth + entity 'user').
+
+**Spec değişiklikleri (kod kapsama alındı):**
+- §3.4 + §3.14/§3.15: ürün satışı **kalemli** (`product_sale_items`, snapshot, `total_amount = SUM(line_total)`); legacy toplam satış geriye dönük okunur. §9'daki "kalem bazlı satış v1 dışı" maddesi kaldırıldı.
+- §2.13/§3.10/§10: **eğitmen tam CRUD + audit** (`InstructorsPage`). §9'daki "InstructorsPage read-only" kuralı kaldırıldı.
+- §2.9 + §5.7c: **öğrenci hard-delete** (cascade) — soft-delete genel kuralının bilinçli istisnası; ürün hard-delete (yalnız arşivli) İstisna 2.
+- §8.3: web + mobil öğrenci profili **A11** düzenine geçti (Özet/Dersler/Satışlar/Hareketler); **paket sekmesi profilden çıkarıldı** (paket akışı arka planda korunur).
+- §8.8 + §10: stüdyo geneli **hareketler akışı** (`/movements`).
+- §2.14/§3.7/§9: **auth login/logout audit** (0236) — v1.4'teki kararın geri alınması; `password_changed` hâlâ yok.
+- §3.1/§8.5: kullanılmayan ayar kolonlarının temizliği; Settings 2 sekme (Genel / Aktivite).
+- Operasyonel scriptler: yerel `pg_dump` (`npm run db:backup`) + off-site R2 GH Actions workflow + Trendyol Excel import (`npm run import:trendyol`) vb. (§10 item 14, [project_db_backup] memory).
+
+**Why:** Stüdyo aynı zamanda fiziksel/online ürün de satıyor (Trendyol/Hepsiburada + elden); "kaç adet, hangi ürün, ne fiyata" bilgisi olmadan satış kaydı eksikti. Kalemli satış + barkodlu katalog bu boşluğu kapatır; snapshot felsefesi raporları immutable tutar. Diğer değişiklikler (eğitmen CRUD, hareketler, hard-delete, auth audit) v1.5 sonrası gerçek kullanımda biriken net ihtiyaçlardı.
+
+### v1.5 (önceki) — Mobile + PWA + public deploy sertleştirme
 
 v1.5 revizyonu, v1.4'ün "ayrı sprint'e ertelenmiş" PWA artefaktlarını ve mobile-first kullanım için shell mimarisini v1 kapsamına aldı. Aynı revizyonda public deploy hazırlığı kapsamında CORS whitelist altyapısı ve login rate limit kapatıldı; deploy hedefi Vercel + Railway'den Cloudflare Pages + Railway'e döndü. Backend ve veri modeli tarafında değişiklik **yok**; tüm değişiklik frontend mimari ve operasyonel sertleştirme.
 
@@ -2051,17 +2299,17 @@ v1.5 revizyonu, v1.4'ün "ayrı sprint'e ertelenmiş" PWA artefaktlarını ve mo
 - **Mobile Student Profile detay sayfası** (MobileApp.jsx içinde placeholder)
 - **Mobile Quick-Add (`+`) FAB** — bottom sheet modal stub, henüz no-op
 - **`src/mobile/shared/` → `src/shared/` rename** — düşük öncelik, isim yanıltıcı ama low-impact
-- **Spec §7 tam test matrisi** — mevcut backend smoke 17 senaryo + frontend Vitest 26 test §7'nin büyük çoğunluğunu kapsar; CRUD edge case matrisi v1.6'da
+- **Spec §7 tam test matrisi** — mevcut backend smoke 21 senaryo + frontend Vitest 32 test §7'nin büyük çoğunluğunu kapsar; CRUD edge case matrisi hâlâ açık
 - **Cloudflare Workers backend port** (yukarıda gerekçesi)
 - **KVKK aydınlatma metni + veri sahibi hakları endpoint'i** — gerçek müşteri öncesi blocker; demo / staj başvurusu öncesi gerekli değil
-- **DB backup stratejisi** — Railway retention öğrenilmeli; yetmezse `pg_dump` → R2/S3 cron job
+- **DB backup stratejisi** — ~~ertelendi~~ **v1.6'da yazıldı:** yerel `pg_dump` (`npm run db:backup`, `backend/scripts/backup-db.ts`, 14 gün retention, PG18 client) + off-site R2 için GitHub Actions workflow (`.github/workflows/db-backup.yml`: gece 21:00 UTC cron → Docker `postgres:18` `pg_dump` → Cloudflare R2 S3 upload). **Aktivasyon bekliyor:** tek seferlik R2 bucket + secret (`DATABASE_URL`, `R2_*`) kurulumu ve workflow'un `main`'e merge'ü gerekir (GitHub scheduled workflow yalnız default branch'ten çalışır). Railway-side retention değerlendirmesi hâlâ açık optimizasyon.
 - **Frontend error tracking (Sentry vb.)** — public deploy ile birlikte v1.5 sonu / v1.6 başı eklenir; ücretsiz tier yeterli
-- **Auth audit log + login event tracking** — v1.4 line 2055 hâlâ geçerli; eklenmesi düşük öncelik
-- **GitHub Actions CI** (PR'larda smoke + Vitest) — depo profesyonelliği için iyi sinyal, deploy sonrası eklenir
+- **Auth audit log + login event tracking** — ~~ertelendi~~ **v1.6'da yapıldı** (login/logout audit, migration 0236, §2.14). `password_changed` + IP/UA kolonları hâlâ kapsam dışı.
+- **GitHub Actions CI** (PR'larda smoke + Vitest) — PR-CI hâlâ ertelenmiş. (Not: v1.6'da nightly **DB backup** GH Actions workflow'u (`db-backup.yml`) eklendi; bu PR-CI değil, ayrı bir scheduled job'tır.)
 
 **Test kapsamı durumu (dürüst tarif):**
 
-v1 test stratejisi iki katmanlı: backend smoke suite (17 senaryo, servis-katmanı integration, [backend/scripts/smoke/](backend/scripts/smoke/)) + frontend Vitest (7 dosya, 26 test, [src/__tests__/](src/__tests__/)). Spec §7'nin temel akışlarını (lesson + payment + package + discount + multi-entity + uncomplete + auth + KPI E2E + DB invariants + audit + net-amount edge cases) karşılar. Tam test matrisi (her CRUD edge case, her hata yolu) v1.6'ya ertelendi; mevcut kapsam canlı kullanım için yeterli kabul edildi. `npm run smoke:reset` (backend, full clean) + `npm run test` (frontend) yeşilse v1 deploy-ready.
+v1 test stratejisi iki katmanlı: backend smoke suite (**21 senaryo**, servis-katmanı integration, [backend/scripts/smoke/](backend/scripts/smoke/)) + frontend Vitest (7 dosya, **32 test**, [src/__tests__/](src/__tests__/)). v1.6'da eklenen smoke senaryoları: 17 product-catalog-and-cart-sale, 18 product-image, 19 student-hard-delete, 20 studio-movements. Spec §7'nin temel akışlarını (lesson + payment + package + discount + multi-entity + uncomplete + auth + KPI E2E + DB invariants + audit + net-amount edge cases + ürün katalogu/görsel + hard-delete + hareketler) karşılar. Tam test matrisi (her CRUD edge case, her hata yolu) hâlâ açık; mevcut kapsam canlı kullanım için yeterli kabul edildi. `npm run smoke:reset` (backend, full clean) + `npm run test` (frontend) yeşilse deploy-ready.
 
 **Why (genel gerekçe):**
 
@@ -2078,8 +2326,8 @@ v1.4, v1.3 spec'inde söz verilen ama implementasyonda *kasıtlı olarak* sadele
 - Audit `entity_type` listesi `lesson_type` ve `settings` ile genişledi (migration 0225).
 
 **Spec değişiklikleri (v1.3'ten v1 dışına çekildi):**
-- **Auth audit logging.** Login/logout/password değişimi `audit_logs`'a yazılmaz. CHECK listesi `user_login`/`user_logout`/`password_changed` action'larını ve `entity_type='user'` değerini içermez. Mutating *iş* event'leri `actor_user_id` ile audit'a yazılmaya devam eder. Gerekçe: kapalı admin sistemi, blast radius küçük.
-- **Login rate limit.** `POST /auth/login`'da rate limit yok. 3 admin için brute force riski düşük.
+- **Auth audit logging.** Login/logout/password değişimi `audit_logs`'a yazılmaz. CHECK listesi `user_login`/`user_logout`/`password_changed` action'larını ve `entity_type='user'` değerini içermez. Mutating *iş* event'leri `actor_user_id` ile audit'a yazılmaya devam eder. Gerekçe: kapalı admin sistemi, blast radius küçük. *(Bu karar v1.6'da kısmen geri alındı: login/logout audit eklendi — migration 0236; `password_changed` hâlâ yok. Bkz. üstteki v1.6 notu.)*
+- **Login rate limit.** `POST /auth/login`'da rate limit yok. 3 admin için brute force riski düşük. *(v1.5'te eklendi — bkz. v1.5 notu.)*
 - **Self-service şifre değişimi.** `PATCH /auth/password` endpoint'i ve Settings → Hesap UI bölümü v1 kapsamına alınmadı. Sysadmin DB'den manuel halleder (bcrypt hash + UPDATE + DELETE FROM sessions).
 - **Tüm cihazlardan çıkış.** `POST /auth/logout-everywhere` endpoint'i ve UI'sı v1 dışı.
 - **`users.deleted_at` (soft delete).** Sadece `is_active = false` ile pasifleştirme. 3 admin için soft delete'in aktör atfı için katma değeri düşük.
@@ -2174,7 +2422,7 @@ v1.2 revizyonu, spec'in v1.0 / v1.1 yazımı ile fiili kod arasındaki sapmalar�
 - Takvim blok etkileşimi spec'e eklendi (§8.4). Önceki "tıklanmaz" kuralı kaldırıldı; `LessonModal` planlı/tamamlanmış/iptal durumlarında farklı akışlar açar.
 - `CreateLessonModal` instructor + lesson_type seçimi sunar; `POST /lessons` body'si `instructorId?` ve `lessonTypeId?` kabul eder (gönderilmezse aktif tek seed otomatik atanır) (§2.13).
 - `LessonTypesPage` ders türü CRUD'unu UI'ya taşıdı; `GET/POST/PATCH /lesson-types` endpoint'leri §10'a eklendi.
-- `InstructorsPage` read-only listeyi gösterir; `GET /instructors` endpoint'i §10'a eklendi.
+- `InstructorsPage` read-only listeyi gösterir; `GET /instructors` endpoint'i §10'a eklendi. *(v1.6'da tam CRUD'a yükseltildi — bkz. v1.6 notu.)*
 
 **Kaldırılanlar:**
 - `src/schedule.jsx` ve "Program" sayfası tamamen kaldırıldı. Mock veriyle çalışıyordu, ana sayfa takvimi (`WeekCalendar`) zaten gerçek API ile aynı işlevi sunuyordu. Settings UI'sındaki bağlantı, sidebar item'ı ve schedule-spesifik CSS de temizlendi.

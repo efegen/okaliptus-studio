@@ -1,6 +1,6 @@
 # Okaliptus Studio
 
-Internal management dashboard for a yoga studio. Handles students, lessons, payments, and scheduling — built as a single-operator tool with a small admin team.
+Internal management dashboard for a yoga studio. Handles students, lessons, payments, prepaid packages, and a product catalog — built as a single-operator tool with a small admin team.
 
 ## Stack
 
@@ -8,21 +8,23 @@ Internal management dashboard for a yoga studio. Handles students, lessons, paym
 |-------|------------|
 | Frontend | React 18, Vite, TanStack Query, vite-plugin-pwa (Workbox) |
 | Backend | Express 4, TypeScript, Node.js 20+ |
-| Database | PostgreSQL 17 |
+| Database | PostgreSQL 18 |
 | Hosting | Cloudflare Pages (frontend), Railway (backend + Postgres) |
 
-## Features (v1)
+## Features
 
-- **Students** — profiles, contact info, lesson records, activity timeline
-- **Lesson types** — configurable types with pricing, duration, and instructor assignment
+- **Students** — profiles, contact info, lesson records, A11 activity timeline (Summary / Lessons / Sales / Movements tabs); permanent (cascade) hard-delete alongside soft archive
+- **Lesson types & instructors** — configurable lesson types (pricing, duration); full instructor CRUD, all audited
 - **Payments** — per-lesson tracking with partial payment support; overpayment is rejected
+- **Product catalog & sales** — persistent catalog (barcode, price, self-hosted image, marketplace listing URLs, variants/category) with item-based cart sales and per-item price snapshots; Trendyol Excel import
 - **Prepaid packages** — N-credit packages with FIFO credit consumption
 - **Discounts** — per-lesson discount applied on top of brut price (net = price − discount)
-- **Auth** — username/password login, 3 admin users, 30-day sliding sessions
-- **Audit log** — every mutating event (lessons, payments, packages, discounts, settings, lesson-types) tracked with actor user
+- **Auth** — username/password login, 3 admin users, 30-day sliding sessions, login rate limit; login/logout written to the audit log
+- **Audit log** — every mutating event (lessons, payments, packages, discounts, settings, lesson-types, instructors, products, auth login/logout) tracked with actor user
 - **Home dashboard** — weekly calendar view, lesson modal with complete/cancel/pay/discount flows
+- **Movements** — studio-wide chronological activity feed (sales / lessons / payments) with filters and summary
 - **Mobile PWA** — installable to home screen, offline-cached, mobile-first shell with bottom tab nav
-- **Settings** — studio-wide configuration stored in the database
+- **Settings** — studio-wide configuration plus an Activity (audit) tab
 
 ## Local Setup
 
@@ -38,9 +40,9 @@ cp backend/.env.example backend/.env
 # Edit backend/.env — set DATABASE_URL, PORT, TZ
 
 # 3. Run migrations
-cd backend && npm run migrate
+cd backend && npm run db:migrate
 
-# 4. Bootstrap (creates instructor and admin accounts from .env)
+# 4. Bootstrap (creates admin accounts, and a first instructor if none exists, from .env)
 cd backend && npm run db:bootstrap && cd ..
 
 # 5. Start dev servers (two terminals)
@@ -89,10 +91,12 @@ The project ships with two parallel smoke layers:
 
 **Backend smoke** (`backend/scripts/smoke/`) — direct service-layer
 integration tests against a local Postgres. Covers spec §7 scenarios plus
-v1.4 additions (uncomplete lesson, audit coverage, DB-level invariants,
-auth, KPI end-to-end). 17 files, ~60-90s wall time. The KPI E2E test
-(`99-kpi-end-to-end.ts`) is delta-based, so residual data from prior runs
-does not invalidate it; for a fully clean run, use `npm run smoke:reset`.
+later additions (uncomplete lesson, audit coverage, DB-level invariants,
+auth, KPI end-to-end, product catalog & cart sale, product image,
+student hard-delete, studio movements). 21 files,
+~60-90s wall time. The KPI E2E test (`99-kpi-end-to-end.ts`) is
+delta-based, so residual data from prior runs does not invalidate it;
+for a fully clean run, use `npm run smoke:reset`.
 
 **Frontend smoke** (`src/__tests__/`) — Vitest + React Testing Library
 component-level tests with mocked `fetch`. Covers login form, API client
@@ -131,8 +135,9 @@ Production setup:
 
 Pre-deploy checklist:
 
-- [ ] `ALLOWED_ORIGINS` set on backend (currently mirrors any origin —
-      MUST be locked down before public traffic)
+- [ ] `ALLOWED_ORIGINS` set on backend (CORS is fail-secure — with no
+      value, production rejects all cross-origin requests, so this MUST
+      be set to the frontend origin)
 - [ ] Login rate limit enabled (5 attempts / 15 min)
 - [ ] `VITE_API_BASE_URL` set in Pages build env
 - [ ] Cookie `SameSite=None` + `Secure` verified in prod env
@@ -140,10 +145,16 @@ Pre-deploy checklist:
 - [ ] Frontend `npm run test` green
 - [ ] Health check endpoint (`/health`) wired to Railway probe
 
-> Live demo: <https://okaliptus-studio.pages.dev>
-> (If the page doesn't load on your network, try a different ISP or
-> Cloudflare WARP — some Turkish ISPs filter `*.pages.dev`. A custom
-> domain is on the roadmap.)
+### Backups
+
+- **Manual:** `cd backend && npm run db:backup` — `pg_dump` (custom
+  format) to `backend/backups/`, with local retention
+  (`BACKUP_KEEP_DAYS`, default 14). Requires a PG 18 client.
+- **Off-site (scaffolded):** `.github/workflows/db-backup.yml` runs a
+  nightly `pg_dump` (via Docker `postgres:18`) and uploads to Cloudflare
+  R2. To activate: create an R2 bucket + API token, add the repo secrets
+  (`DATABASE_URL`, `R2_*`), and merge the workflow to `main` (scheduled
+  workflows only run from the default branch).
 
 ## PWA Installation
 
