@@ -217,6 +217,11 @@ export async function createLesson(input: CreateLessonInput): Promise<LessonRow>
     // Fiyat ve currency ders türünden gelir (yeni model). price_snapshot,
     // lesson_type.default_price'ın insert anındaki kopyasıdır; sonradan otomatik
     // değişmez (§2.3).
+    //
+    // Öğrenciye özel fiyat (migration 0238): bu öğrenci+tür için bir override
+    // varsa default_price yerine custom_price kullanılır (0 = ücretsiz). Override
+    // create anında snapshot'a kopyalanır; paket kredisi yine completeLesson'da
+    // önceliklidir.
     const defaultsResult = await client.query<LessonDefaultsRow>(
       `
         WITH resolved AS (
@@ -251,13 +256,16 @@ export async function createLesson(input: CreateLessonInput): Promise<LessonRow>
         SELECT
           r.instructor_id,
           r.lesson_type_id,
-          lt.default_duration_minutes AS duration_minutes,
-          lt.default_price           AS default_price,
-          lt.currency                AS currency
+          lt.default_duration_minutes              AS duration_minutes,
+          COALESCE(ltsp.custom_price, lt.default_price) AS default_price,
+          lt.currency                              AS currency
         FROM resolved r
         LEFT JOIN lesson_types lt ON lt.id = r.lesson_type_id
+        LEFT JOIN lesson_type_student_prices ltsp
+          ON ltsp.lesson_type_id = r.lesson_type_id
+         AND ltsp.student_id = $3::bigint
       `,
-      [instructorIdParam, lessonTypeIdParam],
+      [instructorIdParam, lessonTypeIdParam, input.studentId],
     );
 
     const defaults = defaultsResult.rows[0];
@@ -678,14 +686,17 @@ export type SetDiscountResult = {
   new_discount: string;
 };
 
-// Karar 4–6: PATCH /lessons/:id/discount için çağrılır. Idempotent set — verilen
-// değer mevcut discount_amount'u üzerine yazar. 0 indirimi kaldırır.
-// Kısıtlar:
-//   - sadece completed & non-prepaid derse uygulanabilir
-//   - 0 <= discount_amount <= price_snapshot
-//   - paid_amount <= price_snapshot - discount_amount
-// Audit trail: action='lesson_discount_updated', before/after eski ve yeni
-// discount_amount'u içerir. Hareketler sekmesi bunu renderlar (karar 8 & 9).
+// NOT: Ders-bazı manuel indirimin HTTP endpoint'i (PATCH /lessons/:id/discount)
+// ve frontend UI'ı v1.6'da kaldırıldı; indirim artık öğrenci × ders türü bazında
+// özel fiyatla (createLesson'da price_snapshot override) yönetiliyor. Bu servis
+// fonksiyonu DORMANT olarak korunuyor: discount_amount kolonu + net_amount
+// view'ları (net = price_snapshot - discount_amount) hâlâ canlı ve smoke testleri
+// (09/10/16/99) bu makineyi bu fonksiyonla doğruluyor. Manuel indirim geri
+// istenince yalnız route + UI tekrar bağlanır.
+//
+// Idempotent set — verilen değer mevcut discount_amount'u üzerine yazar; 0
+// indirimi kaldırır. Kısıtlar: sadece completed & non-prepaid derse uygulanabilir;
+// 0 <= discount_amount <= price_snapshot; paid_amount <= price_snapshot - discount.
 export async function setLessonDiscount(
   input: SetDiscountInput,
 ): Promise<SetDiscountResult> {

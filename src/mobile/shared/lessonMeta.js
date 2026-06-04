@@ -65,6 +65,8 @@ export function getLessonStateInfo(s) {
       return { label: 'Kısmi ödendi', summary };
     }
     case 'paid': {
+      // Net 0 ders: ödeme beklenmediği için "Ödendi" yanıltıcı olur.
+      if (!(s.price > 0)) return { label: 'Tamamlandı', summary: null };
       const methodLabel = s.paymentMethod
         ? (PAYMENT_METHOD_LABELS[s.paymentMethod] || s.paymentMethod)
         : null;

@@ -16,7 +16,6 @@ import {
   updateStudent,
   deleteStudent,
 } from './api';
-import { DiscountInline } from './student-profile';
 
 export function fmtDate(iso) {
   if (!iso) return '—';
@@ -123,7 +122,6 @@ export function buildOpenDebtItems(detail) {
         paidAmount: paid,
         remainingAmount: remaining,
         paidRatio: net > 0 ? Math.min(paid / net, 1) : 0,
-        canDiscount: true,
       };
     });
 
@@ -146,7 +144,6 @@ export function buildOpenDebtItems(detail) {
         paidAmount: paid,
         remainingAmount: remaining,
         paidRatio: total > 0 ? Math.min(paid / total, 1) : 0,
-        canDiscount: false,
       };
     });
 
@@ -1157,13 +1154,6 @@ export function ReceivePaymentModal({ student, detail, onClose, onSuccess }) {
             )}
 
             {error && <div className="rpm-error">{error}</div>}
-
-            {mode === 'single' && selectedItem && selectedItem.canDiscount && (
-              <DiscountInline
-                item={selectedItem}
-                onApplied={async () => { await refreshDetail(); }}
-              />
-            )}
 
             <div className="modal-actions">
               <button type="button" className="btn btn-ghost" onClick={onClose} disabled={submitting}>

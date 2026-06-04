@@ -359,13 +359,9 @@ export async function deleteLessonApi(lessonId) {
   return ensureMutationResult(payload, "Ders silinemedi.");
 }
 
-export async function setLessonDiscount(lessonId, { discountAmount, note } = {}) {
-  const payload = await apiRequest(`/lessons/${lessonId}/discount`, {
-    method: "PATCH",
-    body: JSON.stringify({ discountAmount, note: note ?? null }),
-  });
-  return ensureMutationResult(payload, "İndirim uygulanamadı.");
-}
+// NOT: setLessonDiscount (PATCH /lessons/:id/discount) v1.6'da kaldırıldı.
+// İndirim artık öğrenci × ders türü bazında özel fiyatla yönetiliyor
+// (getLessonTypeStudentPrices / setLessonTypeStudentPrice / removeLessonTypeStudentPrice).
 
 // ─── Settings ────────────────────────────────────────────────────────────────
 
@@ -447,6 +443,35 @@ export async function updateLessonType(id, patch) {
     body: JSON.stringify(patch),
   });
   return ensureMutationResult(payload, "Ders türü güncellenemedi.");
+}
+
+// ─── Ders türüne özel öğrenci fiyatları (migration 0238) ──────────────────────
+
+export async function getLessonTypeStudentPrices(lessonTypeId) {
+  const payload = await apiGet(`/lesson-types/${encodeURIComponent(lessonTypeId)}/prices`);
+  if (!payload || !Array.isArray(payload.data)) {
+    throw new Error("Özel fiyat listesi alınamadı.");
+  }
+  return payload.data;
+}
+
+export async function setLessonTypeStudentPrice(lessonTypeId, studentId, customPrice) {
+  const payload = await apiRequest(
+    `/lesson-types/${encodeURIComponent(lessonTypeId)}/prices/${encodeURIComponent(studentId)}`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ custom_price: customPrice }),
+    },
+  );
+  return ensureMutationResult(payload, "Özel fiyat kaydedilemedi.");
+}
+
+export async function removeLessonTypeStudentPrice(lessonTypeId, studentId) {
+  const payload = await apiRequest(
+    `/lesson-types/${encodeURIComponent(lessonTypeId)}/prices/${encodeURIComponent(studentId)}`,
+    { method: "DELETE" },
+  );
+  return ensureMutationResult(payload, "Özel fiyat kaldırılamadı.");
 }
 
 // ─── Audit Logs ──────────────────────────────────────────────────────────────

@@ -25,7 +25,8 @@ function deriveLessonState(status, paid, price) {
   if (!isCompleted) return 'planned';
   const paidNum = Number(paid) || 0;
   const priceNum = Number(price) || 0;
-  if (priceNum === 0) return 'unpaid';
+  // Net 0 (ücretsiz/özel fiyat 0) = ödeme beklenmez → yeşil (paid).
+  if (priceNum === 0) return 'paid';
   if (paidNum >= priceNum) return 'paid';
   if (paidNum > 0) return 'partial';
   return 'unpaid';

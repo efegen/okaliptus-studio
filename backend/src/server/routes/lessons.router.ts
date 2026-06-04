@@ -8,12 +8,11 @@ import {
   getLessonById,
   listLessonsForStudent,
   listLessonsInRange,
-  setLessonDiscount,
   softDeleteLesson,
   uncompleteLesson,
 } from "../../services/lessons.service.js";
 import type { LessonStatus } from "../../services/shared.js";
-import { InvalidStatusTransitionError, ValidationError } from "../../services/errors.js";
+import { InvalidStatusTransitionError } from "../../services/errors.js";
 import { sendError, parseId } from "../middleware/response.js";
 
 export const lessonsRouter = Router();
@@ -118,31 +117,10 @@ lessonsRouter.patch("/:id/status", async (req, res) => {
   }
 });
 
-// PATCH /lessons/:id/discount
-// Karar 4: ders indiriminin idempotent set edildiği endpoint. Body
-// { discountAmount, note? }. 0 indirimi kaldırır. Sadece completed &
-// non-prepaid derslere uygulanabilir (karar 5); paid_amount net tutarı
-// aşıyorsa 409 döner (karar 6).
-lessonsRouter.patch("/:id/discount", async (req, res) => {
-  try {
-    const id = parseId(req.params.id);
-    const { discountAmount, note } = req.body as Record<string, unknown>;
-
-    if (discountAmount === undefined || discountAmount === null) {
-      throw new ValidationError("discountAmount is required.");
-    }
-
-    const data = await setLessonDiscount({
-      lessonId: id,
-      discountAmount: discountAmount as number | string,
-      note: note != null ? String(note) : null,
-      actorUserId: req.currentUser.id,
-    });
-    res.json({ data });
-  } catch (err) {
-    sendError(res, err);
-  }
-});
+// NOT: Ders-bazı manuel indirim endpoint'i (PATCH /lessons/:id/discount) v1.6'da
+// kaldırıldı. İndirim artık öğrenci × ders türü bazında özel fiyatla (migration
+// 0238, lesson-types.router.ts) yönetiliyor. discount_amount kolonu ve net_amount
+// view'ları korunuyor; manuel indirim sonradan geri eklenebilir.
 
 // DELETE /lessons/:id
 // Soft-deletes a lesson (used for "user error" cancellations where the lesson should

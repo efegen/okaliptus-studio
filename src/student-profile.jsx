@@ -11,7 +11,6 @@ import {
   getStudentPackages,
   getStudentProductSales,
   getStudentMovements,
-  setLessonDiscount,
   updateStudent,
   deleteStudent,
 } from './api';
@@ -1376,134 +1375,7 @@ function EmptyBlock({ title, sub }) {
   );
 }
 
-// ─── Discount inline control (karar 4–6) ─────────────────────────────────────
-// Ödeme modalı içinde sadece completed & non-prepaid derslerde görünür.
-// PATCH /lessons/:id/discount çağırır; 0 indirimi kaldırır.
-// Backend validation: 0 <= discount <= price_snapshot ve paid <= price - discount.
-
-export function DiscountInline({ item, onApplied }) {
-  const [open, setOpen] = React.useState(false);
-  const [value, setValue] = React.useState(() => item.discountAmount.toFixed(2));
-  const [note, setNote] = React.useState('');
-  const [submitting, setSubmitting] = React.useState(false);
-  const [error, setError] = React.useState(null);
-
-  React.useEffect(() => {
-    setValue(item.discountAmount.toFixed(2));
-    setError(null);
-  }, [item.targetId, item.discountAmount]);
-
-  const parsed = parseFloat(value);
-  const hasDiscount = item.discountAmount > 0.01;
-  const parsedValid = Number.isFinite(parsed) && parsed >= 0 && parsed <= item.grossAmount + 0.001;
-  const wouldExceedNet = Number.isFinite(parsed) && item.paidAmount > item.grossAmount - parsed + 0.001;
-
-  async function apply(newAmount) {
-    setSubmitting(true); setError(null);
-    try {
-      await setLessonDiscount(item.targetId, {
-        discountAmount: newAmount.toFixed(2),
-        note: note.trim() || null,
-      });
-      setOpen(false);
-      setNote('');
-      await onApplied();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'İndirim uygulanamadı.');
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  if (!open) {
-    return (
-      <div className="rpm-section rpm-discount-row">
-        {hasDiscount ? (
-          <div className="rpm-discount-summary">
-            <span className="eyebrow">İndirim</span>
-            <span className="rpm-discount-value">-{fmtTL(item.discountAmount)}</span>
-            <span className="rpm-discount-meta">
-              Brüt {fmtTL(item.grossAmount)} · Net {fmtTL(item.totalAmount)}
-            </span>
-            <button type="button" className="btn btn-ghost btn-xs" onClick={() => setOpen(true)}>
-              Değiştir
-            </button>
-          </div>
-        ) : (
-          <button type="button" className="btn btn-ghost btn-xs" onClick={() => setOpen(true)}>
-            İndirim uygula
-          </button>
-        )}
-      </div>
-    );
-  }
-
-  return (
-    <div className="rpm-section rpm-discount-edit">
-      <div className="rpm-section-head">
-        <span className="eyebrow">İndirim uygula</span>
-        <span className="rpm-discount-meta">
-          Brüt {fmtTL(item.grossAmount)} · Ödenen {fmtTL(item.paidAmount)}
-        </span>
-      </div>
-      <div className="form-row-2">
-        <div className="form-row">
-          <label>İndirim tutarı (TL)</label>
-          <input
-            type="number" min="0" step="0.01"
-            value={value}
-            onChange={e => setValue(e.target.value)}
-            placeholder="0.00"
-            disabled={submitting}
-          />
-        </div>
-        <div className="form-row">
-          <label>Not</label>
-          <input
-            type="text" value={note}
-            onChange={e => setNote(e.target.value)}
-            placeholder="İsteğe bağlı"
-            disabled={submitting}
-          />
-        </div>
-      </div>
-      {parsedValid && !wouldExceedNet && (
-        <div className="rpm-summary rpm-summary-compact">
-          <div className="rpm-summary-row">
-            <span>İndirim sonrası net</span>
-            <strong>{fmtTL(Math.max(0, item.grossAmount - parsed))}</strong>
-          </div>
-        </div>
-      )}
-      {!parsedValid && <div className="rpm-error">İndirim 0 ile brüt tutar arasında olmalı.</div>}
-      {parsedValid && wouldExceedNet && (
-        <div className="rpm-error">
-          Ödenen tutar ({fmtTL(item.paidAmount)}) bu indirim sonrası net tutarı aşar; önce ödemeyi azaltın.
-        </div>
-      )}
-      {error && <div className="rpm-error">{error}</div>}
-      <div className="modal-actions">
-        <button type="button" className="btn btn-ghost" onClick={() => setOpen(false)} disabled={submitting}>
-          Vazgeç
-        </button>
-        {hasDiscount && (
-          <button
-            type="button" className="btn btn-ghost"
-            onClick={() => apply(0)}
-            disabled={submitting || item.paidAmount > item.grossAmount + 0.001}
-          >
-            İndirimi kaldır
-          </button>
-        )}
-        <button
-          type="button" className="btn btn-accent"
-          onClick={() => apply(parsed)}
-          disabled={submitting || !parsedValid || wouldExceedNet}
-        >
-          {submitting ? 'Uygulanıyor...' : 'İndirimi uygula'}
-        </button>
-      </div>
-    </div>
-  );
-}
+// NOT: Ders-bazı manuel indirim kontrolü (DiscountInline) v1.6'da kaldırıldı.
+// İndirim artık öğrenci × ders türü bazında özel fiyatla (Ders Türleri ekranı)
+// yönetiliyor. Manuel indirim sonradan geri eklenebilir.
 

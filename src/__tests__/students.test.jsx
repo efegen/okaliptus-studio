@@ -21,7 +21,6 @@ vi.mock("../api", () => ({
   createStudent: vi.fn(),
   updateStudent: vi.fn(),
   deleteStudent: vi.fn(),
-  setLessonDiscount: vi.fn(),
   getStudentMovements: vi.fn(),
 }));
 

@@ -17,7 +17,6 @@ vi.mock("../api", () => ({
   getStudentProductSales: vi.fn(),
   getStudentMovements: vi.fn(),
   createCashPayment: vi.fn(),
-  setLessonDiscount: vi.fn(),
 }));
 
 import { StudentProfilePage } from "../student-profile";

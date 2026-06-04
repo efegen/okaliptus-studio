@@ -151,7 +151,9 @@ function getLessonState(status, paid, price) {
   if (!isCompleted) return "planned";
   const paidNum = Number(paid) || 0;
   const priceNum = Number(price) || 0;
-  if (priceNum === 0) return "unpaid"; // no price data = treat as unpaid (conservative)
+  // Net 0 (ücretsiz/özel fiyat 0) = ödeme beklenmez → yeşil (paid). Ders türü
+  // bazlı öğrenci özel fiyatı sıfır olduğunda tamamlanan ders kırmızı görünmesin.
+  if (priceNum === 0) return "paid";
   if (paidNum >= priceNum) return "paid";
   if (paidNum > 0) return "partial";
   return "unpaid";
@@ -178,6 +180,8 @@ function getLessonStateInfo(s) {
       return { label: "Kısmi ödendi", summary };
     }
     case "paid": {
+      // Net 0 ders: ödeme beklenmediği için "Ödendi" yanıltıcı olur.
+      if (!(s.price > 0)) return { label: "Tamamlandı", summary: null };
       const methodLabel = s.paymentMethod
         ? (PAYMENT_METHOD_LABELS[s.paymentMethod] || s.paymentMethod)
         : null;

@@ -4,6 +4,9 @@ import {
   listAllLessonTypes,
   createLessonType,
   updateLessonType,
+  listLessonTypeStudentPrices,
+  setLessonTypeStudentPrice,
+  removeLessonTypeStudentPrice,
 } from "../../services/lesson-types.service.js";
 import { parseId, sendError } from "../middleware/response.js";
 
@@ -104,6 +107,62 @@ lessonTypesRouter.patch("/:id", async (req, res) => {
       return;
     }
     res.json({ data });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+// GET /lesson-types/:id/prices — ders türüne özel fiyatlı öğrenciler
+lessonTypesRouter.get("/:id/prices", async (req, res) => {
+  try {
+    const id = parseId(req.params.id);
+    const data = await listLessonTypeStudentPrices(id);
+    res.json({ data });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+// PUT /lesson-types/:id/prices/:studentId — öğrenciye özel fiyat ayarla (upsert)
+lessonTypesRouter.put("/:id/prices/:studentId", async (req, res) => {
+  try {
+    const id = parseId(req.params.id);
+    const studentId = parseId(req.params.studentId);
+    const { custom_price } = req.body as { custom_price?: unknown };
+
+    const price = Number(custom_price);
+    if (!Number.isFinite(price) || price < 0) {
+      res.status(400).json({ error: { message: "custom_price geçersiz." } });
+      return;
+    }
+
+    const data = await setLessonTypeStudentPrice(
+      id,
+      studentId,
+      price,
+      req.currentUser.id,
+    );
+    res.json({ data });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+// DELETE /lesson-types/:id/prices/:studentId — özel fiyatı kaldır
+lessonTypesRouter.delete("/:id/prices/:studentId", async (req, res) => {
+  try {
+    const id = parseId(req.params.id);
+    const studentId = parseId(req.params.studentId);
+    const removed = await removeLessonTypeStudentPrice(
+      id,
+      studentId,
+      req.currentUser.id,
+    );
+    if (!removed) {
+      res.status(404).json({ error: { message: "Özel fiyat bulunamadı." } });
+      return;
+    }
+    res.json({ data: { removed: true } });
   } catch (err) {
     sendError(res, err);
   }

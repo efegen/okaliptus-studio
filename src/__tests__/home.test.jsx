@@ -31,7 +31,6 @@ vi.mock("../api", () => ({
   completeLessonApi: vi.fn(),
   changeLessonStatusApi: vi.fn(),
   deleteLessonApi: vi.fn(),
-  setLessonDiscount: vi.fn(),
   createCashPayment: vi.fn(),
   uncompleteLesson: vi.fn(),
   createProductSaleApi: vi.fn(),

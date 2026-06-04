@@ -4550,6 +4550,64 @@ input, select { font-family: inherit; }
 .lt-status-btn.is-active { background: var(--sage-2, #d6f0e0); color: var(--sage-ink, #1a6639); }
 .lt-status-btn.is-passive { background: var(--bg-2); color: var(--ink-2); }
 
+/* ── Ders türüne özel öğrenci fiyatları (LessonTypePrices) ──────────────────── */
+.ltp-section {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line-2);
+}
+.ltp-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.ltp-hint {
+  font-size: 11px;
+  color: var(--ink-4);
+}
+.ltp-state {
+  font-size: 13px;
+  color: var(--ink-3);
+  padding: 6px 0;
+}
+.ltp-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.ltp-row,
+.ltp-add {
+  display: grid;
+  grid-template-columns: 1fr 120px auto auto;
+  align-items: center;
+  gap: 8px;
+}
+.ltp-add {
+  grid-template-columns: 1fr 120px auto;
+  padding-top: 4px;
+}
+.ltp-row-name {
+  font-size: 13px;
+  color: var(--ink-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ltp-row input,
+.ltp-add input,
+.ltp-add select {
+  width: 100%;
+  padding: 7px 10px;
+  font-size: 13px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink-1);
+}
+
 @media (max-width: 760px) {
   .catalog-page .page-head {
     flex-direction: column;

@@ -1,5 +1,13 @@
 import React from 'react';
-import { getLessonTypes, createLessonType, updateLessonType } from './api';
+import {
+  getLessonTypes,
+  createLessonType,
+  updateLessonType,
+  getStudents,
+  getLessonTypeStudentPrices,
+  setLessonTypeStudentPrice,
+  removeLessonTypeStudentPrice,
+} from './api';
 import { Icon } from './layout';
 
 function formatPriceTRY(raw) {
@@ -32,6 +40,174 @@ function getLessonTypeMark(name) {
     .map(part => part[0])
     .join('')
     .toLocaleUpperCase('tr-TR') || 'DT';
+}
+
+function studentLabel(row) {
+  const nick = row.nickname || row.student_nickname;
+  return nick ? `${row.full_name} (${nick})` : row.full_name;
+}
+
+// Tek bir özel fiyat satırı — yerel düzenlenebilir tutar + Kaydet/Kaldır.
+function PriceRow({ row, busy, onSave, onRemove }) {
+  const [val, setVal] = React.useState(() => String(Number(row.custom_price)));
+  React.useEffect(() => { setVal(String(Number(row.custom_price))); }, [row.custom_price]);
+
+  const parsed = parseFloat(val);
+  const dirty = !(Number.isFinite(parsed) && Math.abs(parsed - Number(row.custom_price)) < 0.001);
+  const valid = Number.isFinite(parsed) && parsed >= 0;
+
+  return (
+    <div className="ltp-row">
+      <span className="ltp-row-name">{studentLabel(row)}</span>
+      <input
+        type="number" min={0} step="0.01"
+        value={val}
+        onChange={e => setVal(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Enter') e.preventDefault(); }}
+        disabled={busy}
+        aria-label={`${row.full_name} özel fiyat`}
+      />
+      <button
+        type="button" className="btn btn-ghost btn-xs"
+        disabled={busy || !dirty || !valid}
+        onClick={() => onSave(row.student_id, parsed)}
+      >
+        Kaydet
+      </button>
+      <button
+        type="button" className="btn btn-ghost btn-xs"
+        disabled={busy}
+        onClick={() => onRemove(row.student_id)}
+      >
+        Kaldır
+      </button>
+    </div>
+  );
+}
+
+// Ders türüne özel öğrenci fiyatları (migration 0238). 0 = ücretsiz. Yalnız
+// bundan sonra oluşturulacak dersleri etkiler (price_snapshot create anında).
+function LessonTypePrices({ lessonTypeId }) {
+  const [prices, setPrices] = React.useState([]);
+  const [students, setStudents] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState(null);
+  const [busy, setBusy] = React.useState(false);
+  const [newStudentId, setNewStudentId] = React.useState('');
+  const [newPrice, setNewPrice] = React.useState('');
+
+  React.useEffect(() => {
+    let cancelled = false;
+    setLoading(true); setError(null);
+    Promise.all([getLessonTypeStudentPrices(lessonTypeId), getStudents()])
+      .then(([p, s]) => { if (!cancelled) { setPrices(p); setStudents(s); setLoading(false); } })
+      .catch(e => { if (!cancelled) { setError(e.message || 'Yüklenemedi.'); setLoading(false); } });
+    return () => { cancelled = true; };
+  }, [lessonTypeId]);
+
+  async function refresh() {
+    const p = await getLessonTypeStudentPrices(lessonTypeId);
+    setPrices(p);
+  }
+
+  const overriddenIds = new Set(prices.map(p => String(p.student_id)));
+  const available = students
+    .filter(s => s.is_active !== false && !overriddenIds.has(String(s.id)))
+    .sort((a, b) => String(a.full_name).localeCompare(String(b.full_name), 'tr-TR'));
+
+  async function handleAdd() {
+    const price = parseFloat(newPrice);
+    if (!newStudentId) { setError('Öğrenci seç.'); return; }
+    if (!Number.isFinite(price) || price < 0) { setError('Geçerli bir fiyat gir.'); return; }
+    setBusy(true); setError(null);
+    try {
+      await setLessonTypeStudentPrice(lessonTypeId, newStudentId, price);
+      setNewStudentId(''); setNewPrice('');
+      await refresh();
+    } catch (e) { setError(e.message || 'Eklenemedi.'); }
+    finally { setBusy(false); }
+  }
+
+  async function handleSave(studentId, price) {
+    setBusy(true); setError(null);
+    try {
+      await setLessonTypeStudentPrice(lessonTypeId, studentId, price);
+      await refresh();
+    } catch (e) { setError(e.message || 'Kaydedilemedi.'); }
+    finally { setBusy(false); }
+  }
+
+  async function handleRemove(studentId) {
+    setBusy(true); setError(null);
+    try {
+      await removeLessonTypeStudentPrice(lessonTypeId, studentId);
+      await refresh();
+    } catch (e) { setError(e.message || 'Kaldırılamadı.'); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div className="ltp-section">
+      <div className="ltp-head">
+        <span className="eyebrow">Özel fiyatlı öğrenciler</span>
+        <span className="ltp-hint">0 = ücretsiz · yalnız yeni dersleri etkiler</span>
+      </div>
+
+      {loading ? (
+        <div className="ltp-state">Yükleniyor…</div>
+      ) : (
+        <>
+          {prices.length > 0 && (
+            <div className="ltp-list">
+              {prices.map(row => (
+                <PriceRow
+                  key={row.student_id}
+                  row={row}
+                  busy={busy}
+                  onSave={handleSave}
+                  onRemove={handleRemove}
+                />
+              ))}
+            </div>
+          )}
+
+          <div className="ltp-add">
+            <select
+              value={newStudentId}
+              onChange={e => setNewStudentId(e.target.value)}
+              disabled={busy || available.length === 0}
+              aria-label="Öğrenci seç"
+            >
+              <option value="">
+                {available.length === 0 ? 'Eklenecek öğrenci yok' : 'Öğrenci seç…'}
+              </option>
+              {available.map(s => (
+                <option key={s.id} value={s.id}>{studentLabel(s)}</option>
+              ))}
+            </select>
+            <input
+              type="number" min={0} step="0.01"
+              value={newPrice}
+              onChange={e => setNewPrice(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') e.preventDefault(); }}
+              placeholder="Fiyat (₺)"
+              disabled={busy || !newStudentId}
+              aria-label="Özel fiyat"
+            />
+            <button
+              type="button" className="btn btn-ghost btn-xs"
+              onClick={handleAdd}
+              disabled={busy || !newStudentId}
+            >
+              Ekle
+            </button>
+          </div>
+        </>
+      )}
+
+      {error && <div className="stg-feedback stg-feedback-err" style={{ marginTop: 8 }}>{error}</div>}
+    </div>
+  );
 }
 
 function LessonTypeModal({ initial, onSave, onClose }) {
@@ -113,6 +289,8 @@ function LessonTypeModal({ initial, onSave, onClose }) {
               />
             </div>
           </div>
+
+          {!isNew && <LessonTypePrices lessonTypeId={initial.id} />}
 
           {err && <div className="stg-feedback stg-feedback-err" style={{ marginTop: 12 }}>{err}</div>}
 
