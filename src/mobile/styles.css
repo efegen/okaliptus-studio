@@ -3763,80 +3763,171 @@
     font-size: 13px;
   }
 
-  /* ─── Mobile Menu (Faz F.2 — sağ alttaki tab'in açtığı sayfa) ─── */
+  /* ─── Mobile Menu — Yaklaşım A (Gruplu ayarlar) ───
+   * Tıklanamaz profil kartı + iOS tarzı bölümlü liste, renkli ikon karoları.
+   * Tasarım devri: Mobil-Menu-A. */
   .mobile-menu {
-    padding: 16px 0 32px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    padding: calc(env(safe-area-inset-top) + 40px) 16px 28px;
+    /* sage vurgulu üst halo — profil kartını çerçeveler */
+    background:
+      radial-gradient(120% 50% at 50% 0%, color-mix(in oklch, var(--accent-2) 50%, transparent) 0%, transparent 180px),
+      var(--bg);
+    /* yerel jeton: mavi karo (kök paletinde yok) */
+    --blue-2: oklch(0.93 0.035 245);
+    --blue-ink: oklch(0.42 0.11 245);
   }
 
   .mobile-menu-title {
-    margin: 0;
-    padding: 8px 16px 16px;
-    font-size: 28px;
-    font-weight: 700;
-    letter-spacing: -0.01em;
+    margin: 2px 2px 0;
+    font-size: 30px;
+    font-weight: 600;
+    letter-spacing: -0.025em;
     color: var(--ink);
   }
 
-  .mobile-menu-list {
-    display: flex;
-    flex-direction: column;
-    background: var(--surface);
-    border-top: 1px solid var(--line);
-    border-bottom: 1px solid var(--line);
-  }
-
-  .mobile-menu-item {
-    width: 100%;
+  /* profil kartı — etkileşimsiz, yalnız kimlik */
+  .mobile-menu-profile {
     display: flex;
     align-items: center;
     gap: 14px;
-    padding: 16px;
+    background: var(--surface);
+    border: 1px solid var(--line-2);
+    border-radius: 20px;
+    padding: 14px 16px;
+    box-shadow: 0 1px 2px oklch(0.4 0.03 150 / 0.05);
+  }
+
+  .mobile-menu-avatar {
+    width: 52px;
+    height: 52px;
+    border-radius: 999px;
+    background: linear-gradient(150deg, var(--accent) 0%, var(--accent-deep) 100%);
+    color: #fff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 19px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    flex-shrink: 0;
+  }
+
+  .mobile-menu-profile-tx {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .mobile-menu-profile-name {
+    font-size: 17px;
+    font-weight: 600;
+    margin: 0 0 3px;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mobile-menu-profile-sub {
+    font-size: 13px;
+    color: var(--ink-3);
+  }
+
+  /* bölümler */
+  .mobile-menu-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .mobile-menu-group-lbl {
+    margin: 0;
+    padding: 0 8px;
+    font-size: 11.5px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ink-3);
+  }
+
+  .mobile-menu-card {
+    background: var(--surface);
+    border: 1px solid var(--line-2);
+    border-radius: 18px;
+    overflow: hidden;
+  }
+
+  .mobile-menu-card-logout {
+    margin-top: 2px;
+  }
+
+  .mobile-menu-row {
+    position: relative;
+    display: grid;
+    grid-template-columns: 34px 1fr auto;
+    align-items: center;
+    column-gap: 13px;
+    width: 100%;
+    min-height: 58px;
+    padding: 11px 15px;
     background: transparent;
     border: 0;
-    border-top: 1px solid var(--line);
-    color: var(--ink);
-    font-size: 16px;
-    font-weight: 500;
     text-align: left;
     cursor: pointer;
   }
 
-  .mobile-menu-item:first-child {
-    border-top: 0;
-  }
-
-  .mobile-menu-item:active {
+  .mobile-menu-row:active {
     background: var(--surface-2);
   }
 
-  .mobile-menu-icon {
+  /* hairline ayırıcı — ikon karosundan sonra başlar */
+  .mobile-menu-row + .mobile-menu-row::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 62px;
+    right: 0;
+    height: 1px;
+    background: var(--line);
+  }
+
+  .mobile-menu-tile {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 28px;
-    height: 28px;
-    color: var(--ink-2);
     flex-shrink: 0;
   }
 
-  .mobile-menu-label {
-    flex: 1;
+  .mobile-menu-tile.tone-sage    { background: var(--accent-2); color: var(--accent-ink); }
+  .mobile-menu-tile.tone-amber   { background: var(--amber-2);  color: var(--amber-ink); }
+  .mobile-menu-tile.tone-blue    { background: var(--blue-2);   color: var(--blue-ink); }
+  .mobile-menu-tile.tone-neutral { background: var(--surface-2); color: var(--ink-2); }
+  .mobile-menu-tile.tone-red     { background: var(--warn-2);   color: var(--warn-ink); }
+
+  .mobile-menu-row-label {
+    font-size: 15.5px;
+    font-weight: 500;
+    color: var(--ink);
     min-width: 0;
   }
 
-  .mobile-menu-chevron {
+  .mobile-menu-row-chev {
     display: inline-flex;
     align-items: center;
     color: var(--ink-4);
-    flex-shrink: 0;
   }
 
-  .mobile-menu-item.is-danger {
-    color: var(--warn);
-  }
-
-  .mobile-menu-item.is-danger .mobile-menu-icon {
-    color: var(--warn);
+  .mobile-menu-row.is-danger .mobile-menu-row-label {
+    color: var(--warn-ink);
+    font-weight: 600;
   }
 
   /* ---------- Catalog (Dersler ve Eğitmenler) ---------- */

@@ -206,7 +206,7 @@ export function MobileApp({
   } else if (page === 'calendar') {
     body = <MobileCalendar />;
   } else if (page === 'menu') {
-    body = <MobileMenu onNavigate={setPage} onLogout={onLogout} />;
+    body = <MobileMenu user={currentUser} onNavigate={setPage} onLogout={onLogout} />;
   } else if (page === 'movements') {
     body = (
       <MobileMovements
