@@ -2,15 +2,15 @@
 
 import React from 'react';
 import ReactDOM from 'react-dom';
-import { fmtTL } from './data';
-import { Icon, Avatar } from './layout';
+import './students.css';
+import { fmtTL, initials } from './data';
+import { Icon } from './layout';
 import {
   getStudents,
   getStudentById,
   getStudentLessons,
   getStudentPackages,
   getStudentProductSales,
-  getStudentsKpi,
   createCashPayment,
   createStudent,
   updateStudent,
@@ -191,11 +191,17 @@ export function allocateFifo(items, totalAmount) {
 export function StudentsPage({ onOpenStudent }) {
   const [students, setStudents] = React.useState([]);
   const [studentsLoading, setStudentsLoading] = React.useState(true);
-  const [kpi, setKpi] = React.useState(null);
   const [query, setQuery] = React.useState('');
+  const [view, setView] = React.useState('all');
+  const [chips, setChips] = React.useState([]);
+  const [addOpen, setAddOpen] = React.useState(false);
+  const [sort, setSort] = React.useState({ key: 'debt', dir: 'desc' });
+  const [sel, setSel] = React.useState(() => new Set());
   const [paymentTarget, setPaymentTarget] = React.useState(null);
   const [paymentLoading, setPaymentLoading] = React.useState(false);
   const [createOpen, setCreateOpen] = React.useState(false);
+  const [editTarget, setEditTarget] = React.useState(null); // tam öğrenci kaydı
+  const [editLoading, setEditLoading] = React.useState(false);
   const [deleteTarget, setDeleteTarget] = React.useState(null);
 
   React.useEffect(() => {
@@ -208,33 +214,69 @@ export function StudentsPage({ onOpenStudent }) {
     return () => { cancelled = true; };
   }, []);
 
-  React.useEffect(() => {
-    let cancelled = false;
-    getStudentsKpi()
-      .then(data => { if (!cancelled) setKpi(data); })
-      .catch(err => console.error('[Students] KPI yüklenemedi:', err));
-    return () => { cancelled = true; };
-  }, []);
-
   async function refreshStudents() {
     try {
-      const [fresh, freshKpi] = await Promise.all([getStudents(), getStudentsKpi()]);
-      setStudents(fresh);
-      setKpi(freshKpi);
+      setStudents(await getStudents());
     } catch (err) {
       console.error('[Students] liste yenilenemedi:', err);
     }
   }
 
-  const filtered = students.filter(s => {
+  // Ham API satırlarını tablo hücrelerinin beklediği zengin şekle çevir.
+  const decorated = React.useMemo(() => students.map(decorateStudent), [students]);
+
+  // Sekme sayıları (canlı). Görünüm predikatları saf fonksiyonlardır.
+  const viewCounts = React.useMemo(() => {
+    const counts = {};
+    for (const v of VIEWS) counts[v.k] = decorated.filter(v.test).length;
+    return counts;
+  }, [decorated]);
+
+  const activeChips = chips.map(id => PRESETS.find(p => p.id === id)).filter(Boolean);
+  const available = PRESETS.filter(p => !chips.includes(p.id));
+
+  const rows = React.useMemo(() => {
+    const viewDef = VIEWS.find(v => v.k === view) ?? VIEWS[0];
+    let list = decorated.filter(viewDef.test);
+    chips.forEach(id => {
+      const preset = PRESETS.find(p => p.id === id);
+      if (preset) list = list.filter(preset.test);
+    });
     const q = query.trim().toLowerCase();
-    if (!q) return true;
-    return (
-      s.full_name.toLowerCase().includes(q) ||
-      (s.nickname && s.nickname.toLowerCase().includes(q)) ||
-      (s.phone && s.phone.includes(query))
-    );
-  });
+    if (q) {
+      list = list.filter(s =>
+        s.full_name.toLowerCase().includes(q) ||
+        (s.nickname && s.nickname.toLowerCase().includes(q)) ||
+        (s.phone && s.phone.includes(query.trim()))
+      );
+    }
+    return sortRows(list, sort);
+  }, [decorated, view, chips, query, sort]);
+
+  // Görünüm/koşul/arama değişince seçim sıfırlanır (kapsam dışı satır kalmasın).
+  React.useEffect(() => { setSel(new Set()); }, [view, chips, query]);
+
+  // Filtre açılır menüsü dışarı tıkla / Escape ile kapanır.
+  const filterRef = React.useRef(null);
+  React.useEffect(() => {
+    if (!addOpen) return undefined;
+    function onDown(e) {
+      if (filterRef.current && !filterRef.current.contains(e.target)) setAddOpen(false);
+    }
+    function onKey(e) { if (e.key === 'Escape') setAddOpen(false); }
+    document.addEventListener('mousedown', onDown);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [addOpen]);
+
+  // Koşul ekle — menü açık kalır ki üst üste birkaç koşul eklenebilsin.
+  function addChip(id) {
+    if (id && !chips.includes(id)) setChips([...chips, id]);
+  }
+  function removeChip(id) { setChips(chips.filter(c => c !== id)); }
 
   async function handleOpenPayment(studentId) {
     setPaymentLoading(true);
@@ -269,6 +311,25 @@ export function StudentsPage({ onOpenStudent }) {
     }
   }
 
+  // Düzenleme — liste satırında tüm alanlar yok, tam kaydı çekip modalı açarız.
+  async function handleOpenEdit(studentId) {
+    setEditLoading(true);
+    try {
+      const full = await getStudentById(studentId);
+      setEditTarget(full);
+    } catch (err) {
+      console.error('[Students] öğrenci düzenleme yüklenemedi:', err);
+      window.alert(err instanceof Error ? err.message : 'Öğrenci bilgileri yüklenemedi.');
+    } finally {
+      setEditLoading(false);
+    }
+  }
+
+  async function handleStudentUpdated() {
+    setEditTarget(null);
+    await refreshStudents();
+  }
+
   // Aktif ↔ pasif. Optimistik değil — başarıda listeyi tazeleriz.
   async function handleSetActive(student, active) {
     try {
@@ -288,66 +349,146 @@ export function StudentsPage({ onOpenStudent }) {
     await refreshStudents();
   }
 
+  // Toplu pasife alma — geri alınabilir, düşük riskli; yine de onay isteriz.
+  async function handleBulkPassive(ids) {
+    if (ids.length === 0) return;
+    if (!window.confirm(`${ids.length} öğrenci pasife alınsın mı?`)) return;
+    try {
+      await Promise.all(ids.map(id => updateStudent(id, { isActive: false })));
+      setSel(new Set());
+      await refreshStudents();
+    } catch (err) {
+      console.error('[Students] toplu pasife alma hatası:', err);
+      window.alert(err instanceof Error ? err.message : 'Öğrenciler güncellenemedi.');
+    }
+  }
+
+  const hasStudents = students.length > 0;
+
   return (
-    <div className="page page-students">
-      <div className="page-head">
-        <div>
-          <div className="eyebrow">{students.length} öğrenci</div>
-          <h1 className="page-title">Öğrenciler</h1>
+    <div className="ox-page">
+      <div className="ox-phead">
+        <div className="ox-phead-t">
+          <h1 className="ox-h1">Öğrenciler</h1>
+          <span className="ox-phead-sub">Kayıtlı görünüm seç, gerektikçe koşul ekle</span>
         </div>
-        <div className="head-actions">
-          <div className="page-search">
-            <Icon.Search width="15" height="15"/>
-            <input
-              placeholder="İsim veya telefon ara..."
-              value={query}
-              onChange={e => setQuery(e.target.value)}
-            />
-          </div>
-          <button className="btn btn-primary" onClick={() => setCreateOpen(true)}>
-            <Icon.Plus width="15" height="15"/>Yeni öğrenci
+        <div className="ox-phead-a">
+          <button
+            className="ox-btn ghost"
+            onClick={() => exportStudentsCsv(rows)}
+            disabled={rows.length === 0}
+          >
+            <Ic.Download width="15" height="15" />Dışa aktar
+          </button>
+          <button className="ox-btn primary" onClick={() => setCreateOpen(true)}>
+            <Ic.Plus width="15" height="15" />Yeni öğrenci
           </button>
         </div>
       </div>
 
-      <StudentsKpiRow kpi={kpi} />
-
-      <div className="card stu-list-card">
-        {studentsLoading ? (
-          <div className="stu-state-msg">Yükleniyor...</div>
-        ) : students.length === 0 ? (
+      {studentsLoading ? (
+        <div className="ox-page-state">Yükleniyor…</div>
+      ) : !hasStudents ? (
+        <div className="ox-empty-wrap">
           <EmptyStudents onCreate={() => setCreateOpen(true)} />
-        ) : filtered.length === 0 ? (
-          <div className="stu-state-msg">"{query}" için sonuç bulunamadı.</div>
-        ) : (
-          <table className="stu-table">
-            <thead className="stu-thead">
-              <tr>
-                <th className="stu-th">Öğrenci</th>
-                <th className="stu-th">Telefon</th>
-                <th className="stu-th">Finansal Durum</th>
-                <th className="stu-th">Devam Durumu</th>
-                <th className="stu-th">Son Ders</th>
-                <th className="stu-th stu-th-end"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(st => (
-                <StudentRow
-                  key={st.id}
-                  student={st}
-                  onPaymentClick={handleOpenPayment}
-                  onOpenStudent={onOpenStudent}
-                  onSetActive={handleSetActive}
-                  onDelete={setDeleteTarget}
-                />
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+        </div>
+      ) : (
+        <>
+          <div className="ox-vtabs">
+            {VIEWS.map(v => (
+              <button
+                key={v.k}
+                className={'ox-vtab' + (view === v.k ? ' on' : '') + (v.warn ? ' warn' : '')}
+                onClick={() => setView(v.k)}
+              >
+                {v.lbl}<span className="vn">{viewCounts[v.k] ?? 0}</span>
+              </button>
+            ))}
+          </div>
 
-      {paymentLoading && (
+          <div className="ox-ftbar">
+            <div className="ox-localsearch">
+              <Ic.Search width="14" height="14" />
+              <input
+                placeholder="İsim veya telefon ara…"
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+              />
+            </div>
+            <div className="ox-fwrap" ref={filterRef}>
+              <button
+                className={'ox-fbtn' + (chips.length ? ' on' : '') + (addOpen ? ' open' : '')}
+                onClick={() => setAddOpen(o => !o)}
+                aria-haspopup="menu"
+                aria-expanded={addOpen}
+              >
+                <Ic.Filter width="14" height="14" />Filtre
+                {chips.length > 0 && <span className="ox-fbtn-badge">{chips.length}</span>}
+              </button>
+              {addOpen && (
+                <div className="ox-fmenu" role="menu">
+                  <div className="ox-fmenu-head">Koşul ekle</div>
+                  {available.length === 0 ? (
+                    <div className="ox-fmenu-empty">Tüm koşullar eklendi</div>
+                  ) : (
+                    available.map(p => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        className="ox-fmenu-item"
+                        role="menuitem"
+                        onClick={() => addChip(p.id)}
+                      >
+                        <span className="k">{p.k}:</span> <b>{p.v}</b>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+            <span className="ox-ftbar-sp" />
+            <select
+              className="ox-sel"
+              value={SORT_KEYS.includes(sort.key) ? sort.key : 'att'}
+              onChange={e => setSort({ key: e.target.value, dir: e.target.value === 'name' ? 'asc' : 'desc' })}
+            >
+              <option value="debt">Sırala: Açık borç</option>
+              <option value="name">Sırala: Ada göre</option>
+              <option value="last">Sırala: Son ders</option>
+              <option value="att">Sırala: Devam</option>
+            </select>
+          </div>
+
+          {activeChips.length > 0 && (
+            <div className="ox-chips">
+              {activeChips.map(c => (
+                <span key={c.id} className="ox-chip">
+                  <span className="k">{c.k}:</span> <b>{c.v}</b>
+                  <button className="ox-chip-x" onClick={() => removeChip(c.id)} aria-label="Kaldır">×</button>
+                </span>
+              ))}
+              <button className="ox-chips-clear" onClick={() => setChips([])}>Tümünü temizle</button>
+            </div>
+          )}
+
+          <OpsTable
+            rows={rows}
+            sort={sort}
+            setSort={setSort}
+            sel={sel}
+            setSel={setSel}
+            onOpenStudent={onOpenStudent}
+            onPayment={handleOpenPayment}
+            onEdit={handleOpenEdit}
+            onSetActive={handleSetActive}
+            onDelete={setDeleteTarget}
+            onBulkPassive={handleBulkPassive}
+            onExport={exportStudentsCsv}
+          />
+        </>
+      )}
+
+      {(paymentLoading || editLoading) && (
         <div className="modal-backdrop">
           <div className="modal stu-loading-modal">Yükleniyor...</div>
         </div>
@@ -363,9 +504,19 @@ export function StudentsPage({ onOpenStudent }) {
       )}
 
       {createOpen && (
-        <CreateStudentModal
+        <StudentFormModal
+          mode="create"
           onClose={() => setCreateOpen(false)}
-          onCreated={handleStudentCreated}
+          onSaved={handleStudentCreated}
+        />
+      )}
+
+      {editTarget && (
+        <StudentFormModal
+          mode="edit"
+          student={editTarget}
+          onClose={() => setEditTarget(null)}
+          onSaved={handleStudentUpdated}
         />
       )}
 
@@ -380,90 +531,320 @@ export function StudentsPage({ onOpenStudent }) {
   );
 }
 
-// ─── KPI Row ──────────────────────────────────────────────────────────────────
+// ─── Redesigned roster: helpers, cells, views, table ───────────────────────
+// Tasarım devir paketi (Ogrenciler-Filtre): kayıtlı görünüm sekmeleri +
+// kaldırılabilir koşul rozetleri + operasyon tablosu. Veri gerçek API'den
+// gelir; satırlar decorateStudent ile zenginleştirilir.
 
-function StudentsKpiRow({ kpi }) {
-  const activeCount = kpi?.activeCount ?? null;
-  const newThisMonth = kpi?.newThisMonth ?? null;
-  const debtorCount = kpi?.debtorCount ?? null;
-  const totalDebt = kpi ? parseMoney(kpi.totalDebt) : 0;
-  const inactive14 = kpi?.inactiveOver14Days ?? null;
-  const monthlyCompleted = kpi?.monthlyCompletedLessons ?? null;
-  const prevMonthlyCompleted = kpi?.previousMonthCompletedLessons ?? null;
+const SORT_KEYS = ['debt', 'name', 'last', 'att'];
 
-  const monthlyDelta =
-    monthlyCompleted !== null && prevMonthlyCompleted !== null
-      ? monthlyCompleted - prevMonthlyCompleted
-      : null;
+// Son ders tarihinden bu yana geçen güne göre kısa Türkçe göreli etiket.
+function relativeLastLabel(days) {
+  if (days === null) return 'Henüz ders almadı';
+  if (days <= 0) return 'Bugün';
+  if (days === 1) return 'Dün';
+  if (days < 7) return `${days} gün önce`;
+  if (days < 14) return '1 hafta önce';
+  if (days < 30) return `${Math.floor(days / 7)} hafta önce`;
+  if (days < 365) return `${Math.floor(days / 30)} ay önce`;
+  return `${Math.floor(days / 365)} yıl önce`;
+}
 
-  const monthlyDeltaTone =
-    monthlyDelta === null ? 'flat' : monthlyDelta > 0 ? 'up' : monthlyDelta < 0 ? 'down' : 'flat';
+// Ham API satırını tablo hücrelerinin beklediği zengin şekle çevirir.
+function decorateStudent(s) {
+  const lessonDebt = parseMoney(s.lesson_debt);
+  const productDebt = parseMoney(s.product_debt);
+  const totalDebt = lessonDebt + productDebt;
+  const last30 = parseInt(s.lessons_last_30_days ?? '0', 10) || 0;
+  const lastDays = s.last_lesson_at
+    ? Math.max(0, Math.floor((Date.now() - new Date(s.last_lesson_at).getTime()) / 86_400_000))
+    : null;
+  return {
+    ...s,
+    id: String(s.id),
+    lessonDebt,
+    productDebt,
+    total_debt: totalDebt,
+    has_debt: totalDebt > 0.01,
+    lessons_last_30: last30,
+    last_days: lastDays,
+    last_label: relativeLastLabel(lastDays),
+    weeks: Array.isArray(s.weeks) ? s.weeks : [],
+    att: getAttendanceStatus(s),
+    initials: initials(s.full_name),
+  };
+}
 
-  function fmtNum(v) {
-    return v === null ? '—' : String(v);
+// Öncelik: borçlu > riskli (gelmeyen/pasif/düşük devam) > normal. "Takip
+// listesi" görünümü borcu olmayan ama riskli öğrencileri toplar.
+function priorityOf(s) {
+  if (s.has_debt) return 'debt';
+  if (s.att.tone === 'absent' || s.att.tone === 'inactive' || s.att.tone === 'low') return 'risk';
+  return 'ok';
+}
+
+// ── İkonlar (bu sayfaya özel; tasarım devir dosyasından) ──
+const Ic = {
+  Search:  (p) => (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" {...p}><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>),
+  Plus:    (p) => (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" {...p}><path d="M12 5v14M5 12h14"/></svg>),
+  Caret:   (p) => (<svg viewBox="0 0 24 24" fill="currentColor" {...p}><path d="M12 15.5 5.5 9h13z"/></svg>),
+  Wallet:  (p) => (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" {...p}><rect x="3" y="6" width="18" height="14" rx="2.5"/><path d="M3 10h18M16 14h2"/></svg>),
+  Moon:    (p) => (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>),
+  Download:(p) => (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>),
+  Check:   (p) => (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M20 6 9 17l-5-5"/></svg>),
+  Sparkle: (p) => (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M18.4 5.6l-2.8 2.8M8.4 15.6l-2.8 2.8"/></svg>),
+  Filter:  (p) => (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M3 5h18l-7 8.2V20l-4 1v-7.8z"/></svg>),
+};
+
+// ── Paylaşılan hücreler ──
+function OxAvatar({ s }) {
+  return <span className={`ox-av t-${s.att.tone}`}>{s.initials}</span>;
+}
+function Identity({ s }) {
+  return (
+    <div className="ox-idc">
+      <OxAvatar s={s} />
+      <div className="ox-idc-stack">
+        <span className="ox-idc-name">
+          {s.full_name}
+          {s.nickname && <span className="nick">“{s.nickname}”</span>}
+          {!s.is_active && <span className="ox-pasif">pasif</span>}
+        </span>
+        <span className="ox-idc-sub">{s.phone || '—'}</span>
+      </div>
+    </div>
+  );
+}
+function AttCell({ s }) {
+  return (
+    <div className="ox-att">
+      <span className="ox-att-lbl"><span className={`ox-dot t-${s.att.tone}`} />{s.att.main}</span>
+      <span className="ox-att-sub">{s.att.sub}</span>
+    </div>
+  );
+}
+// Son 12 hafta ritmi: 'go' geldi · 'no' gelmedi · 'skip' o hafta ders yok.
+// weeks en yeni → en eski gelir; soldan sağa eskiden yeniye çizmek için reverse.
+function Spark({ weeks, n = 12, h = 18 }) {
+  if (!weeks || weeks.length === 0) return <span className="ox-spark-empty">—</span>;
+  const w = weeks.slice(0, n).reverse();
+  const H = { go: 1, no: 0.55, skip: 0.22 };
+  return (
+    <span className="ox-spark" title="Son haftalar" style={{ height: h }}>
+      {w.map((v, i) => <i key={i} className={v} style={{ height: Math.round(h * (H[v] || 0.22)) }} />)}
+    </span>
+  );
+}
+function Money({ value }) {
+  if (value <= 0.01) return <span className="ox-money zero">—</span>;
+  return <span className="ox-money debt">{fmtTL(value)}</span>;
+}
+function LastLesson({ s }) {
+  if (!s.last_lesson_at) return <span className="ox-muted">—</span>;
+  const dt = new Date(s.last_lesson_at);
+  const abs = dt.toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' });
+  return <span className="ox-date">{abs}<span className="rel">{s.last_label}</span></span>;
+}
+function StatusTag({ s }) {
+  return <span className={`ox-stat ${s.is_active ? '' : 'off'}`}><i />{s.is_active ? 'Aktif' : 'Pasif'}</span>;
+}
+
+// ── Sıralama ──
+function sortRows(list, sort) {
+  const dir = sort.dir === 'asc' ? 1 : -1;
+  const pick = {
+    name: s => s.full_name.toLocaleLowerCase('tr-TR'),
+    att: s => s.lessons_last_30,
+    month: s => s.lessons_last_30,
+    last: s => (s.last_days === null ? 99999 : s.last_days),
+    debt: s => s.total_debt,
+  }[sort.key] || (s => s.total_debt);
+  return [...list].sort((a, b) => {
+    const av = pick(a), bv = pick(b);
+    if (av < bv) return -1 * dir;
+    if (av > bv) return 1 * dir;
+    return a.full_name.localeCompare(b.full_name, 'tr');
+  });
+}
+
+// ── Kayıtlı görünümler + eklenebilir koşullar (saf predikatlar) ──
+const VIEWS = [
+  { k: 'all', lbl: 'Tüm öğrenciler', test: () => true },
+  { k: 'debt', lbl: 'Borçlular', warn: true, test: s => s.has_debt },
+  { k: 'follow', lbl: 'Takip listesi', test: s => !s.has_debt && priorityOf(s) === 'risk' },
+  { k: 'passive', lbl: 'Pasifler', test: s => !s.is_active },
+];
+const PRESETS = [
+  { id: 'active', k: 'Durum', v: 'Aktif', test: s => s.is_active },
+  { id: 'passive', k: 'Durum', v: 'Pasif', test: s => !s.is_active },
+  { id: 'debt', k: 'Finans', v: 'Açık borç var', test: s => s.has_debt },
+  { id: 'regular', k: 'Devam', v: 'Düzenli', test: s => s.att.tone === 'high' },
+  { id: 'low', k: 'Devam', v: 'Düşük', test: s => s.att.tone === 'low' },
+  { id: 'absent', k: 'Devam', v: 'Gelmiyor', test: s => s.att.tone === 'absent' },
+  { id: 'stale', k: 'Son ders', v: '30+ gün önce', test: s => (s.last_days ?? 99999) >= 30 },
+];
+
+// ── CSV dışa aktarma (istemci tarafı; Türkçe Excel için ; ayraç + UTF-8 BOM) ──
+function exportStudentsCsv(rows, filename = 'ogrenciler.csv') {
+  if (!rows || rows.length === 0) return;
+  const header = ['Ad Soyad', 'Lakap', 'Telefon', 'Durum', 'Devam', 'Son ders', 'Bu ay (ders)', 'Açık borç'];
+  const esc = v => {
+    const str = String(v ?? '');
+    return /[";\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+  };
+  const body = rows.map(s => [
+    s.full_name,
+    s.nickname || '',
+    s.phone || '',
+    s.is_active ? 'Aktif' : 'Pasif',
+    s.att.main,
+    s.last_lesson_at ? new Date(s.last_lesson_at).toLocaleDateString('tr-TR') : '',
+    String(s.lessons_last_30),
+    String(Math.round(s.total_debt)),
+  ]);
+  const csv = [header, ...body].map(r => r.map(esc).join(';')).join('\r\n');
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+// ── Operasyon tablosu ──
+function OpsTable({ rows, sort, setSort, sel, setSel, onOpenStudent, onPayment, onEdit, onSetActive, onDelete, onBulkPassive, onExport }) {
+  const allSel = rows.length > 0 && rows.every(s => sel.has(s.id));
+  const someSel = sel.size > 0 && !allSel;
+  function toggleAll() { setSel(allSel ? new Set() : new Set(rows.map(s => s.id))); }
+  function toggle(id) {
+    setSel(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   }
 
-  const debtorWarn = (debtorCount ?? 0) > 0;
+  const totalDebt = rows.reduce((t, s) => t + s.total_debt, 0);
+  const debtors = rows.filter(s => s.has_debt).length;
+  const selectedRows = rows.filter(s => sel.has(s.id));
+  const selDebt = selectedRows.reduce((t, s) => t + s.total_debt, 0);
+
+  function Th({ k, children, cls }) {
+    const on = sort.key === k;
+    return (
+      <th className={cls}>
+        <button
+          className={`ox-sort ${on ? 'on' : ''}`}
+          onClick={() => setSort(p => p.key === k
+            ? { key: k, dir: p.dir === 'asc' ? 'desc' : 'asc' }
+            : { key: k, dir: k === 'name' ? 'asc' : 'desc' })}
+        >
+          {children}
+          <span className="car" style={{ transform: on && sort.dir === 'asc' ? 'rotate(180deg)' : 'none' }}>
+            <Ic.Caret width="10" height="10" />
+          </span>
+        </button>
+      </th>
+    );
+  }
 
   return (
-    <div className="kpi-row">
-      <div className="kpi-card">
-        <div className="kpi-card-label">Aktif öğrenci</div>
-        <div className="kpi-card-main">
-          <span className="kpi-card-val">{fmtNum(activeCount)}</span>
+    <div className="ox-tablecard">
+      {sel.size > 0 && (
+        <div className="ox-bulkbar">
+          <span className="ox-bulk-count">
+            <b>{sel.size}</b> öğrenci seçili
+            {selDebt > 0.01 && <span className="ox-bulk-dim"> · {fmtTL(selDebt)} açık borç</span>}
+          </span>
+          <div className="ox-bulk-actions">
+            <button className="ox-bulk-btn" onClick={() => onBulkPassive(selectedRows.map(s => s.id))}>
+              <Ic.Moon width="14" height="14" />Pasife al
+            </button>
+            <button className="ox-bulk-btn" onClick={() => onExport(selectedRows, 'ogrenciler-secili.csv')}>
+              <Ic.Download width="14" height="14" />Dışa aktar
+            </button>
+            <button className="ox-bulk-btn clear" onClick={() => setSel(new Set())}>Temizle</button>
+          </div>
         </div>
-        <div className="kpi-card-sub">
-          {newThisMonth !== null
-            ? <><strong>{newThisMonth}</strong> bu ay yeni eklendi</>
-            : <>—</>
-          }
-        </div>
+      )}
+      <div className="ox-tablewrap">
+        <table className="ox-table">
+          <thead>
+            <tr>
+              <th className="ox-chk-th">
+                <button
+                  className={'ox-chk' + (allSel ? ' on' : someSel ? ' some' : '')}
+                  onClick={toggleAll}
+                  aria-label="Tümünü seç"
+                >
+                  {allSel ? <Ic.Check width="12" height="12" /> : someSel ? <span className="dash" /> : null}
+                </button>
+              </th>
+              <Th k="name">Öğrenci</Th>
+              <th>Durum</th>
+              <Th k="att">Devam</Th>
+              <th>Son 12 hafta</th>
+              <Th k="last">Son ders</Th>
+              <Th k="month" cls="r">Bu ay</Th>
+              <Th k="debt" cls="r">Açık borç</Th>
+              <th className="r"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(s => {
+              const on = sel.has(s.id);
+              return (
+                <tr
+                  key={s.id}
+                  className={on ? 'sel' : ''}
+                  onClick={() => onOpenStudent && onOpenStudent(s.id)}
+                >
+                  <td className="ox-chk-td" onClick={e => e.stopPropagation()}>
+                    <button
+                      className={'ox-chk' + (on ? ' on' : '')}
+                      onClick={() => toggle(s.id)}
+                      aria-label="Seç"
+                    >
+                      {on && <Ic.Check width="12" height="12" />}
+                    </button>
+                  </td>
+                  <td><Identity s={s} /></td>
+                  <td><StatusTag s={s} /></td>
+                  <td><AttCell s={s} /></td>
+                  <td><Spark weeks={s.weeks} /></td>
+                  <td><LastLesson s={s} /></td>
+                  <td className="r"><span className="ox-num">{s.lessons_last_30}</span></td>
+                  <td className="r"><Money value={s.total_debt} /></td>
+                  <td className="r" onClick={e => e.stopPropagation()}>
+                    <div className="ox-rowact">
+                      {s.has_debt && (
+                        <button className="ox-quickpay" onClick={() => onPayment(s.id)}>
+                          <Ic.Wallet width="13" height="13" />Ödeme
+                        </button>
+                      )}
+                      <RowActionsMenu
+                        student={s}
+                        hasDebt={s.has_debt}
+                        onPayment={onPayment}
+                        onEdit={onEdit}
+                        onSetActive={onSetActive}
+                        onDelete={onDelete}
+                      />
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+            {rows.length === 0 && (
+              <tr><td colSpan={9}><div className="ox-empty">Bu filtrelere uyan öğrenci yok.</div></td></tr>
+            )}
+          </tbody>
+        </table>
       </div>
-
-      <div className={`kpi-card${debtorWarn ? ' kpi-card-warn' : ''}`}>
-        <div className="kpi-card-label">Borçlu öğrenci</div>
-        <div className="kpi-card-main">
-          <span className="kpi-card-val">{fmtNum(debtorCount)}</span>
-        </div>
-        <div className="kpi-card-sub">
-          {kpi
-            ? <>Toplam borç <strong>{fmtTL(totalDebt)}</strong></>
-            : <>—</>
-          }
-        </div>
-      </div>
-
-      <div className="kpi-card">
-        <div className="kpi-card-label">14+ gündür gelmeyen</div>
-        <div className="kpi-card-main">
-          <span className="kpi-card-val">{fmtNum(inactive14)}</span>
-        </div>
-        <div className="kpi-card-sub">
-          {inactive14 !== null
-            ? <>Aktif öğrenciler arasında</>
-            : <>—</>
-          }
-        </div>
-      </div>
-
-      <div className="kpi-card">
-        <div className="kpi-card-label">Bu ay tamamlanan ders</div>
-        <div className="kpi-card-main">
-          <span className="kpi-card-val">{fmtNum(monthlyCompleted)}</span>
-        </div>
-        <div className="kpi-card-sub">
-          {monthlyDelta === null ? (
-            <>—</>
-          ) : (
-            <>
-              Geçen ay <strong>{prevMonthlyCompleted}</strong>
-              {' · '}
-              <span className={`stu-kpi-delta stu-kpi-delta-${monthlyDeltaTone}`}>
-                {monthlyDelta > 0 ? `+${monthlyDelta}` : monthlyDelta}
-              </span>
-            </>
-          )}
-        </div>
+      <div className="ox-foot">
+        <span className="ox-foot-i"><b>{rows.length}</b> öğrenci</span>
+        <span className="ox-foot-i"><b className="warn">{debtors}</b> borçlu</span>
+        <span className="ox-foot-sp" />
+        <span className="ox-foot-i">Toplam açık borç <b className="warn">{fmtTL(totalDebt)}</b></span>
       </div>
     </div>
   );
@@ -486,121 +867,13 @@ function EmptyStudents({ onCreate }) {
   );
 }
 
-// ─── Student Row ──────────────────────────────────────────────────────────────
-
-function StudentRow({ student, onPaymentClick, onOpenStudent, onSetActive, onDelete }) {
-  const lessonDebt  = parseMoney(student.lesson_debt);
-  const productDebt = parseMoney(student.product_debt);
-  const fin = getStudentFinancialState({ lessonDebt, productDebt });
-  const hasBreakdown = lessonDebt > 0.01 && productDebt > 0.01;
-  const att = getAttendanceStatus(student);
-
-  const [tipPos, setTipPos] = React.useState(null);
-  const wrapRef = React.useRef(null);
-
-  function handleMouseEnter() {
-    if (!hasBreakdown) return;
-    const rect = wrapRef.current?.getBoundingClientRect();
-    if (rect) setTipPos({ top: rect.bottom + 7, left: rect.left });
-  }
-
-  function handleMouseLeave() {
-    setTipPos(null);
-  }
-
-  return (
-    <tr
-      className="stu-tr"
-      onClick={() => onOpenStudent && onOpenStudent(String(student.id))}
-    >
-      <td className="stu-td">
-        <div className="stu-name-cell">
-          <Avatar name={student.full_name} size="sm" soft/>
-          <div className="stu-name-stack">
-            <div className="stu-full-name">
-              {student.full_name}
-              {student.nickname && (
-                <span className="stu-nick" title="Lakap">{student.nickname}</span>
-              )}
-            </div>
-            {!student.is_active && <span className="stu-inactive-tag">pasif</span>}
-          </div>
-        </div>
-      </td>
-
-      <td className="stu-td">
-        {student.phone
-          ? <span className="stu-phone">{student.phone}</span>
-          : <span className="stu-muted">—</span>
-        }
-      </td>
-
-      <td className="stu-td">
-        <div
-          className="stu-fin-wrap"
-          ref={wrapRef}
-          onMouseEnter={handleMouseEnter}
-          onMouseLeave={handleMouseLeave}
-        >
-          <div className={`stu-fin-badge stu-fin-${fin.tone}`}>
-            {fin.headline}
-          </div>
-          {tipPos && ReactDOM.createPortal(
-            <div className="stu-fin-tip" style={{ top: tipPos.top, left: tipPos.left }}>
-              <div className="sft-row">
-                <span className="sft-k">Ders borcu</span>
-                <span className="sft-v sft-debt">{fmtTL(lessonDebt)}</span>
-              </div>
-              <div className="sft-row">
-                <span className="sft-k">Ürün borcu</span>
-                <span className="sft-v sft-debt">{fmtTL(productDebt)}</span>
-              </div>
-              <div className="sft-row sft-row-total">
-                <span className="sft-k">Toplam borç</span>
-                <span className="sft-v sft-debt">{fmtTL(lessonDebt + productDebt)}</span>
-              </div>
-            </div>,
-            document.body
-          )}
-        </div>
-      </td>
-
-      <td className="stu-td">
-        <div className="stu-att-wrap">
-          <span className={`stu-att-badge stu-att-${att.tone}`}>{att.main}</span>
-          <span className="stu-att-sub">{att.sub}</span>
-        </div>
-      </td>
-
-      <td className="stu-td">
-        {student.last_lesson_at
-          ? <span className="stu-activity">{fmtDate(student.last_lesson_at)}</span>
-          : <span className="stu-muted">—</span>
-        }
-      </td>
-
-      <td className="stu-td stu-td-actions" onClick={e => e.stopPropagation()}>
-        <div className="stu-row-actions">
-          <RowActionsMenu
-            student={student}
-            hasDebt={fin.tone === 'debt'}
-            onPayment={onPaymentClick}
-            onSetActive={onSetActive}
-            onDelete={onDelete}
-          />
-        </div>
-      </td>
-    </tr>
-  );
-}
-
 // ─── Row Actions Menu (kebab) ───────────────────────────────────────────────
 // Profil sayfasındaki ⋯ menüsüyle aynı dil. Tablo içinde clip/oklama sorunlarını
 // önlemek için menü body'ye portal'lanır ve fixed konumlanır (stu-fin-tip ile
 // aynı yaklaşım). Aksiyonlar: Ödeme al (yalnız borçluda) · Pasife al / Tekrar
 // aktif et · Tamamen sil (yalnız pasif öğrencide — önce pasife alma kuralı).
 
-function RowActionsMenu({ student, hasDebt, onPayment, onSetActive, onDelete }) {
+function RowActionsMenu({ student, hasDebt, onPayment, onEdit, onSetActive, onDelete }) {
   const [open, setOpen] = React.useState(false);
   const [pos, setPos] = React.useState(null);
   const btnRef = React.useRef(null);
@@ -656,6 +929,19 @@ function RowActionsMenu({ student, hasDebt, onPayment, onSetActive, onDelete }) 
       </button>
       {open && pos && ReactDOM.createPortal(
         <div className="stu-row-menu" style={{ top: pos.top, left: pos.left }} role="menu">
+          {onEdit && (
+            <>
+              <button
+                type="button"
+                className="stu-row-menu-item"
+                role="menuitem"
+                onClick={run(() => onEdit(String(student.id)))}
+              >
+                Düzenle
+              </button>
+              <div className="stu-row-menu-sep" />
+            </>
+          )}
           {hasDebt && (
             <>
               <button
@@ -1197,15 +1483,36 @@ export function previewInitials(name) {
   return src.split(/\s+/).map(s => s[0]).slice(0, 2).join('').toUpperCase();
 }
 
-function CreateStudentModal({ onClose, onCreated }) {
-  const [fullName, setFullName] = React.useState('');
-  const [nickname, setNickname] = React.useState('');
-  const [phone, setPhone] = React.useState('');
-  const [email, setEmail] = React.useState('');
-  const [birthday, setBirthday] = React.useState('');
-  const [joinedAt, setJoinedAt] = React.useState(todayIso());
-  const [preferredMode, setPreferredMode] = React.useState(null); // 'online' | 'onsite' | null
-  const [note, setNote] = React.useState('');
+// Tarih alanını <input type="date"> değerine çevirir. API DATE'i 'YYYY-MM-DD'
+// string döndürür ama Date nesnesi / ISO string de gelse doğru çalışır (yerel
+// bileşenler kullanılır; toISOString TZ kayması yapmaz).
+export function toDateInputValue(v) {
+  if (!v) return '';
+  if (v instanceof Date) {
+    if (Number.isNaN(v.getTime())) return '';
+    const p = n => String(n).padStart(2, '0');
+    return `${v.getFullYear()}-${p(v.getMonth() + 1)}-${p(v.getDate())}`;
+  }
+  const m = String(v).match(/^(\d{4}-\d{2}-\d{2})/);
+  return m ? m[1] : '';
+}
+
+// Öğrenci oluşturma + düzenleme ortak formu.
+//   mode='create' → createStudent, boş alanlar, "Öğrenciyi ekle"
+//   mode='edit'   → updateStudent(student.id), alanlar student'tan doldurulur
+// onSaved(saved) her iki modda da kaydedilen kaydı alır.
+export function StudentFormModal({ mode = 'create', student = null, onClose, onSaved }) {
+  const isEdit = mode === 'edit';
+  const [fullName, setFullName] = React.useState(student?.full_name ?? '');
+  const [nickname, setNickname] = React.useState(student?.nickname ?? '');
+  const [phone, setPhone] = React.useState(student?.phone ? formatPhoneTr(student.phone) : '');
+  const [email, setEmail] = React.useState(student?.email ?? '');
+  const [birthday, setBirthday] = React.useState(toDateInputValue(student?.birthday));
+  const [joinedAt, setJoinedAt] = React.useState(
+    isEdit ? toDateInputValue(student?.joined_at) : todayIso(),
+  );
+  const [preferredMode, setPreferredMode] = React.useState(student?.preferred_mode ?? null); // 'online' | 'onsite' | null
+  const [note, setNote] = React.useState(student?.note ?? '');
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState(null);
   const nameRef = React.useRef(null);
@@ -1235,20 +1542,26 @@ function CreateStudentModal({ onClose, onCreated }) {
     setSubmitting(true);
     setError(null);
 
+    const payload = {
+      fullName: trimmedName,
+      nickname: trimmedNickname || null,
+      preferredMode: preferredMode,
+      phone: phone.trim() || null,
+      email: email.trim() || null,
+      birthday: birthday || null,
+      joinedAt: joinedAt || null,
+      note: note.trim() || null,
+    };
+
     try {
-      const created = await createStudent({
-        fullName: trimmedName,
-        nickname: trimmedNickname || null,
-        preferredMode: preferredMode,
-        phone: phone.trim() || null,
-        email: email.trim() || null,
-        birthday: birthday || null,
-        joinedAt: joinedAt || null,
-        note: note.trim() || null,
-      });
-      await onCreated(created);
+      const saved = isEdit
+        ? await updateStudent(student.id, payload)
+        : await createStudent(payload);
+      await onSaved(saved);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Öğrenci oluşturulamadı.');
+      setError(err instanceof Error
+        ? err.message
+        : (isEdit ? 'Öğrenci güncellenemedi.' : 'Öğrenci oluşturulamadı.'));
       setSubmitting(false);
     }
   }
@@ -1268,15 +1581,17 @@ function CreateStudentModal({ onClose, onCreated }) {
           </div>
           <div className="mcs-head-text">
             <h3 id="mcs-title">
-              {trimmedName || 'Öğrenci ekle'}
+              {trimmedName || (isEdit ? 'Öğrenciyi düzenle' : 'Öğrenci ekle')}
               {trimmedNickname && (
                 <span className="mcs-head-nick">“{trimmedNickname}”</span>
               )}
             </h3>
             <div className="mcs-sub">
-              {trimmedName
-                ? 'Bilgileri kontrol et ve kaydet.'
-                : 'Temel bilgiler yeterli; detaylar sonra eklenebilir.'}
+              {isEdit
+                ? 'Bilgileri güncelle ve kaydet.'
+                : (trimmedName
+                    ? 'Bilgileri kontrol et ve kaydet.'
+                    : 'Temel bilgiler yeterli; detaylar sonra eklenebilir.')}
             </div>
           </div>
           <button
@@ -1424,7 +1739,9 @@ function CreateStudentModal({ onClose, onCreated }) {
                 className="btn btn-primary"
                 disabled={!canSubmit}
               >
-                {submitting ? 'Ekleniyor…' : 'Öğrenciyi ekle'}
+                {submitting
+                  ? (isEdit ? 'Kaydediliyor…' : 'Ekleniyor…')
+                  : (isEdit ? 'Kaydet' : 'Öğrenciyi ekle')}
               </button>
             </div>
           </footer>

@@ -52,6 +52,10 @@ type StudentSummaryRow = {
   last_lesson_at: string | null;
   lessons_last_30_days: string;
   lessons_this_week: string;
+  // Son 12 hafta devam ritmi, en yeni → en eski: 'go' (o hafta ders tamamlandı),
+  // 'no' (ders vardı ama iptal/gelmedi), 'skip' (o hafta ders yok). Roster
+  // sparkline'ı bunu kullanır.
+  weeks: Array<"go" | "no" | "skip">;
 };
 
 export type CreateStudentInput = {
@@ -84,12 +88,18 @@ export type UpdateStudentInput = {
 export async function listStudents(): Promise<StudentSummaryRow[]> {
   const result = await pool.query<StudentSummaryRow>(
     `
+      WITH wk_bounds AS (
+        SELECT (date_trunc('week', now() AT TIME ZONE 'Europe/Istanbul')
+                  AT TIME ZONE 'Europe/Istanbul') AS this_week_start
+      )
       SELECT v.*, s.phone,
         att.last_lesson_at,
         att.lessons_last_30_days,
-        att.lessons_this_week
+        att.lessons_this_week,
+        wk.weeks
       FROM v_student_summary v
       JOIN students s ON s.id = v.id
+      CROSS JOIN wk_bounds wb
       CROSS JOIN LATERAL (
         SELECT
           MAX(l.starts_at) FILTER (WHERE l.status = 'completed') AS last_lesson_at,
@@ -99,13 +109,35 @@ export async function listStudents(): Promise<StudentSummaryRow[]> {
           ) AS lessons_last_30_days,
           COUNT(*) FILTER (
             WHERE l.status IN ('scheduled', 'completed')
-              AND l.starts_at >= (date_trunc('week', now() AT TIME ZONE 'Europe/Istanbul') AT TIME ZONE 'Europe/Istanbul')
-              AND l.starts_at <  (date_trunc('week', now() AT TIME ZONE 'Europe/Istanbul') AT TIME ZONE 'Europe/Istanbul') + interval '7 days'
+              AND l.starts_at >= wb.this_week_start
+              AND l.starts_at <  wb.this_week_start + interval '7 days'
           ) AS lessons_this_week
         FROM lessons l
         WHERE l.student_id = s.id
           AND l.deleted_at IS NULL
       ) att
+      -- Son 12 hafta (Pazartesi başlangıçlı, Europe/Istanbul). idx 0 = bu hafta
+      -- (en yeni). Her hafta: tamamlanmış varsa 'go', iptal/gelmedi varsa 'no',
+      -- hiç ders yoksa 'skip'.
+      CROSS JOIN LATERAL (
+        SELECT COALESCE(jsonb_agg(b.bucket ORDER BY b.idx), '[]'::jsonb) AS weeks
+        FROM (
+          SELECT
+            g.idx,
+            CASE
+              WHEN count(l.id) FILTER (WHERE l.status = 'completed') > 0 THEN 'go'
+              WHEN count(l.id) FILTER (WHERE l.status IN ('cancelled', 'no_show')) > 0 THEN 'no'
+              ELSE 'skip'
+            END AS bucket
+          FROM generate_series(0, 11) AS g(idx)
+          LEFT JOIN lessons l
+            ON l.student_id = s.id
+            AND l.deleted_at IS NULL
+            AND l.starts_at >= wb.this_week_start - (g.idx * interval '1 week')
+            AND l.starts_at <  wb.this_week_start - (g.idx * interval '1 week') + interval '1 week'
+          GROUP BY g.idx
+        ) b
+      ) wk
       ORDER BY lower(v.full_name), v.id
     `,
   );

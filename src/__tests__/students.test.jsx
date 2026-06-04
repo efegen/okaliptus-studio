@@ -27,6 +27,7 @@ vi.mock("../api", () => ({
 import { StudentsPage } from "../students";
 import {
   getStudents,
+  getStudentById,
   getStudentsKpi,
   updateStudent,
   deleteStudent,
@@ -112,10 +113,9 @@ describe("StudentsPage", () => {
     render(<StudentsPage onOpenStudent={() => {}} />);
 
     await screen.findByText(/Test Müşteri/i);
-    // Asıl borç badge'i: "500 ₺ borç" — KPI label "Borçlu öğrenci" /
-    // sub "Toplam borç" gibi diğer "borç" geçen düğümlerden ayrıştırmak için
-    // money + word kombinasyonu.
-    expect(screen.getByText(/500.*₺.*borç/i)).toBeInTheDocument();
+    // Yeni tasarım: açık borç "Açık borç" sütununda ve alt toplam çubuğunda
+    // para olarak ("500 ₺") gösterilir. fmtTL(500) → "500 ₺".
+    expect(screen.getAllByText(/500\s*₺/).length).toBeGreaterThan(0);
   });
 
   it("renders empty state when student list is empty", async () => {
@@ -199,5 +199,30 @@ describe("StudentsPage", () => {
     fireEvent.click(screen.getByLabelText("İşlemler"));
 
     expect(screen.queryByRole("menuitem", { name: "Ödeme al" })).not.toBeInTheDocument();
+  });
+
+  it("kebab 'Düzenle' tam kaydı çekip düzenleme modalını açar ve updateStudent çağırır", async () => {
+    getStudents.mockResolvedValue(oneStudent({ id: "1", full_name: "Menü Kişi", is_active: true }));
+    getStudentById.mockResolvedValue({
+      id: "1", full_name: "Menü Kişi", nickname: null, phone: null, email: null,
+      birthday: null, joined_at: null, preferred_mode: null, note: null, is_active: true,
+    });
+    updateStudent.mockResolvedValue({ id: "1" });
+    render(<StudentsPage onOpenStudent={() => {}} />);
+    await screen.findByText(/Menü Kişi/i);
+
+    fireEvent.click(screen.getByLabelText("İşlemler"));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Düzenle" }));
+
+    // Liste satırında tüm alanlar yok → tam kayıt çekilir, modal açılır.
+    await waitFor(() => expect(getStudentById).toHaveBeenCalledWith("1"));
+    const saveBtn = await screen.findByRole("button", { name: "Kaydet" });
+
+    fireEvent.change(screen.getByLabelText(/Ad Soyad/i), { target: { value: "Yeni Ad" } });
+    fireEvent.click(saveBtn);
+
+    await waitFor(() =>
+      expect(updateStudent).toHaveBeenCalledWith("1", expect.objectContaining({ fullName: "Yeni Ad" })),
+    );
   });
 });

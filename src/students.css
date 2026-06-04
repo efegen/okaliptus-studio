@@ -1,0 +1,183 @@
+/* ════════════════════════════════════════════════════════════════════════
+   Öğrenciler — yeniden tasarım (tasarım devir paketi: Ogrenciler-Filtre)
+   Kayıtlı görünüm sekmeleri + kaldırılabilir koşul rozetleri + operasyon
+   tablosu. Tüm renkler mevcut :root / palette token'larını kullanır (palette
+   değişince otomatik uyumlanır). Sayılar Geist tabular figürlerle; monospace
+   kullanılmaz.
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* Sayfa ana alanı doldurur; tablo kart içinde kendi içinde kayar, alt toplam
+   çubuğu sabit kalır. Bu yüksek-doldurma davranışı YALNIZ bu sayfaya scope'lu
+   (:has) — diğer sayfalar doğal belge akışı kaydırmasını korur.
+   Sarmalayıcıya height:100vh verilir ama overflow'a dokunulmaz; tabloyu `main`
+   sınırlar (overflow:hidden + flex:1 + min-height:0). Böylece header'ın arama/
+   profil açılır menüleri (portal değil, header içinde absolute) kırpılmaz. */
+.app:has(.ox-page) > div:has(> .main) { height: 100vh; }
+.main:has(> .ox-page) { flex: 1; min-height: 0; overflow: hidden; padding: 0; max-width: none; }
+
+.ox-page {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 22px 28px;
+  gap: 15px;
+  overflow: hidden;
+}
+
+/* Geist tabular figürler — tüm sayısal hücreler */
+.ox-money, .ox-num, .ox-date, .ox-foot-i b, .ox-vtab .vn, .ox-fbtn-badge {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum", "cv01";
+}
+
+/* başlık */
+.ox-phead { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-shrink: 0; }
+.ox-phead-t { display: flex; flex-direction: column; gap: 3px; }
+.ox-h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.02em; color: var(--ink); line-height: 1.05; }
+.ox-phead-sub { font-size: 12.5px; color: var(--ink-3); }
+.ox-phead-a { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+
+.ox-btn { display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 14px; border-radius: var(--radius); font-size: 13px; font-weight: 600; border: 1px solid transparent; white-space: nowrap; transition: all .12s; color: var(--ink); background: none; }
+.ox-btn:disabled { opacity: .5; cursor: not-allowed; }
+.ox-btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+.ox-btn.primary:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
+.ox-btn.ghost { background: var(--surface); color: var(--ink-2); border-color: var(--line-2); }
+.ox-btn.ghost:hover:not(:disabled) { background: var(--bg-2); border-color: var(--line-strong); color: var(--ink); }
+
+/* görünüm sekmeleri */
+.ox-vtabs { display: flex; align-items: center; gap: 2px; border-bottom: 1px solid var(--line); flex-shrink: 0; }
+.ox-vtab { position: relative; display: inline-flex; align-items: center; gap: 7px; padding: 10px 14px; background: none; border: 0; font-size: 13px; font-weight: 500; color: var(--ink-3); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.ox-vtab:hover { color: var(--ink); }
+.ox-vtab.on { color: var(--ink); font-weight: 600; border-bottom-color: var(--accent); }
+.ox-vtab .vn { font-size: 11px; font-weight: 600; color: var(--ink-4); }
+.ox-vtab.on .vn { color: var(--accent-ink); }
+.ox-vtab.warn .vn { color: var(--warn-ink); }
+
+/* filtre çubuğu */
+.ox-ftbar { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.ox-ftbar-sp { flex: 1; }
+.ox-localsearch { display: flex; align-items: center; gap: 7px; height: 34px; padding: 0 11px; border: 1px solid var(--line-2); border-radius: var(--radius); background: var(--surface); color: var(--ink-3); width: 240px; }
+.ox-localsearch input { border: 0; outline: 0; background: transparent; flex: 1; min-width: 0; font-size: 13px; color: var(--ink); }
+.ox-localsearch input::placeholder { color: var(--ink-4); }
+.ox-fbtn { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 12px; border: 1px solid var(--line-2); border-radius: var(--radius); background: var(--surface); color: var(--ink-2); font-size: 13px; font-weight: 500; }
+.ox-fbtn:hover { background: var(--bg-2); border-color: var(--line-strong); }
+.ox-fbtn.on { border-color: var(--accent); color: var(--accent-ink); background: var(--accent-2); }
+.ox-fbtn-badge { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--accent); color: #fff; font-size: 10.5px; font-weight: 700; }
+.ox-sel { appearance: none; -webkit-appearance: none; height: 34px; padding: 0 30px 0 11px; border: 1px solid var(--line-2); border-radius: var(--radius); background-color: var(--surface); background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23938b80' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; font-size: 13px; font-weight: 500; color: var(--ink-2); cursor: pointer; }
+.ox-sel:hover { border-color: var(--line-strong); }
+.ox-sel:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-2); }
+/* filtre açılır menüsü (popover) — eski tam-satır yerine butonun altında açılır,
+   yer kaplamaz; üst üste koşul eklenebilir, dışarı tıkla/Escape ile kapanır. */
+.ox-fwrap { position: relative; display: inline-flex; }
+.ox-fbtn.open { border-color: var(--accent); color: var(--accent-ink); background: var(--accent-2); }
+.ox-fmenu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 50; min-width: 210px; max-height: 340px; overflow-y: auto; padding: 5px; background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--radius); box-shadow: var(--shadow-lg); }
+.ox-fmenu-head { padding: 5px 9px 6px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .055em; color: var(--ink-4); }
+.ox-fmenu-item { display: flex; align-items: baseline; gap: 6px; width: 100%; padding: 7px 9px; border: 0; background: none; border-radius: var(--radius-sm); font-size: 12.5px; color: var(--ink); text-align: left; cursor: pointer; }
+.ox-fmenu-item:hover { background: var(--bg-2); }
+.ox-fmenu-item .k { color: var(--ink-4); }
+.ox-fmenu-item b { font-weight: 600; color: var(--ink); }
+.ox-fmenu-empty { padding: 8px 9px; font-size: 12px; color: var(--ink-4); }
+
+/* koşul rozetleri */
+.ox-chips { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex-shrink: 0; min-height: 30px; }
+.ox-chip { display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 6px 0 11px; border: 1px solid var(--line-2); border-radius: 999px; background: var(--surface); font-size: 12.5px; color: var(--ink-2); }
+.ox-chip .k { color: var(--ink-4); }
+.ox-chip b { font-weight: 600; color: var(--ink); }
+.ox-chip-x { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; border: 0; background: var(--surface-2); color: var(--ink-3); padding: 0; font-size: 13px; line-height: 1; }
+.ox-chip-x:hover { background: var(--warn-2); color: var(--warn-ink); }
+.ox-chips-clear { background: none; border: 0; font-size: 12.5px; color: var(--ink-4); cursor: pointer; padding: 0 4px; }
+.ox-chips-clear:hover { color: var(--warn-ink); }
+
+/* yükleniyor / boş durumlar */
+.ox-page-state { flex: 1; display: grid; place-items: center; color: var(--ink-4); font-size: 13px; }
+.ox-empty-wrap { flex: 1; min-height: 0; display: grid; place-items: center; background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); }
+
+/* tablo kartı */
+.ox-tablecard { flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--radius-lg); overflow: hidden; box-shadow: var(--shadow-sm); }
+.ox-tablewrap { flex: 1; min-height: 0; overflow: auto; }
+.ox-table { width: 100%; border-collapse: collapse; }
+.ox-table thead th { position: sticky; top: 0; z-index: 3; background: var(--surface-2); text-align: left; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .055em; color: var(--ink-3); padding: 10px 14px; border-bottom: 1px solid var(--line-2); white-space: nowrap; }
+.ox-table th.r, .ox-table td.r { text-align: right; }
+.ox-table tbody td { padding: 11px 14px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.ox-table tbody tr { transition: background .08s; cursor: pointer; }
+.ox-table tbody tr:hover td { background: var(--bg); }
+.ox-table tbody tr.sel td { background: var(--accent-2); }
+.ox-table tbody tr:last-child td { border-bottom: 0; }
+
+.ox-chk-th, .ox-chk-td { width: 42px; padding-left: 16px !important; padding-right: 0 !important; }
+.ox-chk { width: 17px; height: 17px; border-radius: 4px; border: 1.5px solid var(--line-strong); background: var(--surface); display: grid; place-items: center; color: #fff; padding: 0; transition: all .1s; }
+.ox-chk:hover { border-color: var(--accent); }
+.ox-chk.on, .ox-chk.some { background: var(--accent); border-color: var(--accent); }
+.ox-chk .dash { width: 8px; height: 2px; background: #fff; border-radius: 1px; }
+
+.ox-sort { display: inline-flex; align-items: center; gap: 4px; background: none; border: 0; padding: 0; font: inherit; color: inherit; text-transform: inherit; letter-spacing: inherit; cursor: pointer; }
+.ox-sort:hover { color: var(--ink); }
+.ox-sort .car { opacity: 0; transition: opacity .12s; display: inline-flex; }
+.ox-sort.on { color: var(--ink); }
+.ox-sort.on .car { opacity: 1; }
+
+.ox-idc { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.ox-idc-stack { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.ox-idc-name { font-size: 13.5px; font-weight: 600; color: var(--ink); display: flex; align-items: baseline; gap: 6px; }
+.ox-idc-name .nick { font-size: 11.5px; font-weight: 400; color: var(--ink-4); font-style: italic; }
+.ox-idc-sub { font-size: 11.5px; color: var(--ink-3); letter-spacing: -.01em; }
+.ox-pasif { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-4); background: var(--surface-2); padding: 1px 6px; border-radius: 4px; }
+
+.ox-av { border-radius: 999px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; font-weight: 600; background: var(--surface-2); color: var(--ink-2); letter-spacing: .01em; width: 34px; height: 34px; font-size: 13px; }
+.ox-av.t-high, .ox-av.t-medium, .ox-av.t-new { background: var(--accent-2); color: var(--accent-ink); }
+.ox-av.t-low { background: var(--amber-2); color: var(--amber-ink); }
+.ox-av.t-absent { background: var(--warn-2); color: var(--warn-ink); }
+.ox-av.t-inactive { background: var(--surface-2); color: var(--ink-4); }
+
+.ox-stat { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--ink-2); white-space: nowrap; }
+.ox-stat i { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
+.ox-stat.off { color: var(--ink-4); }
+.ox-stat.off i { background: var(--ink-4); opacity: .5; }
+
+.ox-att { display: flex; flex-direction: column; gap: 2px; }
+.ox-att-lbl { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 600; color: var(--ink-2); }
+.ox-att-sub { font-size: 11px; color: var(--ink-4); padding-left: 14px; }
+.ox-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.ox-dot.t-high { background: var(--accent); }
+.ox-dot.t-medium { background: var(--accent); opacity: .6; }
+.ox-dot.t-low { background: var(--amber); }
+.ox-dot.t-absent { background: var(--warn); }
+.ox-dot.t-inactive { background: var(--ink-4); }
+.ox-dot.t-new { background: var(--accent); }
+
+.ox-spark { display: inline-flex; align-items: flex-end; gap: 2px; }
+.ox-spark i { width: 4px; border-radius: 1px; display: block; flex-shrink: 0; }
+.ox-spark i.go { background: var(--accent); }
+.ox-spark i.no { background: var(--warn); }
+.ox-spark i.skip { background: var(--line-2); }
+.ox-spark-empty { color: var(--ink-4); }
+
+.ox-money { font-family: var(--f-sans); font-size: 13.5px; font-weight: 600; white-space: nowrap; color: var(--ink); }
+.ox-money.debt { color: var(--warn-ink); }
+.ox-money.zero { color: var(--ink-4); font-weight: 500; }
+.ox-num { font-size: 13px; color: var(--ink-2); }
+.ox-date { font-size: 12.5px; color: var(--ink-2); white-space: nowrap; display: inline-flex; flex-direction: column; }
+.ox-date .rel { font-size: 11px; color: var(--ink-4); }
+.ox-muted { color: var(--ink-4); }
+
+.ox-rowact { display: inline-flex; align-items: center; gap: 6px; justify-content: flex-end; }
+.ox-quickpay { display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 10px; border: 1px solid var(--accent); background: var(--accent-2); color: var(--accent-ink); border-radius: var(--radius-sm); font-size: 12px; font-weight: 600; opacity: 0; transition: opacity .1s; }
+.ox-table tbody tr:hover .ox-quickpay { opacity: 1; }
+.ox-quickpay:hover { background: var(--accent); color: #fff; }
+
+.ox-bulkbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 9px 16px; background: var(--ink); color: var(--surface); flex-shrink: 0; }
+.ox-bulk-count { font-size: 13px; }
+.ox-bulk-count b { font-weight: 700; }
+.ox-bulk-dim { color: oklch(0.78 0.01 60); }
+.ox-bulk-actions { display: flex; align-items: center; gap: 6px; }
+.ox-bulk-btn { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 11px; background: oklch(0.30 0.015 60); color: var(--surface); border: 0; border-radius: var(--radius-sm); font-size: 12.5px; font-weight: 500; }
+.ox-bulk-btn:hover { background: oklch(0.37 0.015 60); }
+.ox-bulk-btn.clear { background: transparent; color: oklch(0.78 0.01 60); }
+.ox-bulk-btn.clear:hover { color: var(--surface); }
+
+.ox-foot { display: flex; align-items: center; gap: 20px; padding: 11px 16px; border-top: 1px solid var(--line-2); background: var(--surface); flex-shrink: 0; }
+.ox-foot-i { font-size: 12.5px; color: var(--ink-3); }
+.ox-foot-i b { font-size: 13.5px; font-weight: 700; color: var(--ink); }
+.ox-foot-i b.warn { color: var(--warn-ink); }
+.ox-foot-sp { flex: 1; }
+.ox-empty { padding: 40px 16px; text-align: center; color: var(--ink-4); font-size: 13px; }

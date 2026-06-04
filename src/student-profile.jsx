@@ -14,7 +14,7 @@ import {
   updateStudent,
   deleteStudent,
 } from './api';
-import { ReceivePaymentModal, ConfirmDeleteStudentModal } from './students';
+import { ReceivePaymentModal, ConfirmDeleteStudentModal, StudentFormModal } from './students';
 
 const LESSON_STATUS_TR = {
   scheduled: 'Planlı',
@@ -266,6 +266,7 @@ export function StudentProfilePage({ studentId, onBack, onOpenSale }) {
   const [movements, setMovements] = React.useState([]);
   const [tab, setTab] = React.useState('stats');
   const [paymentOpen, setPaymentOpen] = React.useState(false);
+  const [editOpen, setEditOpen] = React.useState(false);
   const [deleteOpen, setDeleteOpen] = React.useState(false);
 
   // Aktif ↔ pasif. Başarıda profili tazeleyip yeni durumu yansıtırız.
@@ -348,6 +349,7 @@ export function StudentProfilePage({ studentId, onBack, onOpenSale }) {
         fin={fin}
         onPayment={() => setPaymentOpen(true)}
         onOpenSale={onOpenSale ? () => onOpenSale(student) : undefined}
+        onEdit={() => setEditOpen(true)}
         onSetActive={handleSetActive}
         onDelete={() => setDeleteOpen(true)}
       />
@@ -381,6 +383,15 @@ export function StudentProfilePage({ studentId, onBack, onOpenSale }) {
           student={student}
           onClose={() => setDeleteOpen(false)}
           onConfirm={handleConfirmDelete}
+        />
+      )}
+
+      {editOpen && (
+        <StudentFormModal
+          mode="edit"
+          student={student}
+          onClose={() => setEditOpen(false)}
+          onSaved={async () => { setEditOpen(false); await loadAll(); }}
         />
       )}
     </div>
@@ -464,7 +475,7 @@ function lessonTone(l) {
 }
 
 // ─── Durum renkli başlık bandı (A11) ──────────────────────────────────────────
-function BandHeader({ student, fin, onPayment, onOpenSale, onSetActive, onDelete }) {
+function BandHeader({ student, fin, onPayment, onOpenSale, onEdit, onSetActive, onDelete }) {
   const isDebt = fin.totalDebt > 0.01;
   const breakdown = isDebt
     ? [
@@ -500,6 +511,9 @@ function BandHeader({ student, fin, onPayment, onOpenSale, onSetActive, onDelete
             <G.more width="16" height="16" />
           </button>
           <div className="sp-more-menu">
+            <button type="button" className="sp-more-item" onClick={onEdit}>
+              Düzenle
+            </button>
             <button
               type="button"
               className="sp-more-item"
