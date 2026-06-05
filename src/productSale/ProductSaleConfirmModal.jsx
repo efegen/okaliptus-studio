@@ -1,6 +1,8 @@
 import React from 'react';
 import { createProductSaleApi, createCashPayment } from '../api';
 import { fmtTL } from '../data';
+import { buildModelFromCart } from '../receipt/buildReceiptModel.js';
+import { ReceiptShareButton } from '../receipt/ReceiptShareButton.jsx';
 
 function CashIcon() {
   return (
@@ -97,6 +99,8 @@ export function ProductSaleConfirmModal({
   // Result state (set on success)
   const [resultPaidAmount, setResultPaidAmount] = React.useState(0);
   const [resultPaidWith, setResultPaidWith] = React.useState(null);
+  // Oluşan satış kimliği — makbuz (Teşekkür Makbuzu) yeniden üretimi için.
+  const [saleResult, setSaleResult] = React.useState(null);
 
   // When entering payment phase, prefill amount with full total
   React.useEffect(() => {
@@ -136,13 +140,14 @@ export function ProductSaleConfirmModal({
     setPhase('submitting');
     setError(null);
     try {
+      const soldAt = new Date().toISOString();
       const items = Array.from(cart.values()).map(it => ({
         productId: Number(it.product.id),
         quantity: it.quantity,
       }));
       const sale = await createProductSaleApi({
         studentId: Number(student.id),
-        soldAt: new Date().toISOString(),
+        soldAt,
         items,
         note: (note || '').trim() || null,
         lessonId: null,
@@ -154,11 +159,12 @@ export function ProductSaleConfirmModal({
           targetId: Number(sale.id),
           amount: payAmount,
           source: paySource,
-          paidAt: new Date().toISOString(),
+          paidAt: soldAt,
           note: null,
         });
         paid = payAmount;
       }
+      setSaleResult({ id: sale.id, soldAt });
       setResultPaidAmount(paid);
       setResultPaidWith(paySource);
       setPhase('success');
@@ -190,6 +196,14 @@ export function ProductSaleConfirmModal({
     if (phase === 'success') finish();
     else onClose();
   }
+
+  // Makbuz modeli — satış oluşunca sabit kimlikte üret (eager pre-gen için).
+  const receiptModel = React.useMemo(
+    () => (saleResult
+      ? buildModelFromCart({ cart, student, saleId: saleResult.id, soldAt: saleResult.soldAt })
+      : null),
+    [saleResult, cart, student],
+  );
 
   // Render helpers
   const remaining = Math.max(0, total - resultPaidAmount);
@@ -406,6 +420,9 @@ export function ProductSaleConfirmModal({
             >
               {statusLabel}
             </div>
+            {receiptModel && (
+              <ReceiptShareButton variant="web" eager label="Makbuzu paylaş" model={receiptModel} />
+            )}
             <button
               type="button"
               className="psale-confirm-done"

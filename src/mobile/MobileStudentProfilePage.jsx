@@ -14,6 +14,8 @@ import {
   previewInitials,
 } from './shared/studentMeta';
 import { MobileEditStudentPage } from './MobileEditStudentPage';
+import { buildModelFromSale } from '../receipt/buildReceiptModel.js';
+import { ReceiptShareButton } from '../receipt/ReceiptShareButton.jsx';
 
 // Mobil öğrenci profili — "design_handoff_ogrenci_profili" v16 yeniden tasarımı.
 // Tek-uzun-scroll ekran yerine: durum renkli sabit başlık + sayfa içi sekme barı
@@ -463,18 +465,27 @@ function StmtLesson({ l }) {
   );
 }
 
-function StmtSale({ s }) {
+function StmtSale({ s, student }) {
   const st = saleStatus(s);
   const dm = dayMon(s.sold_at);
   const open = st.tone !== 'paid';
   const amount = open ? parseMoney(s.remaining_receivable) : parseMoney(s.total_amount);
   const note = s.note?.trim();
+  const receiptModel = React.useMemo(
+    () => (student ? buildModelFromSale({ sale: s, student }) : null),
+    [s, student],
+  );
   return (
     <div className="mobile-msp-stmt">
       <div className="mobile-msp-stmt-date"><b>{dm.d}</b><span>{dm.m}</span></div>
       <div className="mobile-msp-stmt-mid">
         <div className="mobile-msp-stmt-title">{saleTitle(s)}</div>
         <div className="mobile-msp-stmt-sub">Ürün satışı{note ? ` · ${note}` : ''}</div>
+        {receiptModel && (
+          <div className="rcpt-row-action">
+            <ReceiptShareButton variant="mobile-row" label="Makbuz" model={receiptModel} />
+          </div>
+        )}
       </div>
       <div className="mobile-msp-stmt-right">
         <span className={'mobile-msp-stmt-amt' + (open ? ' open' : '')}>{fmtTL(amount)}</span>
@@ -610,7 +621,7 @@ const SALE_FILTERS = [
   { id: 'paid', label: 'Ödendi', test: s => parseMoney(s.remaining_receivable) <= 0.01 },
 ];
 
-function SalesTab({ sales }) {
+function SalesTab({ sales, student }) {
   const [filter, setFilter] = React.useState('all');
   const all = sales ?? [];
   const counts = Object.fromEntries(SALE_FILTERS.map(d => [d.id, all.filter(d.test).length]));
@@ -626,7 +637,7 @@ function SalesTab({ sales }) {
       ) : (
         groups.map(g => (
           <StatementGroup key={g.key} group={g}>
-            {g.items.map(s => <StmtSale key={s.product_sale_id} s={s} />)}
+            {g.items.map(s => <StmtSale key={s.product_sale_id} s={s} student={student} />)}
           </StatementGroup>
         ))
       )}
@@ -634,7 +645,7 @@ function SalesTab({ sales }) {
   );
 }
 
-function MovementsTab({ timeline }) {
+function MovementsTab({ timeline, student }) {
   if (!timeline.length) return <div className="mobile-msp-empty">Henüz hareket yok.</div>;
   const groups = groupByBucket(timeline, e => e.date);
   return groups.map(g => (
@@ -642,7 +653,7 @@ function MovementsTab({ timeline }) {
       {g.items.map(e => (
         e.type === 'lesson'
           ? <StmtLesson key={e.key} l={e.ref} />
-          : <StmtSale key={e.key} s={e.ref} />
+          : <StmtSale key={e.key} s={e.ref} student={student} />
       ))}
     </StatementGroup>
   ));
@@ -836,8 +847,8 @@ function ProfileBody({ student, lessons, sales, onClose, onOpenPayment, onOpenSa
           />
         )}
         {tab === 'lessons' && <LessonsTab lessons={lessons} />}
-        {tab === 'sales' && <SalesTab sales={sales} />}
-        {tab === 'movements' && <MovementsTab timeline={timeline} />}
+        {tab === 'sales' && <SalesTab sales={sales} student={student} />}
+        {tab === 'movements' && <MovementsTab timeline={timeline} student={student} />}
       </div>
     </div>
   );

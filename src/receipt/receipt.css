@@ -1,0 +1,197 @@
+/* Teşekkür Makbuzu — self-host fontlar + makbuz kartı stilleri.
+ *
+ * Şablon: design_handoff_makbuz/Okaliptus Yoga - Makbuz.html (1080×1350).
+ * Rasterize-güvenli port: meta satırı grid yerine flexbox; botanik çerçeveler
+ * ::before/::after yerine gerçek <div>; renk token'ları kart kökünde inline
+ * (uygulamanın :root'undan bağımsız, snapshot kendine yeten).
+ *
+ * Fontlar Google'dan indirilip src/receipt/fonts/ altında self-host edildi
+ * (çevrimdışı + güvenilir canvas embed). Cormorant Garamond + Jost ikisi de
+ * variable; tek dosya birden çok ağırlığı kapsar. Türkçe glifler (ş ğ İ Ş Ğ)
+ * latin-ext alt kümesinde olduğundan latin + latin-ext ayrı yüklenir. */
+
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 600 700;
+  font-display: swap;
+  src: url('./fonts/cormorant-normal-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 600 700;
+  font-display: swap;
+  src: url('./fonts/cormorant-normal-latinext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: italic;
+  font-weight: 600;
+  font-display: swap;
+  src: url('./fonts/cormorant-italic-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: italic;
+  font-weight: 600;
+  font-display: swap;
+  src: url('./fonts/cormorant-italic-latinext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Jost';
+  font-style: normal;
+  font-weight: 300 500;
+  font-display: swap;
+  src: url('./fonts/jost-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Jost';
+  font-style: normal;
+  font-weight: 300 500;
+  font-display: swap;
+  src: url('./fonts/jost-latinext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+/* ============================ MAKBUZ KARTI ============================ */
+.rcpt-root {
+  --green-900: #2f3f2b;
+  --green-700: #44583d;
+  --green-600: #54684a;
+  --green-500: #6b8560;
+  --aubergine: #3a2e3c;
+  --card: #fbf8f1;
+  --beige: #e7e0cf;
+  --line: #d6cdb8;
+  --ink: #39372e;
+  --ink-soft: #867f6d;
+
+  position: relative;
+  width: 1080px;
+  height: 1350px;
+  background: var(--card);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 42px 78px 40px;
+  box-sizing: border-box;
+  font-family: 'Jost', -apple-system, 'Segoe UI', system-ui, sans-serif;
+  font-weight: 400;
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+.rcpt-root *, .rcpt-root *::before, .rcpt-root *::after { box-sizing: border-box; }
+
+/* botanik çift çerçeve — gerçek div'ler (pseudo-element değil) */
+.rcpt-frame-outer { position: absolute; inset: 24px; border: 2px solid var(--green-700); pointer-events: none; }
+.rcpt-frame-inner { position: absolute; inset: 32px; border: 1px solid var(--green-500); opacity: .5; pointer-events: none; }
+
+/* ---- HEADER ---- */
+.rcpt-head { text-align: center; position: relative; z-index: 1; }
+.rcpt-branch { width: 66px; height: 66px; object-fit: contain; margin: 0 auto 6px; display: block; }
+.rcpt-wordmark {
+  font-family: 'Cormorant Garamond', serif; font-weight: 700; font-size: 36px;
+  letter-spacing: .2em; text-transform: uppercase; color: var(--green-900); padding-left: .2em; line-height: 1;
+}
+.rcpt-subtitle {
+  margin-top: 5px; font-size: 11px; letter-spacing: .46em; text-transform: uppercase;
+  color: var(--green-600); padding-left: .46em;
+}
+.rcpt-doctag {
+  display: inline-block; margin-top: 12px; padding: 5px 22px; padding-left: calc(22px + .3em);
+  background: var(--green-700); color: #f4efe3;
+  font-size: 11px; letter-spacing: .3em; text-transform: uppercase; white-space: nowrap;
+}
+
+/* ---- META (flex, grid değil) ---- */
+.rcpt-meta { display: flex; margin-top: 16px; border: 1px solid var(--line); position: relative; z-index: 1; }
+.rcpt-cell { padding: 12px 20px; display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.rcpt-cell:nth-child(1) { flex: 1 1 0; }
+.rcpt-cell:nth-child(2) { flex: 1.2 1 0; }
+.rcpt-cell:nth-child(3) { flex: 1 1 0; }
+.rcpt-cell + .rcpt-cell { border-left: 1px solid var(--line); }
+.rcpt-cap { font-size: 11px; letter-spacing: .22em; text-transform: uppercase; color: var(--green-600); padding-left: .22em; }
+.rcpt-val { font-size: 18px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rcpt-val.rcpt-name { font-family: 'Cormorant Garamond', serif; font-size: 23px; font-weight: 600; color: var(--aubergine); }
+
+/* ---- ÜRÜNLER ---- */
+.rcpt-items { margin-top: 18px; flex: 1; position: relative; z-index: 1; }
+.rcpt-items-head {
+  display: flex; align-items: center; padding: 0 6px 9px;
+  font-size: 11px; letter-spacing: .2em; text-transform: uppercase; color: var(--green-600);
+  border-bottom: 2px solid var(--green-700);
+}
+.rcpt-hp { flex: 1; padding-left: 72px; }
+.rcpt-hq { width: 96px; text-align: center; }
+.rcpt-ht { width: 140px; text-align: right; }
+.rcpt-item { display: flex; align-items: center; padding: 7px 6px; border-bottom: 1px solid var(--line); }
+.rcpt-thumb { width: 56px; height: 56px; flex: none; object-fit: cover; border: 1px solid var(--line); border-radius: 3px; background: var(--beige); }
+.rcpt-thumb-ph { width: 56px; height: 56px; flex: none; border: 1px solid var(--line); border-radius: 3px; background: var(--beige); }
+.rcpt-info { flex: 1; padding: 0 16px; min-width: 0; }
+.rcpt-pname { font-family: 'Cormorant Garamond', serif; font-size: 21px; font-weight: 600; color: var(--aubergine); line-height: 1.1; }
+.rcpt-pdesc { margin-top: 2px; font-size: 12.5px; font-weight: 300; color: var(--ink-soft); }
+.rcpt-pqty { width: 96px; text-align: center; font-size: 16px; color: var(--ink); }
+.rcpt-pprice { width: 140px; text-align: right; font-size: 18px; color: var(--ink); white-space: nowrap; }
+
+/* ---- TOPLAMLAR ---- */
+.rcpt-summary { display: flex; justify-content: flex-end; margin-top: 18px; position: relative; z-index: 1; }
+.rcpt-totals { width: 430px; }
+.rcpt-trow { display: flex; justify-content: space-between; align-items: baseline; padding: 6px 2px; font-size: 17px; white-space: nowrap; }
+.rcpt-trow .rcpt-lbl { color: var(--ink-soft); }
+.rcpt-grand {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-top: 10px; padding: 15px 24px; background: var(--green-700); color: #f4efe3;
+}
+.rcpt-grand .rcpt-glbl { font-size: 14px; letter-spacing: .24em; text-transform: uppercase; padding-left: .24em; }
+.rcpt-grand .rcpt-gamt { font-family: 'Jost', sans-serif; font-size: 34px; font-weight: 500; letter-spacing: .005em; white-space: nowrap; }
+
+/* ---- TEŞEKKÜR + FOOTER ---- */
+.rcpt-thanks { text-align: center; margin-top: 16px; position: relative; z-index: 1; }
+.rcpt-thanks-big { font-family: 'Cormorant Garamond', serif; font-style: italic; font-weight: 600; font-size: 27px; color: var(--green-900); }
+.rcpt-thanks-sub { margin-top: 5px; font-size: 13px; font-weight: 300; color: var(--ink-soft); }
+.rcpt-footer {
+  margin-top: auto; padding-top: 16px;
+  border-top: 1px solid var(--line);
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 13px; color: var(--ink-soft); letter-spacing: .08em; white-space: nowrap; position: relative; z-index: 1;
+}
+.rcpt-footer-brand { letter-spacing: .26em; text-transform: uppercase; color: var(--green-600); padding-left: .26em; }
+
+/* ============================ PAYLAŞ DÜĞMESİ ============================ */
+.rcpt-share-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  border: 0; cursor: pointer; font: inherit; font-weight: 600;
+  border-radius: 12px; transition: filter .15s ease, opacity .15s ease;
+}
+.rcpt-share-btn:disabled { opacity: .6; cursor: default; }
+.rcpt-share-btn svg { flex: none; }
+
+/* satış-sonu (web + mobil) — birincil, geniş, yeşil */
+.rcpt-share-web, .rcpt-share-mobile {
+  width: 100%; padding: 13px 18px; font-size: 15px;
+  background: var(--accent, #6b8560); color: #fff;
+}
+.rcpt-share-web:not(:disabled):hover, .rcpt-share-mobile:not(:disabled):hover { filter: brightness(1.05); }
+
+/* profil satırı — sade, küçük, hayalet */
+.rcpt-share-row, .rcpt-share-mobile-row {
+  padding: 7px 12px; font-size: 13px; border-radius: 999px;
+  background: transparent; color: var(--accent, #54684a);
+  border: 1px solid color-mix(in srgb, var(--accent, #6b8560) 35%, transparent);
+}
+.rcpt-share-row:not(:disabled):hover, .rcpt-share-mobile-row:not(:disabled):hover {
+  background: color-mix(in srgb, var(--accent, #6b8560) 10%, transparent);
+}
+.rcpt-share-mobile-row { padding: 9px 14px; font-size: 14px; }
+
+.rcpt-share-error { color: #b4453a; }
+
+/* profil satırında düğme için küçük üst boşluk */
+.rcpt-row-action { margin-top: 6px; }

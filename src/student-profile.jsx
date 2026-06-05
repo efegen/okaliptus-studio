@@ -15,6 +15,8 @@ import {
   deleteStudent,
 } from './api';
 import { ReceivePaymentModal, ConfirmDeleteStudentModal, StudentFormModal } from './students';
+import { buildModelFromSale } from './receipt/buildReceiptModel.js';
+import { ReceiptShareButton } from './receipt/ReceiptShareButton.jsx';
 
 const LESSON_STATUS_TR = {
   scheduled: 'Planlı',
@@ -237,6 +239,7 @@ function buildActivity({ lessons, packages, productSales }) {
     items.push({
       key:        `sale-${s.product_sale_id}`,
       saleId:     s.product_sale_id,
+      sale:       s, // makbuz yeniden üretimi için ham satış (items[] dahil)
       date:       s.sold_at,
       withTime:   false,
       kind:       'sale',
@@ -366,7 +369,7 @@ export function StudentProfilePage({ studentId, onBack, onOpenSale }) {
       ) : tab === 'movements' ? (
         <div className="card sp-tab-card"><MovementsView items={movements} /></div>
       ) : (
-        <div className="card sp-tab-card"><ActivityView items={activity} tab={tab} /></div>
+        <div className="card sp-tab-card"><ActivityView items={activity} tab={tab} student={student} /></div>
       )}
 
       {paymentOpen && (
@@ -842,7 +845,7 @@ const KIND_ICON = {
   package: Icon.Layers,
 };
 
-function ActivityView({ items, tab }) {
+function ActivityView({ items, tab, student }) {
   const filterDef =
     tab === 'lessons'  ? LESSON_SUBFILTERS :
     tab === 'products' ? PRODUCT_FILTERS   :
@@ -918,7 +921,7 @@ function ActivityView({ items, tab }) {
             {groups.map(g => (
               <React.Fragment key={g.key}>
                 <li className="sp-bucket-head">{g.label}</li>
-                {g.items.map(i => <ActivityRow key={i.key} item={i} />)}
+                {g.items.map(i => <ActivityRow key={i.key} item={i} student={student} />)}
               </React.Fragment>
             ))}
           </ul>
@@ -991,10 +994,17 @@ function emptyCopy(tab) {
   return                       { title: 'Hareket yok',       sub: 'Bu öğrenci için kayıtlı bir hareket bulunmuyor.' };
 }
 
-function ActivityRow({ item }) {
+function ActivityRow({ item, student }) {
   const Icn = KIND_ICON[item.kind] || Icon.Calendar;
   const dateText = fmtRowDate(item.date, { withTime: !!item.withTime });
   const status = item.status;
+
+  const receiptModel = React.useMemo(
+    () => (item.kind === 'sale' && item.sale && student
+      ? buildModelFromSale({ sale: item.sale, student })
+      : null),
+    [item.kind, item.sale, student],
+  );
 
   return (
     <li className={'sp-row sp-row-activity sp-row-activity-' + item.kind}>
@@ -1007,6 +1017,11 @@ function ActivityRow({ item }) {
       <div className="sp-row-title">
         <div className="sp-row-title-main">{item.title}</div>
         {item.sub && <div className="sp-row-title-sub">{item.sub}</div>}
+        {receiptModel && (
+          <div className="rcpt-row-action">
+            <ReceiptShareButton variant="row" label="Makbuz" model={receiptModel} />
+          </div>
+        )}
       </div>
 
       <div className="sp-row-status">
