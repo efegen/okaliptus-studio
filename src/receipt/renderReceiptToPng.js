@@ -3,17 +3,22 @@ import { createRoot } from 'react-dom/client';
 import { ReceiptCard } from './ReceiptCard.jsx';
 import { loadReceiptFonts } from './loadReceiptFonts.js';
 
-// Normalize makbuz modelini ekran dışında mount edip PNG Blob'a rasterize eder.
+// Normalize makbuz modelini ekran dışında mount edip JPEG Blob'a rasterize eder.
 //
-// Taint güvenliği: ürün görselleri capture'dan ÖNCE same-origin data URL'e
-// çözülür (urlToDataUrl). Bizim backend görselleri CORS açık → data URL olur;
-// Trendyol/HB CDN görselleri (CORS yok) veya 404 → null → bej placeholder.
-// Böylece modern-screenshot hiçbir cross-origin piksele dokunmaz ve tek bir
-// kötü görsel tüm makbuzu (toBlob taint) bozamaz.
+// Çıktı JPEG (q0.92): makbuz şeffaf değil, JPEG kodlaması PNG'ye göre mobilde çok
+// daha hızlı ve dosya küçük (WhatsApp için ideal). Ölçek 1.5 → 1620×2025; WhatsApp
+// zaten ~1600px'e yeniden sıkıştırdığı için 2x gereksizdi (yarı CPU, aynı sonuç).
+//
+// Taint güvenliği: ürün görselleri capture'dan ÖNCE data URL'e çözülür
+// (urlToDataUrl), kimlik bilgisi GÖNDERMEDEN (credentials:'omit'). Böylece
+// `Access-Control-Allow-Origin: *` veren CDN'ler (Trendyol cdn.dsmcdn.com → ACAO:*)
+// embed edilebilir; credentials:'include' bunu bozardı (CORS, kimlikli istekte `*`
+// kabul etmez). CORS vermeyen CDN veya 404 → null → bej placeholder. Görseller
+// doğrudan client→CDN çekilir (bizim backend'e uğramaz, ekstra Railway maliyeti yok).
 
 const FETCH_TIMEOUT_MS = 6000;
 
-export async function renderReceiptToPng(model, { pixelRatio = 2 } = {}) {
+export async function renderReceiptToPng(model, { pixelRatio = 1.5, quality = 0.92 } = {}) {
   if (!model) throw new Error('Makbuz verisi yok.');
   const resolved = await resolveThumbnails(model);
 
@@ -40,7 +45,8 @@ export async function renderReceiptToPng(model, { pixelRatio = 2 } = {}) {
       height: 1350,
       scale: pixelRatio,
       backgroundColor: '#fbf8f1',
-      type: 'image/png',
+      type: 'image/jpeg',
+      quality,
     };
 
     let blob = await domToBlob(node, opts);
@@ -74,7 +80,9 @@ async function urlToDataUrl(src) {
     const controller = typeof AbortController === 'function' ? new AbortController() : null;
     const timer = controller ? setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS) : null;
     const res = await fetch(src, {
-      credentials: 'include',
+      // Kimlik gönderme: bizim görsel endpoint'i zaten public; harici CDN'ler
+      // (Trendyol) ise ACAO:* veriyor → credentials'sız fetch CORS'tan geçer.
+      credentials: 'omit',
       signal: controller ? controller.signal : undefined,
     });
     if (timer) clearTimeout(timer);

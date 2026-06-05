@@ -10,30 +10,30 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function pngBlob() {
-  return new Blob([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], { type: 'image/png' });
+function jpegBlob() {
+  return new Blob([new Uint8Array([0xff, 0xd8, 0xff, 0xe0])], { type: 'image/jpeg' });
 }
 
 describe('receiptFilename', () => {
   it('makbuz numarasından dosya adı üretir', () => {
-    expect(receiptFilename({ receiptNo: 'OK-2026-0418' })).toBe('Okaliptus-Makbuz-OK-2026-0418.png');
+    expect(receiptFilename({ receiptNo: 'OK-2026-0418' })).toBe('Okaliptus-Makbuz-OK-2026-0418.jpg');
   });
 });
 
 describe('shareReceipt', () => {
-  it('Web Share destekliyse PNG dosyasını paylaşır', async () => {
+  it('Web Share destekliyse JPEG dosyasını paylaşır', async () => {
     const share = vi.fn().mockResolvedValue(undefined);
     vi.stubGlobal('navigator', { canShare: () => true, share });
 
-    const res = await shareReceipt(pngBlob(), 'Okaliptus-Makbuz-OK-2026-0418.png', { title: 'T', text: 'X' });
+    const res = await shareReceipt(jpegBlob(), 'Okaliptus-Makbuz-OK-2026-0418.jpg', { title: 'T', text: 'X' });
 
     expect(res).toEqual({ method: 'share' });
     expect(share).toHaveBeenCalledTimes(1);
     const arg = share.mock.calls[0][0];
     expect(Array.isArray(arg.files)).toBe(true);
     expect(arg.files[0]).toBeInstanceOf(File);
-    expect(arg.files[0].name).toBe('Okaliptus-Makbuz-OK-2026-0418.png');
-    expect(arg.files[0].type).toBe('image/png');
+    expect(arg.files[0].name).toBe('Okaliptus-Makbuz-OK-2026-0418.jpg');
+    expect(arg.files[0].type).toBe('image/jpeg');
     expect(arg.title).toBe('T');
     expect(arg.text).toBe('X');
   });
@@ -45,7 +45,7 @@ describe('shareReceipt', () => {
     vi.stubGlobal('URL', { createObjectURL, revokeObjectURL: vi.fn() });
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
 
-    const res = await shareReceipt(pngBlob(), 'dosya.png');
+    const res = await shareReceipt(jpegBlob(), 'dosya.jpg');
 
     expect(res).toEqual({ method: 'download' });
     expect(createObjectURL).toHaveBeenCalledTimes(1);
@@ -59,7 +59,7 @@ describe('shareReceipt', () => {
     const createObjectURL = vi.fn(() => 'blob:fake');
     vi.stubGlobal('URL', { createObjectURL, revokeObjectURL: vi.fn() });
 
-    const res = await shareReceipt(pngBlob(), 'dosya.png');
+    const res = await shareReceipt(jpegBlob(), 'dosya.jpg');
 
     expect(res).toEqual({ method: 'cancelled' });
     expect(createObjectURL).not.toHaveBeenCalled();

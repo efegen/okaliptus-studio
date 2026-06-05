@@ -1,14 +1,14 @@
-// Makbuz PNG'sini paylaşır. Mobilde Web Share API ile native paylaşım sayfası
-// (WhatsApp vb.) açılır; desteklenmeyen yerde (masaüstü tarayıcılar) dosya
-// otomatik indirilir.
+// Makbuz görselini (JPEG) paylaşır. Mobilde Web Share API ile native paylaşım
+// sayfası (WhatsApp vb.) açılır; desteklenmeyen yerde (masaüstü tarayıcılar)
+// dosya otomatik indirilir.
 
 export function receiptFilename(model) {
   const no = (model?.receiptNo || 'makbuz').replace(/[^\w-]/g, '');
-  return `Okaliptus-Makbuz-${no}.png`;
+  return `Okaliptus-Makbuz-${no}.jpg`;
 }
 
 export async function shareReceipt(blob, filename, { title, text } = {}) {
-  const file = new File([blob], filename, { type: 'image/png' });
+  const file = new File([blob], filename, { type: blob?.type || 'image/jpeg' });
 
   const canShareFiles =
     typeof navigator !== 'undefined' &&
