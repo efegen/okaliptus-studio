@@ -1,7 +1,15 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { Drawer } from 'vaul';
 import { createProductSaleApi, createCashPayment } from '../../api';
 import { fmtTL } from '../../data';
+import { buildModelFromCart } from '../../receipt/buildReceiptModel.js';
+import { ReceiptShareButton } from '../../receipt/ReceiptShareButton.jsx';
+import { ReceiptCard } from '../../receipt/ReceiptCard.jsx';
+
+// Makbuz önizlemesi: gerçek ReceiptCard (1080px) sabit genişlikte mount edilip
+// CSS transform ile küçültülür. Hedef ~282px (oran 1080:1350 korunur).
+const PREVIEW_W = 282;
 
 function getMobilePaletteRoot() {
   if (typeof document === 'undefined') return null;
@@ -77,6 +85,63 @@ function CheckCircle() {
   );
 }
 
+function CloseIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" aria-hidden="true">
+      <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function ZoomIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" aria-hidden="true">
+      <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="2" />
+      <path d="M16.5 16.5L21 21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+// Tam boy makbuz görünümü — önizlemeye dokununca açılır. Ekran genişliğine
+// sığacak ölçekte gerçek ReceiptCard'ı gösterir; herhangi bir yere dokunma kapatır.
+function ReceiptZoomOverlay({ model, onClose, container }) {
+  const vw = typeof window !== 'undefined' ? window.innerWidth : 393;
+  const vh = typeof window !== 'undefined' ? window.innerHeight : 760;
+  // Hem genişliğe (≤440) hem yüksekliğe sığacak ölçek — kısa ekranda taşmaz.
+  const scale = Math.min(Math.min(vw - 24, 440) / 1080, (vh - 104) / 1350);
+  const width = Math.round(1080 * scale);
+
+  React.useEffect(() => {
+    function onKey(e) { if (e.key === 'Escape') onClose(); }
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const node = (
+    <div
+      className="psale-receipt-zoom"
+      onClick={(e) => { e.stopPropagation(); onClose(); }}
+      role="dialog"
+      aria-modal="true"
+    >
+      <button
+        type="button"
+        className="psale-receipt-zoom-close"
+        onClick={(e) => { e.stopPropagation(); onClose(); }}
+        aria-label="Kapat"
+      >
+        <CloseIcon />
+      </button>
+      <div className="psale-receipt-zoom-scale" style={{ width, height: Math.round(1350 * scale) }}>
+        <div className="psale-receipt-card" style={{ transform: `scale(${scale})` }}>
+          <ReceiptCard model={model} />
+        </div>
+      </div>
+    </div>
+  );
+  return container ? createPortal(node, container) : node;
+}
+
 const EPSILON = 0.001;
 
 export function MobileProductSaleConfirmSheet({
@@ -102,6 +167,17 @@ export function MobileProductSaleConfirmSheet({
 
   const [resultPaidAmount, setResultPaidAmount] = React.useState(0);
   const [resultPaidWith, setResultPaidWith] = React.useState(null);
+  // Oluşan satış kimliği — makbuz (Teşekkür Makbuzu) yeniden üretimi için.
+  const [saleResult, setSaleResult] = React.useState(null);
+  // Makbuz önizlemesine dokununca açılan tam boy görünüm.
+  const [previewOpen, setPreviewOpen] = React.useState(false);
+
+  const receiptModel = React.useMemo(
+    () => (saleResult
+      ? buildModelFromCart({ cart, student, saleId: saleResult.id, soldAt: saleResult.soldAt })
+      : null),
+    [saleResult, cart, student],
+  );
 
   React.useEffect(() => {
     if (phase === 'payment') {
@@ -123,13 +199,14 @@ export function MobileProductSaleConfirmSheet({
     setPhase('submitting');
     setError(null);
     try {
+      const soldAt = new Date().toISOString();
       const items = Array.from(cart.values()).map(it => ({
         productId: Number(it.product.id),
         quantity: it.quantity,
       }));
       const sale = await createProductSaleApi({
         studentId: Number(student.id),
-        soldAt: new Date().toISOString(),
+        soldAt,
         items,
         note: (note || '').trim() || null,
         lessonId: null,
@@ -141,11 +218,12 @@ export function MobileProductSaleConfirmSheet({
           targetId: Number(sale.id),
           amount: payAmount,
           source: paySource,
-          paidAt: new Date().toISOString(),
+          paidAt: soldAt,
           note: null,
         });
         paid = payAmount;
       }
+      setSaleResult({ id: sale.id, soldAt });
       setResultPaidAmount(paid);
       setResultPaidWith(paySource);
       setPhase('success');
@@ -207,6 +285,17 @@ export function MobileProductSaleConfirmSheet({
         <Drawer.Overlay className="mobile-psale-vsheet-overlay" />
         <Drawer.Content className="mobile-psale-vsheet-content mobile-psale-confirm-content">
           <Drawer.Handle className="mobile-psale-vsheet-handle" />
+
+          {phase === 'success' && (
+            <button
+              type="button"
+              className="mobile-psale-confirm-close"
+              onClick={finish}
+              aria-label="Kapat"
+            >
+              <CloseIcon />
+            </button>
+          )}
 
           {phase === 'choose' && (
             <>
@@ -394,6 +483,37 @@ export function MobileProductSaleConfirmSheet({
                 <span className="mobile-psale-confirm-dot">·</span>
                 <strong>{fmtTL(total)}</strong>
               </p>
+
+              {receiptModel && (
+                <>
+                  <div
+                    className="psale-receipt-preview"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setPreviewOpen(true)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setPreviewOpen(true); }
+                    }}
+                    aria-label="Makbuzu büyüt"
+                  >
+                    <div className="psale-receipt-window">
+                      <div
+                        className="psale-receipt-scale"
+                        style={{ width: PREVIEW_W, height: Math.round(1350 * (PREVIEW_W / 1080)) }}
+                      >
+                        <div className="psale-receipt-card" style={{ transform: `scale(${PREVIEW_W / 1080})` }}>
+                          <ReceiptCard model={receiptModel} />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <span className="psale-receipt-tap">
+                    <ZoomIcon />
+                    Büyütmek için dokun
+                  </span>
+                </>
+              )}
+
               <div
                 className={
                   'mobile-psale-confirm-status ' +
@@ -406,14 +526,19 @@ export function MobileProductSaleConfirmSheet({
               >
                 {statusLabel}
               </div>
-              <button
-                type="button"
-                className="mobile-psale-confirm-done"
-                onClick={finish}
-              >
-                Tamam
-              </button>
+
+              {receiptModel && (
+                <ReceiptShareButton variant="mobile" eager label="Makbuzu paylaş" model={receiptModel} />
+              )}
             </div>
+          )}
+
+          {previewOpen && receiptModel && (
+            <ReceiptZoomOverlay
+              model={receiptModel}
+              container={portalContainer}
+              onClose={() => setPreviewOpen(false)}
+            />
           )}
 
           {phase === 'error' && (
