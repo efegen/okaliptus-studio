@@ -66,6 +66,9 @@ export type ProductSaleItemRow = {
   line_total: string;
   created_at: string;
   image_url?: string | null;
+  // Canlı üründen join'lenir (snapshot değil, image_url gibi) — makbuzda
+  // ürün adının altında varyant satırı ("Büyük"/"Küçük") göstermek için.
+  variant_label?: string | null;
 };
 
 export type ProductSaleWithItems = ProductSaleBalanceRow & {
@@ -158,7 +161,7 @@ async function fetchSaleItems(
 
   const result = await pool.query<ProductSaleItemRow>(
     `SELECT psi.id, psi.sale_id, psi.product_id, psi.name_snapshot, psi.unit_price_snapshot,
-            psi.quantity, psi.line_total, psi.created_at, p.image_url
+            psi.quantity, psi.line_total, psi.created_at, p.image_url, p.variant_label
        FROM product_sale_items psi
        LEFT JOIN products p ON p.id = psi.product_id
       WHERE psi.sale_id = ANY($1::bigint[])

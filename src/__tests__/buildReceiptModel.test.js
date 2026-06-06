@@ -62,7 +62,7 @@ describe('receiptNo', () => {
 
 describe('buildModelFromCart', () => {
   const cart = new Map([
-    ['a', { product: { id: 5, name: 'Yoga Matı', price: '850', image_url: 'https://api.example.com/products/5/image?v=1', category: 'Mat' }, quantity: 1 }],
+    ['a', { product: { id: 5, name: 'Yoga Matı', price: '850', image_url: 'https://api.example.com/products/5/image?v=1', variant_label: 'Mor' }, quantity: 1 }],
     ['b', { product: { id: 6, name: 'Blok', price: '280', image_url: null }, quantity: 2 }],
   ]);
   const model = buildModelFromCart({ cart, student: { full_name: 'Ayşe Kaya' }, saleId: 418, soldAt: '2026-06-15T12:00:00.000Z' });
@@ -82,8 +82,9 @@ describe('buildModelFromCart', () => {
     expect(model.items[1]).toMatchObject({ name: 'Blok', qty: 2, lineText: '560,00 TL', thumbSrc: null });
   });
 
-  it('açıklama satırını (kategori) bilinçli olarak atlar', () => {
-    expect(model.items[0].desc).toBeNull();
+  it('varyant etiketini desc satırına koyar, yoksa null bırakır', () => {
+    expect(model.items[0].desc).toBe('Mor');   // variant_label var
+    expect(model.items[1].desc).toBeNull();      // variant_label yok
   });
 
   it('ara toplam = toplam (indirim yok)', () => {
@@ -98,7 +99,7 @@ describe('buildModelFromSale', () => {
     sold_at: '2026-06-15T12:00:00.000Z',
     total_amount: '125.50',
     items: [
-      { name_snapshot: 'Tişört', unit_price_snapshot: '125.50', quantity: 1, line_total: '125.50', image_url: '/products/9/image', product_id: 9 },
+      { name_snapshot: 'Tişört', unit_price_snapshot: '125.50', quantity: 1, line_total: '125.50', image_url: '/products/9/image', product_id: 9, variant_label: 'XL' },
     ],
   };
   const model = buildModelFromSale({ sale, student: { full_name: 'Mehmet' } });
@@ -108,7 +109,7 @@ describe('buildModelFromSale', () => {
     expect(model.customerName).toBe('Mehmet');
     expect(model.timeText).toBe('15:00');
     expect(model.items).toHaveLength(1);
-    expect(model.items[0]).toMatchObject({ name: 'Tişört', qty: 1, lineText: '125,50 TL', thumbSrc: '/products/9/image' });
+    expect(model.items[0]).toMatchObject({ name: 'Tişört', qty: 1, lineText: '125,50 TL', thumbSrc: '/products/9/image', desc: 'XL' });
   });
 
   it('toplamı total_amount alanından alır', () => {

@@ -45,10 +45,13 @@ export function receiptNo(saleId, soldAt) {
   return `OK-${year}-${digits.padStart(4, '0')}`;
 }
 
-function normalizedItem({ name, qty, lineValue, imageUrl }) {
+function normalizedItem({ name, qty, lineValue, imageUrl, variantLabel }) {
+  const desc = variantLabel != null ? String(variantLabel).trim() : '';
   return {
     name: (name ?? '').toString(),
-    desc: null, // Ürün modelinde kısa açıklama yok; iki girişte de tutarlı olsun diye boş.
+    // Varyant etiketi (örn. "Büyük" / "Küçük") — ürün adının altında ikincil
+    // satır. Aynı ada sahip varyantları (tuz lambası büyük/küçük) ayırır.
+    desc: desc || null,
     qty: Number(qty) || 0,
     lineText: fmtReceiptTL(lineValue),
     // Aday görsel URL'i; rasterize öncesi data URL'e çözülür, başarısızsa placeholder.
@@ -70,6 +73,7 @@ export function buildModelFromCart({ cart, student, saleId, soldAt }) {
       qty,
       lineValue: line,
       imageUrl: it?.product?.image_url,
+      variantLabel: it?.product?.variant_label,
     });
   });
   const totalText = fmtReceiptTL(total);
@@ -94,6 +98,7 @@ export function buildModelFromSale({ sale, student }) {
     qty: it?.quantity,
     lineValue: it?.line_total,
     imageUrl: it?.image_url,
+    variantLabel: it?.variant_label,
   }));
   const totalText = fmtReceiptTL(sale?.total_amount);
   return {

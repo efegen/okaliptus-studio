@@ -12,7 +12,7 @@ const MODEL = {
   dateText: '5 Haziran 2026',
   timeText: '15:00',
   items: [
-    { name: 'Yoga Matı', desc: null, qty: 1, lineText: '850,00 TL', thumbSrc: null },
+    { name: 'Yoga Matı', desc: 'Büyük', qty: 1, lineText: '850,00 TL', thumbSrc: null },
     { name: 'Blok', desc: null, qty: 2, lineText: '560,00 TL', thumbSrc: 'data:image/png;base64,AAAA' },
   ],
   subtotalText: '1.410,00 TL',
@@ -28,6 +28,7 @@ describe('ReceiptCard', () => {
     expect(screen.getByText('5 Haziran 2026')).toBeInTheDocument();
     expect(screen.getByText('15:00')).toBeInTheDocument();
     expect(screen.getByText('Yoga Matı')).toBeInTheDocument();
+    expect(screen.getByText('Büyük')).toBeInTheDocument(); // varyant satırı
     expect(screen.getByText('Blok')).toBeInTheDocument();
     expect(screen.getByText('850,00 TL')).toBeInTheDocument();
     expect(screen.getAllByText('1.410,00 TL')).toHaveLength(2); // ara toplam + toplam
