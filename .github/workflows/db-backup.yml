@@ -1,17 +1,21 @@
 name: Nightly DB backup
 
-# Off-site backup (3-2-1): Railway Postgres -> Cloudflare R2, nightly + on-demand.
+# Encrypted off-site backup: Railway Postgres -> GPG-encrypted GitHub Actions artifact, nightly + on-demand.
+#
+# This repo is PUBLIC, so the dump is encrypted with GPG (AES-256) BEFORE upload. Anyone can
+# download the artifact, but it is useless without BACKUP_PASSPHRASE. NEVER upload a plain dump here.
 #
 # One-time setup (you do this):
-#   1. Create a private R2 bucket (e.g. "okaliptus-backups") in the Cloudflare dashboard.
-#   2. Create an R2 API token (Object Read & Write) -> note the Access Key ID + Secret.
-#   3. Repo -> Settings -> Secrets and variables -> Actions -> add these repo secrets:
-#        DATABASE_URL          the SAME Railway connection string that works locally (public host, not *.railway.internal)
-#        R2_ACCESS_KEY_ID      R2 API token access key id
-#        R2_SECRET_ACCESS_KEY  R2 API token secret
-#        R2_BUCKET             bucket name, e.g. okaliptus-backups
-#        R2_ENDPOINT           https://<account-id>.r2.cloudflarestorage.com
-#   4. In R2 -> bucket -> Settings, add a lifecycle rule: delete objects older than 30 days.
+#   Repo -> Settings -> Secrets and variables -> Actions -> add these repo secrets:
+#     DATABASE_URL       the SAME Railway connection string that works locally (public host, not *.railway.internal)
+#     BACKUP_PASSPHRASE  a strong random passphrase used to encrypt/decrypt the dump.
+#                        STORE IT IN A PASSWORD MANAGER — if lost, ALL backups become unrecoverable.
+#
+# Restore (when you actually need a backup):
+#   1. Download the artifact:  gh run download <run-id> -n okaliptus-backup-<stamp>   (or via the Actions UI)
+#   2. Decrypt:  gpg --batch --yes --pinentry-mode loopback --passphrase "<BACKUP_PASSPHRASE>" \
+#                  -o okaliptus.dump -d okaliptus-<stamp>.dump.gpg
+#   3. Restore:  pg_restore --clean --if-exists --no-owner -d "<TARGET_DATABASE_URL>" okaliptus.dump
 #
 # NOTE: GitHub only runs scheduled workflows from the DEFAULT branch (main). This file
 # must be on main for the nightly cron (and the manual "Run workflow" button) to appear.
@@ -29,28 +33,35 @@ jobs:
   backup:
     runs-on: ubuntu-latest
     steps:
-      - name: Dump database (pg_dump 18 via Docker, matches the 18.x server)
+      - name: Dump and encrypt database (pg_dump 18 via Docker, matches the 18.x server)
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
         run: |
           set -euo pipefail
-          FILE="okaliptus-$(date -u +%Y%m%d-%H%M%S).dump"
-          echo "FILE=$FILE" >> "$GITHUB_ENV"
+          # Fail loudly (not with a confusing pg_dump socket error) if a secret is missing.
+          if [ -z "${DATABASE_URL:-}" ]; then echo "DATABASE_URL secret is empty — set it in repo secrets."; exit 1; fi
+          if [ -z "${BACKUP_PASSPHRASE:-}" ]; then echo "BACKUP_PASSPHRASE secret is empty — set it in repo secrets."; exit 1; fi
+          STAMP="$(date -u +%Y%m%d-%H%M%S)"
+          echo "STAMP=$STAMP" >> "$GITHUB_ENV"
+          FILE="okaliptus-$STAMP.dump"
           # -e DATABASE_URL passes the host secret into the container env (not argv/logs).
           docker run --rm -e DATABASE_URL postgres:18 \
             sh -c 'pg_dump "$DATABASE_URL" --format=custom --no-owner --no-privileges' > "$FILE"
           SIZE=$(stat -c%s "$FILE")
           echo "Dump size: $SIZE bytes"
-          # Guard against a silent empty/failed dump getting uploaded.
+          # Guard against a silent empty/failed dump getting encrypted + uploaded.
           if [ "$SIZE" -lt 1024 ]; then echo "Dump suspiciously small — aborting."; exit 1; fi
+          # Encrypt with AES-256. Passphrase via stdin (fd 0) so it never lands in argv/process list.
+          printf '%s' "$BACKUP_PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 \
+            --symmetric --cipher-algo AES256 -o "$FILE.gpg" "$FILE"
+          rm -f "$FILE" # never keep the plaintext dump around
+          echo "Encrypted -> $FILE.gpg ($(stat -c%s "$FILE.gpg") bytes)"
 
-      - name: Upload to Cloudflare R2 (S3-compatible)
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: auto
-        run: |
-          set -euo pipefail
-          aws s3 cp "$FILE" "s3://${{ secrets.R2_BUCKET }}/$FILE" \
-            --endpoint-url "${{ secrets.R2_ENDPOINT }}"
-          echo "Uploaded $FILE to R2 bucket ${{ secrets.R2_BUCKET }}."
+      - name: Upload encrypted dump as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: okaliptus-backup-${{ env.STAMP }}
+          path: okaliptus-*.dump.gpg
+          retention-days: 30 # nightly encrypted dumps kept for 30 days
+          if-no-files-found: error
