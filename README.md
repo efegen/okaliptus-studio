@@ -150,11 +150,17 @@ Pre-deploy checklist:
 - **Manual:** `cd backend && npm run db:backup` — `pg_dump` (custom
   format) to `backend/backups/`, with local retention
   (`BACKUP_KEEP_DAYS`, default 14). Requires a PG 18 client.
-- **Off-site (scaffolded):** `.github/workflows/db-backup.yml` runs a
-  nightly `pg_dump` (via Docker `postgres:18`) and uploads to Cloudflare
-  R2. To activate: create an R2 bucket + API token, add the repo secrets
-  (`DATABASE_URL`, `R2_*`), and merge the workflow to `main` (scheduled
-  workflows only run from the default branch).
+- **Nightly (active):** [.github/workflows/db-backup.yml](.github/workflows/db-backup.yml)
+  runs a nightly `pg_dump` (via Docker `postgres:18`) at 00:00
+  Europe/Istanbul, GPG-encrypts it (AES-256), verifies it decrypts and
+  `pg_restore --list`s cleanly, then uploads it as a GitHub Actions
+  artifact (30-day retention). The repo is public, so the dump is
+  **always encrypted before upload** — the artifact is useless without
+  `BACKUP_PASSPHRASE`. Repo secrets required: `DATABASE_URL` (Railway
+  public host) and `BACKUP_PASSPHRASE`. **Store the passphrase in a
+  password manager — if lost, every artifact is unrecoverable.** Restore
+  steps are in the workflow header comment. Trigger on demand from the
+  Actions tab ("Run workflow") or `gh workflow run db-backup.yml`.
 
 ## PWA Installation
 

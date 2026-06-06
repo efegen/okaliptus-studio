@@ -2226,7 +2226,7 @@ V1 kapsamı dışında kalan özellikler:
 13. **`.env.example`** (git'te) yukarıdaki şablon. **`.env`** ve `*.env.local` `.gitignore`'a eklenir. Smoke test scriptleri ve seed komutları da `.env`'i okur — hardcoded PII assertion'ı içermez.
 
 14. **Operasyonel scriptler (`backend/`, v1.6):** günlük iş dışı bakım/içe-aktarma komutları:
-    - `npm run db:backup` → `scripts/backup-db.ts`: yerel `pg_dump` (custom format) → `backend/backups/`, `BACKUP_KEEP_DAYS` (default 14) gün retention. PG18 client gerekir. Off-site R2 yedeği için ayrıca GitHub Actions workflow'u (§11 v1.6 / [project_db_backup] memory).
+    - `npm run db:backup` → `scripts/backup-db.ts`: yerel `pg_dump` (custom format) → `backend/backups/`, `BACKUP_KEEP_DAYS` (default 14) gün retention. PG18 client gerekir. Off-site yedek: `.github/workflows/db-backup.yml` her gece 00:00 Europe/Istanbul'da `pg_dump` alır, GPG (AES-256) ile şifreler, çözülüp `pg_restore --list` ile doğrulanır, sonra GitHub Actions artifact'ı olarak yüklenir (30 gün retention). Repo public olduğu için dump **yüklenmeden önce daima şifrelenir**; secret'lar `DATABASE_URL` (Railway public) + `BACKUP_PASSPHRASE` (parola parola yöneticisinde saklanmalı, kaybolursa tüm yedekler kurtarılamaz). (§11 v1.6 / [project_db_backup] memory).
     - `npm run import:trendyol` → `scripts/import-trendyol-products.ts`: Trendyol satıcı Excel'ini (`xlsx`) ürün kataloğuna upsert eder (barkod bazlı, varyant/kategori meta'sı dahil). Canlı API senkronu yok.
     - `npm run products:export` / `products:import` → ürün kataloğunu dışa/içe aktarma.
     - `npm run archive:zero-stock` → `scripts/archive-zero-stock.ts`: stoğu biten ürünleri toplu arşivler.
