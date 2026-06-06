@@ -58,6 +58,25 @@ jobs:
           rm -f "$FILE" # never keep the plaintext dump around
           echo "Encrypted -> $FILE.gpg ($(stat -c%s "$FILE.gpg") bytes)"
 
+      - name: Verify the encrypted dump can be decrypted and restored
+        env:
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          # Round-trip proof: a backup you can't restore is worthless. Decrypt with the SAME
+          # passphrase, then have pg_restore read the archive TOC. Fails loudly (so the nightly
+          # run goes red) if the passphrase is wrong or the archive is corrupt — we never want a
+          # silently-unrestorable artifact to be uploaded below.
+          DEC="okaliptus-$STAMP.verify.dump"
+          printf '%s' "$BACKUP_PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 \
+            -o "$DEC" -d "okaliptus-$STAMP.dump.gpg"
+          # pg_restore --list reads the archive header + table of contents without touching any DB.
+          ENTRIES=$(docker run --rm -v "$PWD:/w" postgres:18 pg_restore --list "/w/$DEC" | grep -c ';')
+          echo "pg_restore read $ENTRIES TOC entries from the decrypted dump."
+          if [ "$ENTRIES" -lt 1 ]; then echo "Decrypted archive has no entries — aborting."; exit 1; fi
+          rm -f "$DEC" # drop the plaintext again; only the .gpg gets uploaded
+          echo "Verified: backup decrypts and is a readable pg_restore archive."
+
       - name: Upload encrypted dump as artifact
         uses: actions/upload-artifact@v4
         with:
