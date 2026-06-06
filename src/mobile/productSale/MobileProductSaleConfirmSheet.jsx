@@ -283,7 +283,16 @@ export function MobileProductSaleConfirmSheet({
     >
       <Drawer.Portal container={portalContainer || undefined}>
         <Drawer.Overlay className="mobile-psale-vsheet-overlay" />
-        <Drawer.Content className="mobile-psale-vsheet-content mobile-psale-confirm-content">
+        <Drawer.Content
+          className="mobile-psale-vsheet-content mobile-psale-confirm-content"
+          /* Makbuz büyütme overlay'i Drawer.Content'in DIŞINDA (kardeş portal)
+             olduğundan, ona dokunmak vaul için "dışarı tıklama" → tüm sheet'i
+             kapatıp ana sayfaya atıyordu. Overlay açıkken (previewOpen) dışarı/
+             escape kapatmasını engelle: zoom kapanır, satış onayı açık kalır. */
+          onPointerDownOutside={(e) => { if (previewOpen) e.preventDefault(); }}
+          onInteractOutside={(e) => { if (previewOpen) e.preventDefault(); }}
+          onEscapeKeyDown={(e) => { if (previewOpen) e.preventDefault(); }}
+        >
           <Drawer.Handle className="mobile-psale-vsheet-handle" />
 
           {phase === 'success' && (
