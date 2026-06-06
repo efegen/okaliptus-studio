@@ -15,7 +15,7 @@ import {
 } from './shared/studentMeta';
 import { MobileEditStudentPage } from './MobileEditStudentPage';
 import { buildModelFromSale } from '../receipt/buildReceiptModel.js';
-import { ReceiptShareButton } from '../receipt/ReceiptShareButton.jsx';
+import { ReceiptPreviewButton } from '../receipt/ReceiptPreviewButton.jsx';
 
 // Mobil öğrenci profili — "design_handoff_ogrenci_profili" v16 yeniden tasarımı.
 // Tek-uzun-scroll ekran yerine: durum renkli sabit başlık + sayfa içi sekme barı
@@ -483,7 +483,7 @@ function StmtSale({ s, student }) {
         <div className="mobile-msp-stmt-sub">Ürün satışı{note ? ` · ${note}` : ''}</div>
         {receiptModel && (
           <div className="rcpt-row-action">
-            <ReceiptShareButton variant="mobile-row" label="Makbuz" model={receiptModel} />
+            <ReceiptPreviewButton variant="mobile-row" label="Makbuz" model={receiptModel} />
           </div>
         )}
       </div>

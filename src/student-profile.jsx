@@ -16,7 +16,7 @@ import {
 } from './api';
 import { ReceivePaymentModal, ConfirmDeleteStudentModal, StudentFormModal } from './students';
 import { buildModelFromSale } from './receipt/buildReceiptModel.js';
-import { ReceiptShareButton } from './receipt/ReceiptShareButton.jsx';
+import { ReceiptPreviewButton } from './receipt/ReceiptPreviewButton.jsx';
 
 const LESSON_STATUS_TR = {
   scheduled: 'Planlı',
@@ -1019,7 +1019,7 @@ function ActivityRow({ item, student }) {
         {item.sub && <div className="sp-row-title-sub">{item.sub}</div>}
         {receiptModel && (
           <div className="rcpt-row-action">
-            <ReceiptShareButton variant="row" label="Makbuz" model={receiptModel} />
+            <ReceiptPreviewButton variant="row" label="Makbuz" model={receiptModel} />
           </div>
         )}
       </div>
