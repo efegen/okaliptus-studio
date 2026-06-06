@@ -8,24 +8,25 @@ import { describe, it, expect } from 'vitest';
 import {
   fmtReceiptTL,
   fmtReceiptDate,
+  fmtReceiptTime,
   receiptNo,
   buildModelFromCart,
   buildModelFromSale,
 } from '../receipt/buildReceiptModel.js';
 
 describe('fmtReceiptTL', () => {
-  it('tam sayıyı binlik nokta + " TL" ile basar', () => {
-    expect(fmtReceiptTL(4640)).toBe('4.640 TL');
-    expect(fmtReceiptTL('850')).toBe('850 TL');
-    expect(fmtReceiptTL(0)).toBe('0 TL');
+  it('her zaman iki ondalık + " TL" ile basar (formal belge)', () => {
+    expect(fmtReceiptTL(4640)).toBe('4.640,00 TL');
+    expect(fmtReceiptTL('850')).toBe('850,00 TL');
+    expect(fmtReceiptTL(0)).toBe('0,00 TL');
   });
-  it('kuruş varsa iki ondalık gösterir (virgül)', () => {
+  it('kuruşu virgülle iki haneye tamamlar', () => {
     expect(fmtReceiptTL(125.5)).toBe('125,50 TL');
-    expect(fmtReceiptTL('1410.00')).toBe('1.410 TL');
+    expect(fmtReceiptTL('1410.00')).toBe('1.410,00 TL');
   });
-  it('geçersiz değeri 0 sayar', () => {
-    expect(fmtReceiptTL(null)).toBe('0 TL');
-    expect(fmtReceiptTL('abc')).toBe('0 TL');
+  it('geçersiz değeri 0,00 sayar', () => {
+    expect(fmtReceiptTL(null)).toBe('0,00 TL');
+    expect(fmtReceiptTL('abc')).toBe('0,00 TL');
   });
 });
 
@@ -36,6 +37,16 @@ describe('fmtReceiptDate', () => {
   });
   it('geçersiz tarihte boş döner', () => {
     expect(fmtReceiptDate('not-a-date')).toBe('');
+  });
+});
+
+describe('fmtReceiptTime', () => {
+  it('Europe/Istanbul saatini 24-saat üretir', () => {
+    // 12:00 UTC → Istanbul (UTC+3) → 15:00. TZ sabit olduğu için deterministik.
+    expect(fmtReceiptTime('2026-06-15T12:00:00.000Z')).toBe('15:00');
+  });
+  it('geçersiz tarihte boş döner', () => {
+    expect(fmtReceiptTime('not-a-date')).toBe('');
   });
 });
 
@@ -60,14 +71,15 @@ describe('buildModelFromCart', () => {
     expect(model.receiptNo).toBe('OK-2026-0418');
     expect(model.customerName).toBe('Ayşe Kaya');
     expect(model.dateText).toMatch(/Haziran 2026$/);
+    expect(model.timeText).toBe('15:00');
     expect(model.footerContact).toMatch(/okaliptusyoga/);
   });
 
   it('kalemleri fiyat×adet ile haritalar', () => {
     expect(model.items).toHaveLength(2);
-    expect(model.items[0]).toMatchObject({ name: 'Yoga Matı', qty: 1, lineText: '850 TL' });
+    expect(model.items[0]).toMatchObject({ name: 'Yoga Matı', qty: 1, lineText: '850,00 TL' });
     expect(model.items[0].thumbSrc).toBe('https://api.example.com/products/5/image?v=1');
-    expect(model.items[1]).toMatchObject({ name: 'Blok', qty: 2, lineText: '560 TL', thumbSrc: null });
+    expect(model.items[1]).toMatchObject({ name: 'Blok', qty: 2, lineText: '560,00 TL', thumbSrc: null });
   });
 
   it('açıklama satırını (kategori) bilinçli olarak atlar', () => {
@@ -75,7 +87,7 @@ describe('buildModelFromCart', () => {
   });
 
   it('ara toplam = toplam (indirim yok)', () => {
-    expect(model.totalText).toBe('1.410 TL'); // 850 + 280×2
+    expect(model.totalText).toBe('1.410,00 TL'); // 850 + 280×2
     expect(model.subtotalText).toBe(model.totalText);
   });
 });
@@ -94,6 +106,7 @@ describe('buildModelFromSale', () => {
   it('snapshot kalemlerinden modeli kurar', () => {
     expect(model.receiptNo).toBe('OK-2026-0007');
     expect(model.customerName).toBe('Mehmet');
+    expect(model.timeText).toBe('15:00');
     expect(model.items).toHaveLength(1);
     expect(model.items[0]).toMatchObject({ name: 'Tişört', qty: 1, lineText: '125,50 TL', thumbSrc: '/products/9/image' });
   });

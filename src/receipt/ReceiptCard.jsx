@@ -32,6 +32,7 @@ export function ReceiptCard({ model, innerRef }) {
         <div className="rcpt-cell">
           <span className="rcpt-cap">Tarih</span>
           <span className="rcpt-val">{model?.dateText}</span>
+          {model?.timeText ? <span className="rcpt-time">{model.timeText}</span> : null}
         </div>
       </section>
 

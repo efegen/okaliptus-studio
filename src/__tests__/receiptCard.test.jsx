@@ -10,12 +10,13 @@ const MODEL = {
   receiptNo: 'OK-2026-0418',
   customerName: 'Ayşe Kaya',
   dateText: '5 Haziran 2026',
+  timeText: '15:00',
   items: [
-    { name: 'Yoga Matı', desc: null, qty: 1, lineText: '850 TL', thumbSrc: null },
-    { name: 'Blok', desc: null, qty: 2, lineText: '560 TL', thumbSrc: 'data:image/png;base64,AAAA' },
+    { name: 'Yoga Matı', desc: null, qty: 1, lineText: '850,00 TL', thumbSrc: null },
+    { name: 'Blok', desc: null, qty: 2, lineText: '560,00 TL', thumbSrc: 'data:image/png;base64,AAAA' },
   ],
-  subtotalText: '1.410 TL',
-  totalText: '1.410 TL',
+  subtotalText: '1.410,00 TL',
+  totalText: '1.410,00 TL',
   footerContact: '@okaliptusyoga · okaliptusyoga.com',
 };
 
@@ -25,10 +26,11 @@ describe('ReceiptCard', () => {
     expect(screen.getByText('OK-2026-0418')).toBeInTheDocument();
     expect(screen.getByText('Ayşe Kaya')).toBeInTheDocument();
     expect(screen.getByText('5 Haziran 2026')).toBeInTheDocument();
+    expect(screen.getByText('15:00')).toBeInTheDocument();
     expect(screen.getByText('Yoga Matı')).toBeInTheDocument();
     expect(screen.getByText('Blok')).toBeInTheDocument();
-    expect(screen.getByText('850 TL')).toBeInTheDocument();
-    expect(screen.getAllByText('1.410 TL')).toHaveLength(2); // ara toplam + toplam
+    expect(screen.getByText('850,00 TL')).toBeInTheDocument();
+    expect(screen.getAllByText('1.410,00 TL')).toHaveLength(2); // ara toplam + toplam
     expect(screen.getByText(/okaliptusyoga/)).toBeInTheDocument();
   });
 

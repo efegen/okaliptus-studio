@@ -120,6 +120,7 @@
 .rcpt-cap { font-size: 11px; letter-spacing: .22em; text-transform: uppercase; color: var(--green-600); padding-left: .22em; }
 .rcpt-val { font-size: 18px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rcpt-val.rcpt-name { font-family: 'Cormorant Garamond', serif; font-size: 23px; font-weight: 600; color: var(--aubergine); }
+.rcpt-time { font-size: 14px; color: var(--ink-soft); letter-spacing: .02em; }
 
 /* ---- ÜRÜNLER ---- */
 .rcpt-items { margin-top: 18px; flex: 1; position: relative; z-index: 1; }

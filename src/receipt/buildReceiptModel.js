@@ -7,24 +7,32 @@
 
 const FOOTER_CONTACT = '@okaliptusyoga · okaliptusyoga.com';
 
-// tr-TR: binlik ayracı nokta, ondalık virgül. Tam sayıda ondalık gösterme;
-// yalnız kuruş varsa iki hane göster (örn. "4.640 TL", "125,50 TL").
-const TL_WHOLE = new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+// tr-TR: binlik ayracı nokta, ondalık virgül. Makbuz formal belge → HER ZAMAN
+// iki ondalık (örn. "4.640,00 TL", "125,50 TL"). Sistem geneli fmtTL (₺,
+// yuvarlak) ayrı bir bağlam; makbuz bilinçli olarak 2 haneye tamamlar.
 const TL_FRACTION = new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const DATE_FMT = new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' });
+// Tarih + saat Europe/Istanbul'a sabit: makbuz hangi cihazda/zaman diliminde
+// yeniden üretilirse üretilsin aynı tarih/saati gösterir (işletme TZ'i).
+const DATE_FMT = new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Istanbul' });
+const TIME_FMT = new Intl.DateTimeFormat('tr-TR', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Europe/Istanbul' });
 
 export function fmtReceiptTL(value) {
   const n = Number(value);
   const safe = Number.isFinite(n) ? n : 0;
-  const hasFraction = Math.abs(safe - Math.round(safe)) > 0.005;
-  const fmt = hasFraction ? TL_FRACTION : TL_WHOLE;
-  return `${fmt.format(safe)} TL`;
+  return `${TL_FRACTION.format(safe)} TL`;
 }
 
 export function fmtReceiptDate(iso) {
   const d = iso ? new Date(iso) : new Date();
   if (Number.isNaN(d.getTime())) return '';
   return DATE_FMT.format(d);
+}
+
+// Saat — 24 saat "15:00" (Europe/Istanbul). Geçersiz tarihte boş döner.
+export function fmtReceiptTime(iso) {
+  const d = iso ? new Date(iso) : new Date();
+  if (Number.isNaN(d.getTime())) return '';
+  return TIME_FMT.format(d);
 }
 
 // Deterministik makbuz numarası: yıl + 4 haneli satış id'si. Aynı satış her zaman
@@ -69,6 +77,7 @@ export function buildModelFromCart({ cart, student, saleId, soldAt }) {
     receiptNo: receiptNo(saleId, soldAt),
     customerName: (student?.full_name ?? '').toString(),
     dateText: fmtReceiptDate(soldAt),
+    timeText: fmtReceiptTime(soldAt),
     items,
     subtotalText: totalText, // ürün satışında indirim yok → ara toplam = toplam
     totalText,
@@ -91,6 +100,7 @@ export function buildModelFromSale({ sale, student }) {
     receiptNo: receiptNo(sale?.product_sale_id, sale?.sold_at),
     customerName: (student?.full_name ?? '').toString(),
     dateText: fmtReceiptDate(sale?.sold_at),
+    timeText: fmtReceiptTime(sale?.sold_at),
     items,
     subtotalText: totalText,
     totalText,
