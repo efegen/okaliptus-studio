@@ -68,7 +68,7 @@ export function MobileHome({ user, onLogout }) {
     : (capacity ? Math.round((plannedLessons / capacity) * 100) : 0);
 
   const dateLabel = React.useMemo(() => formatDateLabel(today), [today]);
-  const headline = `Bugün ${todayCount} ders var`;
+  const headline = todayCount === 0 ? 'Bugün ders yok' : `Bugün ${todayCount} ders var`;
 
   return (
     <>
