@@ -29,6 +29,9 @@ export default defineConfig({
         skipWaiting: true,
         clientsClaim: true,
         cleanupOutdatedCaches: true,
+        // Web Push handler'ları üretilen SW'ye dahil edilir (public/push-sw.js).
+        // Mevcut precache/runtimeCaching kurulumu değişmez.
+        importScripts: ['push-sw.js'],
         navigateFallback: '/index.html',
         runtimeCaching: [
           {

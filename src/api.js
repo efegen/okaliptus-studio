@@ -143,6 +143,36 @@ export async function getMe() {
   return payload.data;
 }
 
+// ─── Push (yalnız test kullanıcısı; diğer hesaplar 403 alır) ──────────────────
+
+// 403 → kullanıcı yetkili değil; çağıran tarafta kart gizlenir.
+export async function getPushConfig() {
+  const payload = await apiRequest('/push/config');
+  return payload?.data ?? null;
+}
+
+export async function subscribePush(subscription) {
+  return apiRequest('/push/subscribe', {
+    method: 'POST',
+    body: JSON.stringify(subscription),
+  });
+}
+
+export async function unsubscribePush(endpoint) {
+  return apiRequest('/push/unsubscribe', {
+    method: 'POST',
+    body: JSON.stringify({ endpoint }),
+  });
+}
+
+// delaySeconds: 0 → hemen (yanıt { sent }); 10 → sunucuda gecikmeli (yanıt { scheduled }).
+export async function sendTestPush(delaySeconds = 0) {
+  return apiRequest('/push/test', {
+    method: 'POST',
+    body: JSON.stringify({ delaySeconds }),
+  });
+}
+
 // ─── KPI ────────────────────────────────────────────────────────────────────
 
 export async function getWeeklyKpi() {

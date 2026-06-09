@@ -42,4 +42,11 @@ export const env = {
   port: PORT,
   timeZone: process.env.TZ ?? "Europe/Istanbul",
   allowedOrigins,
+
+  // Web Push (PWA bildirimleri) — yalnız test amaçlı. Anahtarlar yoksa özellik
+  // kapalı kalır. pushTestUsername boş ise /push/* uçları herkese 403 döner.
+  vapidPublicKey: process.env.VAPID_PUBLIC_KEY ?? "",
+  vapidPrivateKey: process.env.VAPID_PRIVATE_KEY ?? "",
+  vapidSubject: process.env.VAPID_SUBJECT ?? "mailto:froxefe@gmail.com",
+  pushTestUsername: (process.env.PUSH_TEST_USERNAME ?? "").trim(),
 } as const;

@@ -1,6 +1,7 @@
 import React from 'react';
-import { getSettings, updateSettings } from './api';
+import { getSettings, updateSettings, getPushConfig } from './api';
 import { ActivityPanel } from './settings-activity';
+import { enablePush, disablePush, sendTest, getCurrentSubscription } from './push';
 
 const HOUR_OPTIONS = Array.from({ length: 25 }, (_, i) => i);
 
@@ -100,6 +101,120 @@ function SatSlider({ value, onChange, onReset }) {
       </div>
       <LessonColorPreview />
     </div>
+  );
+}
+
+// Web Push test kartı — yalnız PUSH_TEST_USERNAME hesabına render edilir.
+// getPushConfig() 403 dönerse (yetkisiz hesap) kart hiç gösterilmez.
+function PushTestCard() {
+  const [allowed, setAllowed] = React.useState(null); // null=kontrol ediliyor, false=gizli, true=görünür
+  const [subscribed, setSubscribed] = React.useState(false);
+  const [busy, setBusy] = React.useState(false);
+  const [status, setStatus] = React.useState(null);   // { ok, msg }
+  const [received, setReceived] = React.useState(null);
+
+  // Gate: config çağrısı 200 → yetkili; 403/diğer → gizle.
+  React.useEffect(() => {
+    let cancelled = false;
+    getPushConfig()
+      .then(() => { if (!cancelled) setAllowed(true); })
+      .catch(() => { if (!cancelled) setAllowed(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  // Bu cihazda zaten abonelik var mı?
+  React.useEffect(() => {
+    if (allowed !== true) return;
+    getCurrentSubscription().then(s => setSubscribed(!!s)).catch(() => {});
+  }, [allowed]);
+
+  // SW'den gelen "push:received" → önplan onayı (iOS önplanda banner göstermez).
+  React.useEffect(() => {
+    if (allowed !== true || !('serviceWorker' in navigator)) return;
+    function onMsg(e) {
+      if (e.data?.type === 'push:received') {
+        setReceived('Bildirim alındı ✓ · ' + new Date().toLocaleTimeString('tr-TR'));
+      }
+    }
+    navigator.serviceWorker.addEventListener('message', onMsg);
+    return () => navigator.serviceWorker.removeEventListener('message', onMsg);
+  }, [allowed]);
+
+  if (allowed !== true) return null;
+
+  async function handleEnable() {
+    setBusy(true); setStatus(null);
+    try {
+      await enablePush();
+      setSubscribed(true);
+      setStatus({ ok: true, msg: 'Bu cihazda bildirimler açıldı.' });
+    } catch (err) {
+      setStatus({ ok: false, msg: err.message || 'Bildirim açılamadı.' });
+    } finally { setBusy(false); }
+  }
+
+  async function handleDisable() {
+    setBusy(true); setStatus(null);
+    try {
+      await disablePush();
+      setSubscribed(false);
+      setStatus({ ok: true, msg: 'Bildirimler kapatıldı.' });
+    } catch (err) {
+      setStatus({ ok: false, msg: err.message || 'Kapatılamadı.' });
+    } finally { setBusy(false); }
+  }
+
+  async function handleSend(delaySeconds) {
+    setBusy(true); setStatus(null); setReceived(null);
+    try {
+      const res = await sendTest(delaySeconds);
+      const sent = res?.data?.sent;
+      if (delaySeconds > 0) {
+        setStatus({ ok: true, msg: delaySeconds + ' sn sonra gönderilecek — şimdi uygulamayı tamamen kapat.' });
+      } else if (sent === 0) {
+        setStatus({ ok: false, msg: 'Kayıtlı cihaz yok. Önce "bildirimleri aç" demelisin.' });
+      } else {
+        setStatus({ ok: true, msg: 'Gönderildi. Önplandaysan banner çıkmayabilir; alttaki onaya bak.' });
+      }
+    } catch (err) {
+      setStatus({ ok: false, msg: err.message || 'Gönderilemedi.' });
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <Section title="Bildirim Testi">
+      <div className="stg-push">
+        <p className="stg-push-note">
+          Bu test bildirimi yalnızca <strong>bu hesaba ait bu cihaza</strong> gönderilir;
+          diğer kullanıcılara gitmez.
+        </p>
+        <div className="stg-push-btns">
+          {!subscribed ? (
+            <button type="button" className="btn btn-primary" disabled={busy} onClick={handleEnable}>
+              Bu cihazda bildirimleri aç
+            </button>
+          ) : (
+            <>
+              <button type="button" className="btn btn-primary" disabled={busy} onClick={() => handleSend(0)}>
+                Hemen test bildirimi gönder
+              </button>
+              <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => handleSend(10)}>
+                10 sn sonra gönder (uygulamayı kapat)
+              </button>
+              <button type="button" className="btn btn-danger" disabled={busy} onClick={handleDisable}>
+                Bildirimleri kapat
+              </button>
+            </>
+          )}
+        </div>
+        {received && <div className="stg-feedback stg-feedback-ok">{received}</div>}
+        {status && (
+          <div className={'stg-feedback' + (status.ok ? ' stg-feedback-ok' : ' stg-feedback-err')}>
+            {status.msg}
+          </div>
+        )}
+      </div>
+    </Section>
   );
 }
 
@@ -301,6 +416,8 @@ export function SettingsPage() {
         </div>
 
       </form>}
+
+      {tab === 'general' && <PushTestCard />}
 
     </div>
   );
