@@ -18,6 +18,7 @@ const SECTIONS = [
   {
     label: 'Kayıtlar',
     items: [
+      { id: 'finance', label: 'Finans', icon: Icon.Wallet, tone: 'sage' },
       { id: 'movements', label: 'Hareketler', icon: Icon.Repeat, tone: 'blue' },
     ],
   },

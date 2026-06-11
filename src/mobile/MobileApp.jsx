@@ -12,6 +12,7 @@ import { MobileStudentProfilePage } from './MobileStudentProfilePage';
 import { MobileToast } from './MobileToast';
 import { MobileMenu } from './MobileMenu';
 import { MobileMovements } from './MobileMovements';
+import { MobileFinance } from './MobileFinance';
 import { MobileProductCatalogPage } from './MobileProductCatalogPage';
 import { MobileProductSalePage } from './MobileProductSalePage';
 import { MobileProductSaleCheckoutPage } from './MobileProductSaleCheckoutPage';
@@ -52,6 +53,7 @@ export function MobileApp({
     page === 'calendar' ||
     page === 'students' ||
     page === 'menu' ||
+    page === 'finance' ||
     onProductSale;
 
   // QuickAdd state — `quickAdd` is the entry sheet, `quickFlow` is the chosen
@@ -63,6 +65,15 @@ export function MobileApp({
   // preselected student so the sheet can skip the student picker.
   const [profileActionStudent, setProfileActionStudent] = React.useState(null);
   const [toast, setToast] = React.useState(null);
+  // Finans ekranı menüden de ana sayfa hero kartından da açılabiliyor; geri
+  // tuşu nereden gelindiyse oraya dönsün diye kaynağı tutuyoruz.
+  const [financeFrom, setFinanceFrom] = React.useState('menu');
+
+  function openFinance(from) {
+    setFinanceFrom(from);
+    setStudentDetailId(null);
+    setPage('finance');
+  }
 
   // Ürünler sayfasında header'daki "+" basıldığında artırılır; sayfa bunu
   // izleyip yeni-ürün editörünü açar (state sayfada kalsın diye nonce ile köprü).
@@ -148,6 +159,7 @@ export function MobileApp({
     // Invalidate query caches that may have changed. Erring on the side of
     // refetching too much over too little — these mutations are infrequent.
     queryClient.invalidateQueries({ queryKey: queryKeys.weeklyKpi() });
+    queryClient.invalidateQueries({ queryKey: queryKeys.financeFlow() });
     queryClient.invalidateQueries({ queryKey: queryKeys.weekLessons() });
     queryClient.invalidateQueries({ queryKey: queryKeys.studentsKpi() });
     queryClient.invalidateQueries({ queryKey: queryKeys.debtors() });
@@ -191,7 +203,20 @@ export function MobileApp({
 
   let body;
   if (page === 'home') {
-    body = <MobileHome user={currentUser} onLogout={onLogout} />;
+    body = (
+      <MobileHome
+        user={currentUser}
+        onLogout={onLogout}
+        onOpenFinance={() => openFinance('home')}
+      />
+    );
+  } else if (page === 'finance') {
+    body = (
+      <MobileFinance
+        onBack={() => setPage(financeFrom)}
+        onOpenMovements={() => setPage('movements')}
+      />
+    );
   } else if (page === 'students') {
     body = studentDetailId ? (
       <MobileStudentProfilePage
@@ -206,7 +231,13 @@ export function MobileApp({
   } else if (page === 'calendar') {
     body = <MobileCalendar />;
   } else if (page === 'menu') {
-    body = <MobileMenu user={currentUser} onNavigate={setPage} onLogout={onLogout} />;
+    body = (
+      <MobileMenu
+        user={currentUser}
+        onNavigate={(id) => (id === 'finance' ? openFinance('menu') : setPage(id))}
+        onLogout={onLogout}
+      />
+    );
   } else if (page === 'movements') {
     body = (
       <MobileMovements

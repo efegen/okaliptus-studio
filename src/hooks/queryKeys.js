@@ -1,5 +1,6 @@
 export const queryKeys = {
   weeklyKpi:          ()      => ['weeklyKpi'],
+  financeFlow:        ()      => ['financeFlow'],
   weekLessons:        (ms)    => ms !== undefined ? ['weekLessons', ms] : ['weekLessons'],
   students:           ()      => ['students'],
   studentsKpi:        ()      => ['studentsKpi'],

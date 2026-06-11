@@ -432,6 +432,15 @@
     transition: opacity 200ms ease;
   }
   .mh-hero.is-loading { opacity: 0.6; }
+  /* Hero kartı Finans ekranına götüren bir butona dönüşünce buton varsayılanlarını
+     sıfırla; .mh-hero görseli (gradient/padding/renk) aynen korunur. */
+  .mh-hero-btn {
+    width: 100%; border: 0; text-align: left; font: inherit; cursor: pointer;
+    -webkit-appearance: none; appearance: none;
+    transition: opacity 200ms ease, transform 120ms ease;
+  }
+  .mh-hero-btn:active { transform: scale(0.99); }
+  .mh-hero-chev { position: relative; z-index: 1; flex-shrink: 0; margin-top: 2px; opacity: 0.72; }
   .mh-hero::after {
     content: ''; position: absolute; right: -30px; top: -34px;
     width: 140px; height: 140px; border-radius: 999px;
@@ -5895,4 +5904,140 @@
   min-height: 46px; border-radius: 12px; font-size: 16px; padding: 11px 13px;
 }
 #mobile-palette-root .rbp-note-warn { font-size: 13px; }
+
+/* ============================================================================
+ * Finans · Akış (A1-K2) — mobil "Finans" ekranı (MobileFinance.jsx).
+ * Tasarım kaynağı: Claude Design "A1-K2 Akış Ekranı". Ekran kendi açık "kâğıt"
+ * temasını yerel CSS değişkenleriyle kurar (uygulama paletinden bağımsız, yeşil
+ * vurgulu). Prototipteki iOS-çerçeve / iç-scroll kuralları taşınmadı; kaydırmayı
+ * .mobile-main yapar. Bu sınıflar yalnız mobilde mount edilen bileşende geçer.
+ * ========================================================================== */
+
+/* Scroll bölgesini finans "kâğıt" tonuna boya — alttaki tab barın arkasında
+   şerit/dikiş kalmasın (data-screen-label .mobile-main üzerinde, MobileApp). */
+.mobile-main[data-screen-label="finance"] { background: oklch(0.96 0.008 80); }
+
+.fax {
+  --bg: oklch(0.96 0.008 80);
+  --surface: oklch(0.995 0.003 80);
+  --ink: oklch(0.18 0.015 60);
+  --ink-2: oklch(0.32 0.015 60);
+  --ink-3: oklch(0.48 0.012 60);
+  --ink-4: oklch(0.62 0.01 60);
+  --line: oklch(0.86 0.012 70);
+  --line-2: oklch(0.78 0.015 70);
+  --accent: oklch(0.5 0.08 145);
+  --accent-2: oklch(0.93 0.03 145);
+  --accent-ink: oklch(0.35 0.08 145);
+  --blue: oklch(0.55 0.09 230);
+  --blue-ink: oklch(0.42 0.09 230);
+  --warn: oklch(0.52 0.18 30);
+  --amber: oklch(0.62 0.12 70);
+  --amber-ink: oklch(0.46 0.1 62);
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--f-sans);
+  min-height: 100%;
+  padding: calc(env(safe-area-inset-top, 0px) + 14px) 16px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.fax button { font-family: inherit; cursor: pointer; }
+
+.fax-head { display: flex; align-items: center; gap: 10px; padding: 6px 2px 2px; }
+.fax-back { width: 36px; height: 36px; min-height: 0; border-radius: 10px; border: 1px solid var(--line-2); background: var(--surface); color: var(--ink-2); display: grid; place-items: center; flex-shrink: 0; padding: 0; }
+.fax-head-mid { display: flex; flex-direction: column; gap: 1px; flex: 1; min-width: 0; }
+.fax-title { font-family: var(--f-sans); font-size: 20px; font-weight: 600; letter-spacing: -0.02em; margin: 0; line-height: 1.05; }
+.fax-sub { font-size: 11.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 14px; }
+
+.fax-seg { display: flex; gap: 2px; padding: 3px; background: oklch(0.92 0.012 80); border: 1px solid var(--line); border-radius: 11px; flex-shrink: 0; }
+.fax-seg-btn { border: 0; background: none; border-radius: 8px; min-height: 0; padding: 6px 13px; font-size: 12.5px; font-weight: 600; color: var(--ink-3); transition: color 0.15s; }
+.fax-seg-btn.is-on { background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px oklch(0.2 0.02 60 / 0.08); }
+
+.fax-card { background: var(--surface); border: 1px solid var(--line-2); border-radius: 14px; padding: 15px 16px; box-shadow: 0 1px 2px oklch(0.2 0.02 60 / 0.05); }
+.fax-card-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 12px; }
+.fax-card-title { font-size: 12px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; color: var(--ink-2); margin: 0; }
+.fax-card-note { font-size: 11px; color: var(--ink-4); }
+.fax-eyebrow { font-size: 10px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); }
+.fax-link { border: 0; background: none; padding: 0; min-height: 0; font-size: 11.5px; color: var(--accent); font-weight: 500; display: inline-flex; align-items: center; gap: 2px; }
+
+.fax-hero-row { display: flex; align-items: baseline; gap: 10px; margin-top: 5px; }
+.fax-hero-val { font-family: var(--f-sans); font-size: 38px; font-weight: 600; letter-spacing: -0.03em; line-height: 1; font-variant-numeric: tabular-nums; }
+.fax-delta { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 999px; background: var(--accent-2); color: var(--accent-ink); font-size: 12px; font-weight: 700; white-space: nowrap; }
+.fax-delta.is-down { background: oklch(0.94 0.04 30); color: oklch(0.5 0.18 30); }
+.fax-hero-sub { font-size: 12px; color: var(--ink-3); margin-top: 5px; display: block; }
+
+.fax-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.fax-mini { background: var(--surface); border: 1px solid var(--line-2); border-radius: 14px; padding: 13px 14px; display: flex; flex-direction: column; gap: 2px; position: relative; overflow: hidden; }
+.fax-mini::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: var(--accent); }
+.fax-mini-blue::before { background: var(--blue); }
+.fax-mini-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.fax-mini-k { font-size: 9.5px; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-3); flex-shrink: 0; }
+.fax-mini-tag { font-size: 9px; font-weight: 600; color: var(--ink-4); letter-spacing: 0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: right; }
+.fax-mini-v { font-family: var(--f-sans); font-size: 23px; font-weight: 600; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; margin-top: 3px; line-height: 1.05; }
+.fax-mini-s { font-size: 10.5px; color: var(--ink-3); margin-top: 2px; font-variant-numeric: tabular-nums; }
+
+.fax-chart { display: flex; align-items: stretch; gap: 6px; height: 118px; margin-top: 14px; }
+.fax-bar-col { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 6px; border: 0; background: none; padding: 0; min-width: 0; min-height: 0; }
+.fax-bar-lbl { font-size: 8.5px; font-weight: 600; color: var(--ink-4); }
+.fax-bar-col.is-sel .fax-bar-lbl { color: var(--accent-ink); }
+.fax-chart-detail { display: flex; align-items: baseline; gap: 10px; margin-top: 12px; padding-top: 11px; border-top: 1px solid var(--line); }
+.fax-chart-week { font-size: 13px; font-weight: 600; color: var(--ink); white-space: nowrap; }
+.fax-chart-meta { font-size: 11.5px; color: var(--ink-3); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fax-chart-val { margin-left: auto; font-family: var(--f-sans); font-size: 18px; font-weight: 600; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+
+.fa1-hero { padding-top: 16px; }
+
+.fa3-stack { display: flex; flex-direction: column; width: 100%; border-radius: 6px 6px 3px 3px; overflow: hidden; transition: height 0.4s cubic-bezier(0.22, 1, 0.36, 1); }
+.fa3-stack-urun { display: block; flex-shrink: 0; background: oklch(0.85 0.06 75); }
+.fa3-stack-ders { display: block; flex: 1; background: oklch(0.86 0.025 145); }
+.fax-bar-col.is-sel .fa3-stack-ders { background: var(--accent); }
+.fax-bar-col.is-sel .fa3-stack-urun { background: var(--amber); }
+.fa3-legend { display: flex; gap: 16px; margin-top: 10px; }
+.fa3-leg { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--ink-3); font-weight: 500; }
+.fa3-leg-sw { width: 9px; height: 9px; border-radius: 3px; }
+.fa3-leg-sw.is-ders { background: var(--accent); }
+.fa3-leg-sw.is-urun { background: var(--amber); }
+
+.fk2-srcbar { display: flex; gap: 2px; height: 12px; border-radius: 999px; overflow: hidden; }
+.fk2-srcbar i { display: block; height: 100%; transition: width 0.4s cubic-bezier(0.22, 1, 0.36, 1); }
+.fk2-srcbar i:first-child { border-radius: 999px 0 0 999px; }
+.fk2-srcbar i:last-child { border-radius: 0 999px 999px 0; }
+.fk2-srclegend { display: flex; flex-direction: column; gap: 7px; margin-top: 12px; }
+.fk2-srcleg { display: flex; align-items: baseline; gap: 8px; }
+.fk2-srcleg .fax-src-dot { align-self: center; }
+.fax-src-dot { width: 9px; height: 9px; border-radius: 3px; flex-shrink: 0; }
+.fk2-srcleg-k { font-size: 12.5px; color: var(--ink-2); }
+.fk2-srcleg-v { margin-left: auto; font-size: 12.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+.fk2-mv-list { list-style: none; margin: 0; padding: 0; }
+.fk2-mv-row { display: flex; align-items: center; gap: 11px; padding: 9px 0; border-top: 1px solid var(--line); }
+.fk2-mv-row:first-child { border-top: 0; padding-top: 2px; }
+.fk2-mv-av { width: 32px; height: 32px; border-radius: 999px; display: grid; place-items: center; font-size: 10.5px; font-weight: 700; flex-shrink: 0; text-transform: uppercase; }
+.fk2-mv-av.is-tahsilat { background: var(--accent-2); color: var(--accent-ink); }
+.fk2-mv-av.is-ders { background: oklch(0.93 0.025 230); color: var(--blue-ink); }
+.fk2-mv-av.is-urun { background: oklch(0.94 0.05 75); color: var(--amber-ink); }
+.fk2-mv-main { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; }
+.fk2-mv-name { font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fk2-mv-sub { font-size: 11px; color: var(--ink-3); }
+.fk2-mv-amt { font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--ink-2); }
+.fk2-mv-amt.is-in { color: var(--accent-ink); }
+
+.fax-mv-empty { padding: 12px 0 4px; color: var(--ink-3); font-size: 12.5px; }
+
+/* Yükleniyor iskeleti — kart/mini kutuları yumuşak nabızla. */
+.fax-sk { display: flex; flex-direction: column; gap: 12px; }
+.fax-sk-hero { height: 300px; }
+.fax-sk-box { height: 86px; }
+.fax-sk-card { height: 156px; }
+.fax-sk > *, .fax-sk .fax-mini { animation: faxPulse 1.2s ease-in-out infinite; }
+
+@keyframes faxIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
+@keyframes faxPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+.fax-anim { animation: faxIn 0.28s ease; display: inline-block; }
+.fax-anim-soft { animation: faxIn 0.34s ease; }
+@media (prefers-reduced-motion: reduce) {
+  .fax-anim, .fax-anim-soft, .fax-sk > * { animation: none; }
+}
 

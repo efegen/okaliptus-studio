@@ -191,6 +191,22 @@ export async function getWeeklyKpi() {
   return payload.data;
 }
 
+export async function getFinanceFlow() {
+  const payload = await apiGet("/kpi/finance-flow");
+
+  if (
+    typeof payload !== "object" ||
+    payload === null ||
+    !("data" in payload) ||
+    typeof payload.data !== "object" ||
+    payload.data === null
+  ) {
+    throw new Error("Finans verisi bulunamadı.");
+  }
+
+  return payload.data;
+}
+
 // ─── Week schedule ──────────────────────────────────────────────────────────
 
 export async function getWeekLessons(weekStart) {

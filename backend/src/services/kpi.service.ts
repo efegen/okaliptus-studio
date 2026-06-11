@@ -304,3 +304,209 @@ export async function getWeeklyKpi(): Promise<WeeklyKpiResult> {
     },
   };
 }
+
+// ─── Finans · Akış (A1-K2) ───────────────────────────────────────────────────
+// Mobil "Finans" ekranı için yapısal veri. Hafta ve Ay olmak üzere iki dönem;
+// her dönem için zaman serisi (grafik), kasa girişi, tamamlanan/planlı ders ve
+// "kazanç nereden geldi" kaynak dökümü. Para birimi yalnız TRY; tüm sayılar
+// ::text olarak döner (mevcut KPI sözleşmesiyle aynı), istemci Number() ile
+// ayrıştırır ve Türkçe metinleri/etiketleri kendisi kurar.
+//
+// Tanımlar (spec invariantlarıyla uyumlu):
+//   - kazanç (earnings) = tamamlanmış ders neti (price_snapshot − discount) +
+//     ürün satışı toplamı. scheduled/cancelled/no_show kazanç yaratmaz.
+//   - Kaynak dökümü:  Tek ders     = paket-DIŞI tamamlanmış ders neti
+//                     Ön ödemeli   = paket kredili tamamlanmış ders neti
+//                     Ürün satışı  = product_sales.total_amount
+//     (single + package = ders neti; + product = toplam kazanç — birbirini tutar)
+//   - Kasaya giren (cashInflow) = dönem içi nakit + IBAN tahsilat (payments).
+//   - Önceki dönem (prevEarnings) "aynı günlere kadar" karşılaştırmasıdır:
+//     hafta için [Pzt−7g, şimdi−7g), ay için [ay başı−1ay, şimdi−1ay). Böylece
+//     devam eden (kısmi) dönem, geçen dönemin tamamı yerine eşit uzunlukta bir
+//     pencereyle kıyaslanır.
+
+export type FinanceFlowSeriesPoint = {
+  start: string;            // 'YYYY-MM-DD' (Istanbul) — dönem başlangıcı
+  lesson: string;           // tamamlanmış ders neti
+  product: string;          // ürün satışı toplamı
+  completedLessons: string; // tamamlanmış ders adedi
+  cashTotal: string;        // dönem içi kasaya giren (nakit + IBAN)
+  cashCash: string;         // dönem içi nakit tahsilat
+  cashIban: string;         // dönem içi IBAN tahsilat
+  current: boolean;         // içinde bulunulan (kısmi) dönem mi
+};
+
+export type FinanceFlowPeriod = {
+  cashInflow: { total: string; cash: string; iban: string };
+  scheduledRemaining: string; // şimdi → dönem sonu arası planlı (scheduled) ders
+  prevEarnings: string;       // önceki dönemde "aynı günlere kadar" kazanç
+  sources: { single: string; package: string; product: string };
+  series: FinanceFlowSeriesPoint[];
+};
+
+export type FinanceFlowResult = {
+  today: string; // 'YYYY-MM-DD' (Istanbul)
+  week: FinanceFlowPeriod;
+  month: FinanceFlowPeriod;
+};
+
+type Unit = "week" | "month";
+
+// Dönem birimine göre serideki kova sayısı ve adım aralıkları. `unit` sabittir
+// (kullanıcı girdisi değil), bu yüzden SQL'e doğrudan gömmek güvenlidir.
+function unitParts(unit: Unit) {
+  return unit === "week"
+    ? { step: "INTERVAL '7 days'", back: "INTERVAL '7 days'", span: "INTERVAL '7 weeks'", gsStep: "INTERVAL '1 week'" }
+    : { step: "INTERVAL '1 month'", back: "INTERVAL '1 month'", span: "INTERVAL '5 months'", gsStep: "INTERVAL '1 month'" };
+}
+
+// Grafik serisi: son N kova (hafta: 8, ay: 6), eskiden yeniye. Her kovada
+// ders neti, ürün toplamı ve tamamlanmış ders adedi. Tek ders × tek satış
+// fanout'unu önlemek için kova başına skaler alt sorgular kullanılır.
+function seriesSql(unit: Unit): string {
+  const { step, span, gsStep } = unitParts(unit);
+  return `
+    WITH buckets AS (
+      SELECT
+        gs                                            AS b_wall,
+        (gs AT TIME ZONE 'Europe/Istanbul')           AS b_start,
+        ((gs + ${step}) AT TIME ZONE 'Europe/Istanbul') AS b_end
+      FROM generate_series(
+        date_trunc('${unit}', (now() AT TIME ZONE 'Europe/Istanbul')) - ${span},
+        date_trunc('${unit}', (now() AT TIME ZONE 'Europe/Istanbul')),
+        ${gsStep}
+      ) AS gs
+    )
+    SELECT
+      to_char(b.b_wall, 'YYYY-MM-DD') AS start,
+      (SELECT COALESCE(SUM(l.price_snapshot - l.discount_amount), 0)
+         FROM lessons l
+         WHERE l.status = 'completed' AND l.deleted_at IS NULL
+           AND l.starts_at >= b.b_start AND l.starts_at < b.b_end)::text AS lesson,
+      (SELECT COALESCE(SUM(ps.total_amount), 0)
+         FROM product_sales ps
+         WHERE ps.deleted_at IS NULL
+           AND ps.sold_at >= b.b_start AND ps.sold_at < b.b_end)::text AS product,
+      (SELECT COUNT(*)
+         FROM lessons l
+         WHERE l.status = 'completed' AND l.deleted_at IS NULL
+           AND l.starts_at >= b.b_start AND l.starts_at < b.b_end)::text AS completed_lessons,
+      (SELECT COALESCE(SUM(p.amount), 0)
+         FROM payments p
+         WHERE p.deleted_at IS NULL AND p.source IN ('cash', 'iban')
+           AND p.paid_at >= b.b_start AND p.paid_at < b.b_end)::text AS cash_total,
+      (SELECT COALESCE(SUM(p.amount), 0)
+         FROM payments p
+         WHERE p.deleted_at IS NULL AND p.source = 'cash'
+           AND p.paid_at >= b.b_start AND p.paid_at < b.b_end)::text AS cash_cash,
+      (SELECT COALESCE(SUM(p.amount), 0)
+         FROM payments p
+         WHERE p.deleted_at IS NULL AND p.source = 'iban'
+           AND p.paid_at >= b.b_start AND p.paid_at < b.b_end)::text AS cash_iban,
+      (b.b_wall = date_trunc('${unit}', (now() AT TIME ZONE 'Europe/Istanbul'))) AS is_current
+    FROM buckets b
+    ORDER BY b.b_wall
+  `;
+}
+
+// İçinde bulunulan dönemin özeti: kasa girişi (nakit/IBAN), planlı ders,
+// önceki-dönem (aynı günlere kadar) kazanç ve kaynak dökümü — tek satır.
+// `withToday` yalnız hafta sorgusunda true; istemcinin başlık tarihleri için
+// Istanbul "bugün"ünü aynı round-trip'te döndürür.
+function summarySql(unit: Unit, withToday: boolean): string {
+  const { step, back } = unitParts(unit);
+  const trunc = `date_trunc('${unit}', (now() AT TIME ZONE 'Europe/Istanbul'))`;
+  return `
+    WITH b AS (
+      SELECT
+        (${trunc} AT TIME ZONE 'Europe/Istanbul')              AS p_start,
+        ((${trunc} + ${step}) AT TIME ZONE 'Europe/Istanbul')  AS p_end,
+        ((${trunc} - ${back}) AT TIME ZONE 'Europe/Istanbul')  AS prev_start,
+        (now() - ${back})                                      AS prev_cut,
+        now()                                                  AS now_ts
+    )
+    SELECT
+      ${withToday ? "to_char((now() AT TIME ZONE 'Europe/Istanbul'), 'YYYY-MM-DD') AS today," : ""}
+      (SELECT COALESCE(SUM(p.amount), 0) FROM payments p, b
+         WHERE p.paid_at >= b.p_start AND p.paid_at < b.p_end
+           AND p.source IN ('cash', 'iban') AND p.deleted_at IS NULL)::text AS cash_total,
+      (SELECT COALESCE(SUM(p.amount), 0) FROM payments p, b
+         WHERE p.paid_at >= b.p_start AND p.paid_at < b.p_end
+           AND p.source = 'cash' AND p.deleted_at IS NULL)::text AS cash_cash,
+      (SELECT COALESCE(SUM(p.amount), 0) FROM payments p, b
+         WHERE p.paid_at >= b.p_start AND p.paid_at < b.p_end
+           AND p.source = 'iban' AND p.deleted_at IS NULL)::text AS cash_iban,
+      (SELECT COUNT(*) FROM lessons l, b
+         WHERE l.status = 'scheduled' AND l.deleted_at IS NULL
+           AND l.starts_at >= b.now_ts AND l.starts_at < b.p_end)::text AS scheduled_remaining,
+      (
+        (SELECT COALESCE(SUM(l.price_snapshot - l.discount_amount), 0) FROM lessons l, b
+           WHERE l.status = 'completed' AND l.deleted_at IS NULL
+             AND l.starts_at >= b.prev_start AND l.starts_at < b.prev_cut)
+        +
+        (SELECT COALESCE(SUM(ps.total_amount), 0) FROM product_sales ps, b
+           WHERE ps.deleted_at IS NULL
+             AND ps.sold_at >= b.prev_start AND ps.sold_at < b.prev_cut)
+      )::text AS prev_earnings,
+      (SELECT COALESCE(SUM(l.price_snapshot - l.discount_amount), 0) FROM lessons l, b
+         WHERE l.status = 'completed' AND l.deleted_at IS NULL AND l.prepaid_package_id IS NULL
+           AND l.starts_at >= b.p_start AND l.starts_at < b.p_end)::text AS src_single,
+      (SELECT COALESCE(SUM(l.price_snapshot - l.discount_amount), 0) FROM lessons l, b
+         WHERE l.status = 'completed' AND l.deleted_at IS NULL AND l.prepaid_package_id IS NOT NULL
+           AND l.starts_at >= b.p_start AND l.starts_at < b.p_end)::text AS src_package,
+      (SELECT COALESCE(SUM(ps.total_amount), 0) FROM product_sales ps, b
+         WHERE ps.deleted_at IS NULL
+           AND ps.sold_at >= b.p_start AND ps.sold_at < b.p_end)::text AS src_product
+  `;
+}
+
+function mapSeries(rows: Record<string, unknown>[]): FinanceFlowSeriesPoint[] {
+  return rows.map((r) => ({
+    start: String(r["start"]),
+    lesson: String(r["lesson"]),
+    product: String(r["product"]),
+    completedLessons: String(r["completed_lessons"]),
+    cashTotal: String(r["cash_total"]),
+    cashCash: String(r["cash_cash"]),
+    cashIban: String(r["cash_iban"]),
+    current: r["is_current"] === true || r["is_current"] === "t",
+  }));
+}
+
+function mapSummary(r: Record<string, unknown>): Omit<FinanceFlowPeriod, "series"> {
+  return {
+    cashInflow: {
+      total: String(r["cash_total"]),
+      cash: String(r["cash_cash"]),
+      iban: String(r["cash_iban"]),
+    },
+    scheduledRemaining: String(r["scheduled_remaining"]),
+    prevEarnings: String(r["prev_earnings"]),
+    sources: {
+      single: String(r["src_single"]),
+      package: String(r["src_package"]),
+      product: String(r["src_product"]),
+    },
+  };
+}
+
+export async function getFinanceFlow(): Promise<FinanceFlowResult> {
+  const [weekSeries, monthSeries, weekSum, monthSum] = await Promise.all([
+    pool.query(seriesSql("week")),
+    pool.query(seriesSql("month")),
+    pool.query(summarySql("week", true)),
+    pool.query(summarySql("month", false)),
+  ]);
+
+  const weekSumRow = weekSum.rows[0] as Record<string, unknown> | undefined;
+  const monthSumRow = monthSum.rows[0] as Record<string, unknown> | undefined;
+  if (!weekSumRow || !monthSumRow) {
+    throw new Error("Finans akış sorgusu sonuç döndürmedi");
+  }
+
+  return {
+    today: String(weekSumRow["today"]),
+    week: { ...mapSummary(weekSumRow), series: mapSeries(weekSeries.rows) },
+    month: { ...mapSummary(monthSumRow), series: mapSeries(monthSeries.rows) },
+  };
+}

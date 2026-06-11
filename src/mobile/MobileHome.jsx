@@ -35,7 +35,7 @@ function formatDateLabel(date) {
   return `${wd}, ${rest}`;
 }
 
-export function MobileHome({ user, onLogout }) {
+export function MobileHome({ user, onLogout, onOpenFinance }) {
   const { data: kpi, isLoading: kpiLoading } = useWeeklyKpi();
   const { data: studioSettings } = useQuery({
     queryKey: queryKeys.settings(),
@@ -77,6 +77,7 @@ export function MobileHome({ user, onLogout }) {
         headline={headline}
         user={user}
         onLogout={onLogout}
+        onOpenFinance={onOpenFinance}
         collected={collected}
         revenue={revenue}
         collectionRate={collectionRate}

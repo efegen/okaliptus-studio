@@ -63,7 +63,7 @@ function ProfileMenu({ user, onLogout }) {
  * Bugünün dersleri ayrı bir bileşendir (MobileAgenda). Veri MobileHome'dan gelir.
  */
 export function MobileHomeView({
-  dateLabel, headline, user, onLogout,
+  dateLabel, headline, user, onLogout, onOpenFinance,
   collected = 0, revenue = 0, collectionRate = 0,
   receivable = 0, debtorCount = 0,
   occupancy = 0, plannedLessons = 0, capacity = null,
@@ -85,22 +85,41 @@ export function MobileHomeView({
         <ProfileMenu user={user} onLogout={onLogout} />
       </div>
 
-      <div className={`mh-hero${kpiDim}`}>
-        <div className="mh-hero-top">
-          <div>
-            <p className="mh-hero-label">Son 30 günde tahsil edilen</p>
-            <p className="mh-hero-big">{kpiLoading ? '—' : fmtTL(collected)}</p>
-          </div>
-        </div>
-        <p className="mh-hero-sub">
-          {kpiLoading
-            ? '—'
-            : `${fmtTL(revenue)} cironun %${collectionRate}'${percentSuffix(collectionRate)} tahsil edildi`}
-        </p>
-        <div className="mh-hero-prog">
-          <div className="mh-hero-prog-fill" style={{ width: `${barWidth}%` }} />
-        </div>
-      </div>
+      {(() => {
+        const heroInner = (
+          <>
+            <div className="mh-hero-top">
+              <div>
+                <p className="mh-hero-label">Son 30 günde tahsil edilen</p>
+                <p className="mh-hero-big">{kpiLoading ? '—' : fmtTL(collected)}</p>
+              </div>
+              {onOpenFinance && (
+                <Icon.ChevronR className="mh-hero-chev" width="20" height="20" aria-hidden="true" />
+              )}
+            </div>
+            <p className="mh-hero-sub">
+              {kpiLoading
+                ? '—'
+                : `${fmtTL(revenue)} cironun %${collectionRate}'${percentSuffix(collectionRate)} tahsil edildi`}
+            </p>
+            <div className="mh-hero-prog">
+              <div className="mh-hero-prog-fill" style={{ width: `${barWidth}%` }} />
+            </div>
+          </>
+        );
+        return onOpenFinance ? (
+          <button
+            type="button"
+            className={`mh-hero mh-hero-btn${kpiDim}`}
+            onClick={onOpenFinance}
+            aria-label="Finans ekranını aç"
+          >
+            {heroInner}
+          </button>
+        ) : (
+          <div className={`mh-hero${kpiDim}`}>{heroInner}</div>
+        );
+      })()}
 
       <div className="mh-pills">
         <div className={`mh-pill warn${kpiDim}`}>

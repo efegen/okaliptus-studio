@@ -19,7 +19,7 @@ const TABS = [
   { id: 'home',     label: 'Ana',        icon: Icon.Home,  matches: ['home'] },
   { id: 'students', label: 'Öğrenciler', icon: Icon.Users, matches: ['students'] },
   { id: 'calendar', label: 'Takvim',     icon: Icon.Calendar, matches: ['calendar'] },
-  { id: 'menu',     label: 'Menü',       icon: Icon.Menu,  matches: ['menu', 'settings', 'catalog', 'products', 'movements'] },
+  { id: 'menu',     label: 'Menü',       icon: Icon.Menu,  matches: ['menu', 'settings', 'catalog', 'products', 'movements', 'finance'] },
 ];
 
 export function BottomTabBar({ page, onNavigate, onQuickAdd }) {
