@@ -523,3 +523,258 @@ export async function getFinanceFlow(): Promise<FinanceFlowResult> {
     month: { ...mapSummary(monthSumRow), series: mapSeries(monthSeries.rows) },
   };
 }
+
+// ─── Doluluk · Yoklama (B2-D2) ───────────────────────────────────────────────
+// Mobil "Doluluk" ekranı için yapısal veri. Hafta ve Ay iki dönem; her dönemde
+// % doluluk zaman serisi (grafik) + dönem başına planlı/tamamlanan/iptal sayısı
+// ve ders cirosu. Ayrıca dönemden bağımsız "temposu düşenler" yoklama tablosu
+// (son 6 hafta). Para birimi yalnız TRY; tüm sayılar ::text döner, istemci
+// Number() ile ayrıştırır ve Türkçe metinleri kendisi kurar.
+//
+// Tanımlar (ana sayfa doluluk pill'i ve §4.4 ile tutarlı):
+//   - planlı (planned) ders = status IN ('scheduled','completed','no_show').
+//     İptal (cancelled) doluluğa SAYILMAZ; ana sayfadaki occupancyRatio ile aynı.
+//   - Hafta % doluluk  = planlı / haftalık_kapasite.
+//   - Ay % doluluk     = planlı / (haftalık_kapasite × aydaki hafta sayısı),
+//     yani "haftalık ortalama doluluk" (aydaki gün / 7 hafta).
+//   - Ders cirosu      = dönem içi tamamlanmış ders neti (price_snapshot − discount).
+//   - Öğrenci iptali    = dönem içi cancelled ders adedi (iptal eden aktör kolonu
+//     yok; tek eğitmenli stüdyoda iptaller öğrenci kaynaklı sayılır).
+//   - Temposu düşenler  = son 6 haftada ≥1 ders tamamlamış ama (≥1 kaçırma VEYA
+//     son tamamlanan ders ≥2 hafta önce) olan öğrenciler; yoklama ızgarasıyla.
+
+export type OccupancyBucket = {
+  start: string;     // 'YYYY-MM-DD' (Istanbul) — dönem başlangıcı
+  planned: string;   // planlı ders adedi (scheduled+completed+no_show)
+  completed: string; // tamamlanmış ders adedi
+  cancelled: string; // iptal edilen ders adedi
+  revenue: string;   // tamamlanmış ders neti (ders cirosu)
+  pct: string;       // % doluluk (0..) — kapasite yoksa 0
+  current: boolean;  // içinde bulunulan (kısmi) dönem mi
+};
+
+export type OccupancyRosterRow = {
+  name: string;      // öğrenci adı
+  slot: string;      // düzenli slot — "Cumartesi 11.00" (en güncel dersten)
+  att: number[];     // 6 hafta yoklama: 1=geldi 0=kaçırdı 2=planlı 3=ders yok
+};
+
+export type OccupancyFlowResult = {
+  today: string;             // 'YYYY-MM-DD' (Istanbul)
+  capacity: string | null;   // haftalık ders kapasitesi (studio_settings)
+  week: { series: OccupancyBucket[] };
+  month: { series: OccupancyBucket[] };
+  roster: OccupancyRosterRow[]; // temposu düşenler (en çok 5), son 6 haftaya hizalı
+};
+
+type OccUnit = "week" | "month";
+
+// Dönem birimine göre kova adımı/aralığı ve "kovadaki hafta sayısı" (ay için
+// aydaki gün / 7; hafta için 1). `unit` sabittir, SQL'e gömmek güvenlidir.
+function occUnitParts(unit: OccUnit) {
+  return unit === "week"
+    ? {
+        step: "INTERVAL '7 days'",
+        span: "INTERVAL '7 weeks'",
+        gsStep: "INTERVAL '1 week'",
+        weeksExpr: "1",
+      }
+    : {
+        step: "INTERVAL '1 month'",
+        span: "INTERVAL '5 months'",
+        gsStep: "INTERVAL '1 month'",
+        weeksExpr: "(EXTRACT(DAY FROM (b.b_wall + INTERVAL '1 month' - INTERVAL '1 day'))::numeric / 7.0)",
+      };
+}
+
+// % doluluk zaman serisi: son N kova (hafta 8, ay 6), eskiden yeniye. Kova başına
+// skaler alt sorgular (ders × satır fanout'unu önlemek için). pct dış sorguda
+// kapasiteye bölünerek yuvarlanır.
+function occSeriesSql(unit: OccUnit): string {
+  const { step, span, gsStep, weeksExpr } = occUnitParts(unit);
+  const trunc = `date_trunc('${unit}', (now() AT TIME ZONE 'Europe/Istanbul'))`;
+  return `
+    WITH buckets AS (
+      SELECT
+        gs                                              AS b_wall,
+        (gs AT TIME ZONE 'Europe/Istanbul')             AS b_start,
+        ((gs + ${step}) AT TIME ZONE 'Europe/Istanbul') AS b_end
+      FROM generate_series(${trunc} - ${span}, ${trunc}, ${gsStep}) AS gs
+    )
+    SELECT
+      q.start,
+      q.planned::text   AS planned,
+      q.completed::text  AS completed,
+      q.cancelled::text  AS cancelled,
+      q.revenue::text    AS revenue,
+      (CASE WHEN q.wc IS NULL OR q.wc <= 0 THEN 0
+            ELSE ROUND(q.planned::numeric * 100 / (q.wc * q.weeks_in_bucket))
+       END)::text        AS pct,
+      q.is_current
+    FROM (
+      SELECT
+        to_char(b.b_wall, 'YYYY-MM-DD') AS start,
+        (SELECT COUNT(*) FROM lessons l
+           WHERE l.deleted_at IS NULL
+             AND l.status IN ('scheduled', 'completed', 'no_show')
+             AND l.starts_at >= b.b_start AND l.starts_at < b.b_end) AS planned,
+        (SELECT COUNT(*) FROM lessons l
+           WHERE l.deleted_at IS NULL AND l.status = 'completed'
+             AND l.starts_at >= b.b_start AND l.starts_at < b.b_end) AS completed,
+        (SELECT COUNT(*) FROM lessons l
+           WHERE l.deleted_at IS NULL AND l.status = 'cancelled'
+             AND l.starts_at >= b.b_start AND l.starts_at < b.b_end) AS cancelled,
+        (SELECT COALESCE(SUM(l.price_snapshot - l.discount_amount), 0) FROM lessons l
+           WHERE l.deleted_at IS NULL AND l.status = 'completed'
+             AND l.starts_at >= b.b_start AND l.starts_at < b.b_end) AS revenue,
+        (SELECT weekly_capacity::numeric FROM studio_settings WHERE id = 1) AS wc,
+        ${weeksExpr} AS weeks_in_bucket,
+        (b.b_wall = ${trunc}) AS is_current
+      FROM buckets b
+    ) q
+    ORDER BY q.start
+  `;
+}
+
+function mapOccSeries(rows: Record<string, unknown>[]): OccupancyBucket[] {
+  return rows.map((r) => ({
+    start: String(r["start"]),
+    planned: String(r["planned"]),
+    completed: String(r["completed"]),
+    cancelled: String(r["cancelled"]),
+    revenue: String(r["revenue"]),
+    pct: String(r["pct"]),
+    current: r["is_current"] === true || r["is_current"] === "t",
+  }));
+}
+
+// Temposu düşenler için ham veri: son 6 haftadaki (5 tam + cari) tüm dersler,
+// öğrenci adıyla. Yoklama ızgarası ve seçim/sıralama TypeScript'te kurulur
+// (test edilebilirlik + Türkçe gün adı/slot biçimi için).
+const OCC_ROSTER_SQL = `
+  WITH win AS (
+    SELECT
+      (date_trunc('week', (now() AT TIME ZONE 'Europe/Istanbul')) - INTERVAL '5 weeks')
+        AT TIME ZONE 'Europe/Istanbul' AS w_start,
+      (date_trunc('week', (now() AT TIME ZONE 'Europe/Istanbul')) + INTERVAL '1 week')
+        AT TIME ZONE 'Europe/Istanbul' AS w_end
+  )
+  SELECT
+    l.student_id,
+    s.full_name,
+    to_char(l.starts_at AT TIME ZONE 'Europe/Istanbul', 'YYYY-MM-DD"T"HH24:MI') AS local_dt,
+    l.status
+  FROM lessons l
+  JOIN students s ON s.id = l.student_id, win
+  WHERE l.deleted_at IS NULL
+    AND s.deleted_at IS NULL
+    AND l.starts_at >= win.w_start
+    AND l.starts_at <  win.w_end
+  ORDER BY l.student_id, l.starts_at
+`;
+
+const OCC_META_SQL = `
+  SELECT
+    to_char((now() AT TIME ZONE 'Europe/Istanbul'), 'YYYY-MM-DD')                 AS today,
+    to_char(date_trunc('week', (now() AT TIME ZONE 'Europe/Istanbul')), 'YYYY-MM-DD') AS this_monday,
+    (SELECT weekly_capacity FROM studio_settings WHERE id = 1)::text              AS capacity
+`;
+
+const TR_DAYS = ["Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi", "Pazar"];
+
+// 'YYYY-MM-DD' → o tarihin haftasının Pazartesi'sine olan tam gün farkından
+// hafta indeksi (0..5; 5 = cari hafta). thisMonday cari haftanın Pazartesi'si.
+function weekIndexOf(localDate: string, thisMonday: string): number {
+  const toUTC = (s: string) => {
+    const [y, m, d] = s.split("-").map(Number);
+    return Date.UTC(y, (m || 1) - 1, d || 1);
+  };
+  const dms = toUTC(localDate);
+  const dow = (new Date(dms).getUTCDay() + 6) % 7; // Pazartesi = 0
+  const lessonMonday = dms - dow * 86400000;
+  const weeksAgo = Math.round((toUTC(thisMonday) - lessonMonday) / (7 * 86400000));
+  return 5 - weeksAgo;
+}
+
+// status → ızgara hücresi önceliği (büyük kazanır): geldi > planlı > kaçırdı > yok.
+function statusRank(status: string): number {
+  if (status === "completed") return 4; // geldi
+  if (status === "scheduled") return 3; // planlı
+  if (status === "no_show" || status === "cancelled") return 2; // kaçırdı
+  return 1; // (beklenmeyen) → yok
+}
+const RANK_TO_ATT: Record<number, number> = { 4: 1, 3: 2, 2: 0, 1: 3 };
+
+function buildRoster(
+  rows: Record<string, unknown>[],
+  thisMonday: string,
+): OccupancyRosterRow[] {
+  type Acc = { name: string; ranks: number[]; lastDt: string };
+  const byStudent = new Map<string, Acc>();
+
+  for (const r of rows) {
+    const id = String(r["student_id"]);
+    const name = String(r["full_name"]);
+    const localDt = String(r["local_dt"]); // 'YYYY-MM-DDTHH:MM'
+    const status = String(r["status"]);
+    const idx = weekIndexOf(localDt.slice(0, 10), thisMonday);
+    if (idx < 0 || idx > 5) continue;
+
+    let acc = byStudent.get(id);
+    if (!acc) {
+      acc = { name, ranks: [1, 1, 1, 1, 1, 1], lastDt: localDt };
+      byStudent.set(id, acc);
+    }
+    acc.ranks[idx] = Math.max(acc.ranks[idx]!, statusRank(status));
+    if (localDt > acc.lastDt) acc.lastDt = localDt;
+  }
+
+  const candidates = [];
+  for (const acc of byStudent.values()) {
+    const att = acc.ranks.map((rank) => RANK_TO_ATT[rank]!);
+    const completedIdx = att.flatMap((v, i) => (v === 1 ? [i] : []));
+    if (completedIdx.length === 0) continue; // son 6 haftada hiç gelmemiş → aday değil
+
+    const lastCompleted = completedIdx[completedIdx.length - 1]!;
+    const gap = 5 - lastCompleted; // kaç haftadır gelmiyor
+    const misses = att.filter((v) => v === 0).length;
+    if (misses < 1 && gap < 2) continue; // düzenli gelen → temposu düşmüyor
+
+    candidates.push({ name: acc.name, slot: formatSlot(acc.lastDt), att, gap, misses });
+  }
+
+  // Dikkat önceliği: önce daha uzun boşluk, sonra daha çok kaçırma.
+  candidates.sort((a, b) => b.gap - a.gap || b.misses - a.misses || a.name.localeCompare(b.name, "tr"));
+  return candidates.slice(0, 5).map(({ name, slot, att }) => ({ name, slot, att }));
+}
+
+// 'YYYY-MM-DDTHH:MM' → "Cumartesi 11.00"
+function formatSlot(localDt: string): string {
+  const [datePart, timePart] = localDt.split("T");
+  const [y, m, d] = datePart!.split("-").map(Number);
+  const dow = (new Date(Date.UTC(y!, (m || 1) - 1, d || 1)).getUTCDay() + 6) % 7;
+  return `${TR_DAYS[dow]} ${(timePart || "").replace(":", ".")}`;
+}
+
+export async function getOccupancyFlow(): Promise<OccupancyFlowResult> {
+  const [weekSeries, monthSeries, meta, rosterRows] = await Promise.all([
+    pool.query(occSeriesSql("week")),
+    pool.query(occSeriesSql("month")),
+    pool.query(OCC_META_SQL),
+    pool.query(OCC_ROSTER_SQL),
+  ]);
+
+  const metaRow = meta.rows[0] as Record<string, unknown> | undefined;
+  if (!metaRow) {
+    throw new Error("Doluluk akış sorgusu sonuç döndürmedi");
+  }
+  const thisMonday = String(metaRow["this_monday"]);
+
+  return {
+    today: String(metaRow["today"]),
+    capacity: (metaRow["capacity"] as string | null) ?? null,
+    week: { series: mapOccSeries(weekSeries.rows) },
+    month: { series: mapOccSeries(monthSeries.rows) },
+    roster: buildRoster(rosterRows.rows, thisMonday),
+  };
+}
