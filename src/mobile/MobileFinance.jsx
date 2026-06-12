@@ -112,6 +112,7 @@ function derivePeriod(data, period) {
       dersN: num(pt.completedLessons),
       current: !!pt.current,
       cash: { total: num(pt.cashTotal), cash: num(pt.cashCash), iban: num(pt.cashIban) },
+      outstanding: num(pt.outstanding),
     };
   });
 
@@ -158,25 +159,25 @@ function deriveView(p, idx) {
     sub = `${MONTH_LONG[start.getMonth()]} ${start.getFullYear()}`;
   }
 
-  // Karşılaştırma: cari dönem → önceki dönemle "aynı günlere kadar";
-  // geçmiş dönem → bir önceki tam bar.
+  // Trend rozeti (sayının yanındaki ▲/▼ %): cari dönem → önceki dönemle "aynı
+  // günlere kadar"; geçmiş dönem → bir önceki tam bar.
   let deltaPct = null;
-  let cmp = '';
   if (isCurrent) {
-    const prev = prevEarnings;
-    if (prev > 0) {
-      deltaPct = Math.round(((it.total - prev) / prev) * 100);
-      cmp = isWeek
-        ? `geçen hafta aynı günlerde ${fmtTL(prev)}`
-        : `geçen ay aynı günlerde ${fmtTL(prev)}`;
-    }
+    if (prevEarnings > 0) deltaPct = Math.round(((it.total - prevEarnings) / prevEarnings) * 100);
   } else {
     const prevBar = series[idx - 1];
-    if (prevBar) {
-      const prev = prevBar.total;
-      if (prev > 0) deltaPct = Math.round(((it.total - prev) / prev) * 100);
-      cmp = `bir önceki ${isWeek ? 'hafta' : 'ay'} ${fmtTL(prev)}`;
-    }
+    if (prevBar && prevBar.total > 0) deltaPct = Math.round(((it.total - prevBar.total) / prevBar.total) * 100);
+  }
+
+  // Hak edişin tahsilat durumu: hak ediş − bekleyen alacak = tahsil edilen.
+  // (paket dersleri peşin sayılır, bekleyene girmez.) Hero alt satırında gösterilir.
+  const outstanding = Math.max(0, it.outstanding);
+  const collected = Math.max(0, it.total - outstanding);
+  let collectSub = '';
+  if (it.total > 0.005) {
+    collectSub = outstanding <= 0.005
+      ? `Tamamı tahsil edildi · ${fmtTL(collected)}`
+      : `${fmtTL(collected)} tahsil edildi · ${fmtTL(outstanding)} bekliyor`;
   }
 
   // Tamamlanan ders alt satırı — cari dönemde planlı kalan; geçmişte özet.
@@ -198,11 +199,11 @@ function deriveView(p, idx) {
   return {
     periodLabel,
     tagLabel,
-    eyebrow: `${periodLabel} kazanç`,
+    eyebrow: `${periodLabel} hak ediş`,
     sub,
     kazanc: it.total,
     deltaPct,
-    cmp,
+    collectSub,
     tahsilat: it.cash.total,
     tahsilatSub: `Nakit ${fmtTL(it.cash.cash)} · IBAN ${fmtTL(it.cash.iban)}`,
     ders: it.dersN,
@@ -318,7 +319,9 @@ export function MobileFinance({ onBack, onOpenMovements }) {
   const p = React.useMemo(() => (data ? derivePeriod(data, period) : null), [data, period]);
 
   const max = p ? Math.max(1, ...p.series.map((s) => s.total)) : 1;
-  const selIndex = p ? (sel ?? p.series.length - 1) : 0;
+  // Dönem değişince `sel` bir sonraki render'a kadar eski (olası sınır dışı)
+  // indeksi tutar — yeni serinin son barına kıstır ki selItem asla undefined olmasın.
+  const selIndex = p ? Math.min(sel ?? p.series.length - 1, p.series.length - 1) : 0;
   const selItem = p ? p.series[selIndex] : null;
   const view = React.useMemo(() => (p ? deriveView(p, selIndex) : null), [p, selIndex]);
   const srcTotal = view ? Math.max(1, view.sources.reduce((a, s) => a + s.v, 0)) : 1;
@@ -366,7 +369,7 @@ export function MobileFinance({ onBack, onOpenMovements }) {
                 </span>
               )}
             </div>
-            {view.cmp && <span className="fax-hero-sub">{view.cmp}</span>}
+            {view.collectSub && <span className="fax-hero-sub">{view.collectSub}</span>}
             <div key={period + '-chart'} className="fax-chart fax-anim-soft">
               {p.series.map((it, i) => (
                 <button
@@ -421,7 +424,7 @@ export function MobileFinance({ onBack, onOpenMovements }) {
           {/* Kompakt kaynak */}
           <section className="fax-card">
             <div className="fax-card-head">
-              <h2 className="fax-card-title">Kazanç nereden geldi</h2>
+              <h2 className="fax-card-title">Hak ediş nereden geldi</h2>
               <span className="fax-card-note">{view.periodLabel.toLocaleLowerCase('tr-TR')}</span>
             </div>
             <div key={period + '-srcbar-' + selIndex} className="fk2-srcbar fax-anim-soft">

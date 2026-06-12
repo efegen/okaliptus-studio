@@ -333,6 +333,8 @@ export type FinanceFlowSeriesPoint = {
   cashTotal: string;        // dönem içi kasaya giren (nakit + IBAN)
   cashCash: string;         // dönem içi nakit tahsilat
   cashIban: string;         // dönem içi IBAN tahsilat
+  outstanding: string;      // bu dönemin hak edişinden henüz tahsil edilmemiş tutar
+                            // (paket-dışı tamamlanmış ders + ürün satışı kalan alacağı)
   current: boolean;         // içinde bulunulan (kısmi) dönem mi
 };
 
@@ -403,6 +405,16 @@ function seriesSql(unit: Unit): string {
          FROM payments p
          WHERE p.deleted_at IS NULL AND p.source = 'iban'
            AND p.paid_at >= b.b_start AND p.paid_at < b.b_end)::text AS cash_iban,
+      (
+        (SELECT COALESCE(SUM(lb.remaining_receivable), 0)
+           FROM v_lesson_balances lb
+           WHERE lb.status = 'completed' AND lb.prepaid_package_id IS NULL
+             AND lb.starts_at >= b.b_start AND lb.starts_at < b.b_end)
+        +
+        (SELECT COALESCE(SUM(pb.remaining_receivable), 0)
+           FROM v_product_sale_balances pb
+           WHERE pb.sold_at >= b.b_start AND pb.sold_at < b.b_end)
+      )::text AS outstanding,
       (b.b_wall = date_trunc('${unit}', (now() AT TIME ZONE 'Europe/Istanbul'))) AS is_current
     FROM buckets b
     ORDER BY b.b_wall
@@ -469,6 +481,7 @@ function mapSeries(rows: Record<string, unknown>[]): FinanceFlowSeriesPoint[] {
     cashTotal: String(r["cash_total"]),
     cashCash: String(r["cash_cash"]),
     cashIban: String(r["cash_iban"]),
+    outstanding: String(r["outstanding"]),
     current: r["is_current"] === true || r["is_current"] === "t",
   }));
 }
