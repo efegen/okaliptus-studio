@@ -207,6 +207,22 @@ export async function getFinanceFlow() {
   return payload.data;
 }
 
+export async function getOccupancyFlow() {
+  const payload = await apiGet("/kpi/occupancy-flow");
+
+  if (
+    typeof payload !== "object" ||
+    payload === null ||
+    !("data" in payload) ||
+    typeof payload.data !== "object" ||
+    payload.data === null
+  ) {
+    throw new Error("Doluluk verisi bulunamadı.");
+  }
+
+  return payload.data;
+}
+
 // ─── Week schedule ──────────────────────────────────────────────────────────
 
 export async function getWeekLessons(weekStart) {

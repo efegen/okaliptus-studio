@@ -63,7 +63,7 @@ function ProfileMenu({ user, onLogout }) {
  * Bugünün dersleri ayrı bir bileşendir (MobileAgenda). Veri MobileHome'dan gelir.
  */
 export function MobileHomeView({
-  dateLabel, headline, user, onLogout, onOpenFinance,
+  dateLabel, headline, user, onLogout, onOpenFinance, onOpenOccupancy,
   collected = 0, revenue = 0, collectionRate = 0,
   receivable = 0, debtorCount = 0,
   occupancy = 0, plannedLessons = 0, capacity = null,
@@ -127,11 +127,35 @@ export function MobileHomeView({
           <div className="mh-pill-val">{kpiLoading ? '—' : fmtTL(receivable)}</div>
           <span className="mh-pill-tag">{debtorCount} öğrenci</span>
         </div>
-        <div className={`mh-pill${kpiDim}`}>
-          <p className="mh-pill-label">Haftalık doluluk</p>
-          <div className="mh-pill-val">%{occupancy}</div>
-          <span className="mh-pill-tag">{occupancyTag}</span>
-        </div>
+        {(() => {
+          const body = (
+            <>
+              <div className="mh-pill-val">%{occupancy}</div>
+              <span className="mh-pill-tag">{occupancyTag}</span>
+            </>
+          );
+          // Doluluk kartı tıklanınca Doluluk · Yoklama ekranını açar; tıklanabilir
+          // olduğu, hero kartındaki gibi sağ üstteki ok ile belli olur.
+          return onOpenOccupancy ? (
+            <button
+              type="button"
+              className={`mh-pill mh-pill-btn${kpiDim}`}
+              onClick={onOpenOccupancy}
+              aria-label="Doluluk ekranını aç"
+            >
+              <div className="mh-pill-top">
+                <p className="mh-pill-label">Haftalık doluluk</p>
+                <Icon.ChevronR className="mh-pill-chev" width="16" height="16" aria-hidden="true" />
+              </div>
+              {body}
+            </button>
+          ) : (
+            <div className={`mh-pill${kpiDim}`}>
+              <p className="mh-pill-label">Haftalık doluluk</p>
+              {body}
+            </div>
+          );
+        })()}
       </div>
     </div>
   );

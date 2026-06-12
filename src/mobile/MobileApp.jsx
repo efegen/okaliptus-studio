@@ -13,6 +13,7 @@ import { MobileToast } from './MobileToast';
 import { MobileMenu } from './MobileMenu';
 import { MobileMovements } from './MobileMovements';
 import { MobileFinance } from './MobileFinance';
+import { MobileOccupancy } from './MobileOccupancy';
 import { MobileProductCatalogPage } from './MobileProductCatalogPage';
 import { MobileProductSalePage } from './MobileProductSalePage';
 import { MobileProductSaleCheckoutPage } from './MobileProductSaleCheckoutPage';
@@ -54,6 +55,7 @@ export function MobileApp({
     page === 'students' ||
     page === 'menu' ||
     page === 'finance' ||
+    page === 'occupancy' ||
     onProductSale;
 
   // QuickAdd state — `quickAdd` is the entry sheet, `quickFlow` is the chosen
@@ -160,6 +162,7 @@ export function MobileApp({
     // refetching too much over too little — these mutations are infrequent.
     queryClient.invalidateQueries({ queryKey: queryKeys.weeklyKpi() });
     queryClient.invalidateQueries({ queryKey: queryKeys.financeFlow() });
+    queryClient.invalidateQueries({ queryKey: queryKeys.occupancyFlow() });
     queryClient.invalidateQueries({ queryKey: queryKeys.weekLessons() });
     queryClient.invalidateQueries({ queryKey: queryKeys.studentsKpi() });
     queryClient.invalidateQueries({ queryKey: queryKeys.debtors() });
@@ -208,6 +211,7 @@ export function MobileApp({
         user={currentUser}
         onLogout={onLogout}
         onOpenFinance={() => openFinance('home')}
+        onOpenOccupancy={() => { setStudentDetailId(null); setPage('occupancy'); }}
       />
     );
   } else if (page === 'finance') {
@@ -217,6 +221,9 @@ export function MobileApp({
         onOpenMovements={() => setPage('movements')}
       />
     );
+  } else if (page === 'occupancy') {
+    // Doluluk yalnız ana sayfadaki "Haftalık doluluk" kartından açılır; geri → ana sayfa.
+    body = <MobileOccupancy onBack={() => setPage('home')} />;
   } else if (page === 'students') {
     body = studentDetailId ? (
       <MobileStudentProfilePage
