@@ -5,7 +5,9 @@
 // Tasarım kaynağı: Claude Design "Mobil Doluluk B2 - D2 Yoklama Tablosu
 // (Geliştirilmiş)" (OccDd2). fax dilini (MobileFinance ile ortak) kullanır.
 // Veri: GET /kpi/occupancy-flow. Backend yalnız sayı döner; Türkçe metin/etiket
-// burada (istemcide) kurulur.
+// burada (istemcide) kurulur. Hero + KPI'lar, Finans ekranındaki gibi SEÇİLİ
+// bara göre güncellenir (deriveView); kart rozeti hangi döneme ait olduğunu
+// gösterir.
 
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -94,6 +96,65 @@ function derivePeriod(data, period) {
   return { isWeek, series };
 }
 
+// Seçili bara (idx) göre tüm hero/KPI/başlık metinleri — Finans ekranındaki
+// deriveView ile aynı mantık. tagLabel KPI rozetinde hangi dönem olduğunu
+// belirtir; delta seçili bar ile bir önceki bar arasındaki puan farkıdır.
+function deriveView(p, idx, capacity, today) {
+  const { isWeek, series } = p;
+  const it = series[idx] || series[series.length - 1];
+  const offset = (series.length - 1) - idx; // 0 = cari dönem
+  const isCurrent = !!it.current;
+  const start = parseYMD(it.id);
+
+  let periodLabel;
+  let tagLabel;
+  if (isWeek) {
+    if (offset === 0) { periodLabel = 'Bu hafta'; tagLabel = 'Bu hafta'; }
+    else if (offset === 1) { periodLabel = 'Geçen hafta'; tagLabel = 'Geçen hafta'; }
+    else { periodLabel = weekRangeLabel(it.id); tagLabel = weekBarLabels(it.id, false).full; }
+  } else {
+    periodLabel = MONTH_LONG[start.getMonth()];
+    tagLabel = periodLabel;
+  }
+
+  // Başlık alt satırı — seçili dönemin tarih aralığı.
+  let sub;
+  if (isWeek) sub = `${weekRangeLabel(it.id)} · ${isoWeekNo(start)}. hafta`;
+  else if (isCurrent) sub = `1–${parseYMD(today).getDate()} ${MONTH_LONG[start.getMonth()]} · devam ediyor`;
+  else sub = `${MONTH_LONG[start.getMonth()]} ${start.getFullYear()}`;
+
+  // Hero alt satırı — doluluğun ders karşılığı.
+  let heroSub;
+  if (isWeek) heroSub = capacity ? `${it.planned}/${capacity} ders dolu` : `${it.planned} ders planlı`;
+  else heroSub = `haftalık ortalama · ${it.completed} ders işlendi`;
+
+  // Grafik-detay satırı — seçili dönemin boş slot dökümü.
+  let bos;
+  if (!capacity) bos = `${it.planned} ders`;
+  else if (isWeek) bos = `${it.planned} ders · ${Math.max(0, capacity - it.planned)} boş slot`;
+  else bos = `${it.planned} ders · ort. ${Math.max(0, Math.round((capacity * (100 - it.pct)) / 100))} boş/hafta`;
+
+  // Trend rozeti: seçili bar ile bir önceki bar arasındaki puan farkı.
+  const prevBar = series[idx - 1];
+  const deltaPuan = prevBar ? it.pct - prevBar.pct : null;
+
+  return {
+    full: it.full,
+    pct: it.pct,
+    planned: it.planned,
+    completed: it.completed,
+    cancelled: it.cancelled,
+    revenue: it.revenue,
+    eyebrow: `${periodLabel} doluluk`,
+    tagLabel,
+    sub,
+    heroSub,
+    bos,
+    deltaPuan,
+    deltaDown: deltaPuan != null && deltaPuan < 0,
+  };
+}
+
 const OCC_CELL_CLS = ['is-miss', 'is-ok', 'is-plan', 'is-off'];
 const OCC_CELL_LBL = ['kaçırdı', 'geldi', 'planlı', 'ders yok'];
 
@@ -166,16 +227,12 @@ export function MobileOccupancy({ onBack }) {
 
   // Dönem değişince `sel` bir sonraki render'a kadar eski (olası sınır dışı)
   // indeksi tutar — hafta serisi 8, ay serisi 6 barlı. Yeni serinin son barına
-  // kıstır ki selItem asla undefined olmasın (aksi halde "Ay"a basınca boş ekran).
+  // kıstır ki seçili bar asla undefined olmasın (aksi halde "Ay"a basınca boş ekran).
   const selIndex = p ? Math.min(sel ?? p.series.length - 1, p.series.length - 1) : 0;
-  const selItem = p ? p.series[selIndex] : null;
-  const cur = p ? (p.series.find((b) => b.current) ?? p.series[p.series.length - 1]) : null;
-  const curIndex = p && cur ? p.series.indexOf(cur) : -1;
-  const prev = p && curIndex > 0 ? p.series[curIndex - 1] : null;
-
-  // Dönem geneli (cari dönem) metinleri — tasarımdaki gibi seçili bardan bağımsız.
-  const deltaPuan = cur && prev ? cur.pct - prev.pct : null;
-  const deltaDown = deltaPuan != null && deltaPuan < 0;
+  const view = React.useMemo(
+    () => (p && data ? deriveView(p, selIndex, capacity, data.today) : null),
+    [p, data, selIndex, capacity],
+  );
 
   // Yoklama tablosu başlık etiketleri — son 6 haftanın kısa etiketi (dönemden
   // bağımsız; roster her zaman haftalıktır).
@@ -185,37 +242,13 @@ export function MobileOccupancy({ onBack }) {
   }, [data]);
   const roster = data?.roster ?? [];
 
-  // Seçili barın "boş slot" metni (kapasite biliniyorsa).
-  function bosText(it) {
-    if (!capacity) return `${it.planned} ders`;
-    if (p.isWeek) {
-      const bos = Math.max(0, capacity - it.planned);
-      return `${it.planned} ders · ${bos} boş slot`;
-    }
-    const bos = Math.max(0, Math.round((capacity * (100 - it.pct)) / 100));
-    return `${it.planned} ders · ort. ${bos} boş/hafta`;
-  }
-
-  function headerSub() {
-    if (!cur) return ' ';
-    if (p.isWeek) return `${weekRangeLabel(cur.id)} · ${isoWeekNo(parseYMD(cur.id))}. hafta`;
-    const t = parseYMD(data.today);
-    return `1–${t.getDate()} ${MONTH_LONG[t.getMonth()]} · devam ediyor`;
-  }
-
-  function heroSub() {
-    if (!cur) return '';
-    if (p.isWeek) return capacity ? `${cur.planned}/${capacity} ders dolu` : `${cur.planned} ders planlı`;
-    return `haftalık ortalama · ${cur.completed} ders işlendi`;
-  }
-
   return (
     <div className="fin fax occ" data-screen-label="occupancy">
       <header className="fax-head">
         <button className="fax-back" aria-label="Geri" onClick={onBack} type="button"><BackIc /></button>
         <div className="fax-head-mid">
           <h1 className="fax-title">Doluluk</h1>
-          <span className="fax-sub">{p ? headerSub() : ' '}</span>
+          <span className="fax-sub">{view ? view.sub : ' '}</span>
         </div>
         <div className="fax-seg" role="tablist" aria-label="Dönem seçimi">
           {[['hafta', 'Hafta'], ['ay', 'Ay']].map(([id, lbl]) => (
@@ -235,22 +268,22 @@ export function MobileOccupancy({ onBack }) {
 
       {isError ? (
         <section className="fax-card"><div className="fax-mv-empty">Doluluk verisi yüklenemedi.</div></section>
-      ) : isLoading || !p || !cur ? (
+      ) : isLoading || !p || !view ? (
         <OccupancySkeleton />
       ) : (
         <>
-          {/* Hero — % doluluk + haftalık % sütun grafiği (tavanlı) */}
+          {/* Hero — seçili dönemin % doluluğu + haftalık % sütun grafiği */}
           <section className="fax-card fa1-hero">
-            <span className="fax-eyebrow">{p.isWeek ? 'Bu hafta doluluk' : `${MONTH_LONG[parseYMD(cur.id).getMonth()]} doluluk`}</span>
+            <span className="fax-eyebrow">{view.eyebrow}</span>
             <div className="fax-hero-row">
-              <span key={period} className="fax-hero-val fax-anim">%{cur.pct}</span>
-              {deltaPuan != null && (
-                <span className={'fax-delta' + (deltaDown ? ' is-down' : '')}>
-                  <TrendIc down={deltaDown} /> {deltaPuan > 0 ? '+' : ''}{deltaPuan} puan
+              <span key={period + '-' + selIndex} className="fax-hero-val fax-anim">%{view.pct}</span>
+              {view.deltaPuan != null && (
+                <span className={'fax-delta' + (view.deltaDown ? ' is-down' : '')}>
+                  <TrendIc down={view.deltaDown} /> {view.deltaPuan > 0 ? '+' : ''}{view.deltaPuan} puan
                 </span>
               )}
             </div>
-            <span className="fax-hero-sub">{heroSub()}</span>
+            <span className="fax-hero-sub">{view.heroSub}</span>
 
             <div key={period + '-chart'} className="osx-chart fax-anim-soft">
               {p.series.map((it, i) => (
@@ -272,23 +305,29 @@ export function MobileOccupancy({ onBack }) {
             </div>
 
             <div className="fax-chart-detail">
-              <span className="fax-chart-week">{selItem.full}</span>
-              <span className="fax-chart-meta">{bosText(selItem)}</span>
-              <span className="fax-chart-val">%{selItem.pct}</span>
+              <span className="fax-chart-week">{view.full}</span>
+              <span className="fax-chart-meta">{view.bos}</span>
+              <span className="fax-chart-val">%{view.pct}</span>
             </div>
           </section>
 
-          {/* KPI çifti — ders cirosu · öğrenci iptali (telafi sistemi yok) */}
+          {/* KPI çifti — seçili döneme göre; rozet hangi dönem olduğunu söyler */}
           <section className="fax-pair">
             <div className="fax-mini fax-mini-blue">
-              <span className="fax-mini-k">Ders cirosu</span>
-              <span key={period + '-k1'} className="fax-mini-v fax-anim">{fmtTL(cur.revenue)}</span>
-              <span className="fax-mini-s">{cur.completed}/{cur.planned} ders işlendi</span>
+              <div className="fax-mini-top">
+                <span className="fax-mini-k">Ders cirosu</span>
+                <span className="fax-mini-tag">{view.tagLabel}</span>
+              </div>
+              <span key={period + '-k1-' + selIndex} className="fax-mini-v fax-anim">{fmtTL(view.revenue)}</span>
+              <span className="fax-mini-s">{view.completed}/{view.planned} ders işlendi</span>
             </div>
             <div className="fax-mini fax-mini-amber">
-              <span className="fax-mini-k">Öğrenci iptali</span>
-              <span key={period + '-k2'} className="fax-mini-v fax-anim">{cur.cancelled}</span>
-              {/* Talep gereği bu kartta alt açıklama gösterilmez. */}
+              <div className="fax-mini-top">
+                <span className="fax-mini-k">Öğrenci iptali</span>
+                <span className="fax-mini-tag">{view.tagLabel}</span>
+              </div>
+              <span key={period + '-k2-' + selIndex} className="fax-mini-v fax-anim">{view.cancelled}</span>
+              {/* Talep gereği bu kartta alt açıklama (fax-mini-s) gösterilmez. */}
             </div>
           </section>
 
