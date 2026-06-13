@@ -38,6 +38,7 @@ async function run(): Promise<void> {
 
   const before = await getSettings();
   const originalFlag = before.marketplaceSyncEnabled;
+  const originalStockFlag = before.stockTrackingEnabled;
 
   // Sahte Trendyol ürün sayfası — tek sayfa, iki varyant.
   const fakeFetch = async () => ({
@@ -57,7 +58,7 @@ async function run(): Promise<void> {
     step("İç ürün P1 (barcode=BC_A) oluşturuluyor, flag açılıyor...");
     const p1 = await createProduct({ name: "SMOKE_Mevcut A", price: "150.00", barcode: BC_A });
     productIds.push(p1.id);
-    await updateSettings({ marketplaceSyncEnabled: true }, actorUserId);
+    await updateSettings({ marketplaceSyncEnabled: true, stockTrackingEnabled: true }, actorUserId);
 
     step("Sahte fetcher ile sync...");
     const sync = await syncTrendyolProducts({ fetchPage: fakeFetch });
@@ -76,6 +77,9 @@ async function run(): Promise<void> {
     const created = await adoptChannelProduct({ channelProductId: orphanB!.channelProductId, mode: "create", actorUserId });
     assert(created.created === true, "yeni iç ürün oluşturuldu");
     productIds.push(created.productId);
+    // Açılış stoğu Trendyol adedinden (BC_B qty=3) tohumlanmalı (stok takibi açık).
+    const onHand = await pool.query<{ on_hand: number }>(`SELECT on_hand FROM v_product_stock WHERE product_id = $1`, [created.productId]);
+    assertEqual(Number(onHand.rows[0]?.on_hand), 3, "yeni ürünün iç stoğu Trendyol adediyle (3) tohumlandı");
 
     step("adopt BC_A mode=link (P1)...");
     const linked = await adoptChannelProduct({ channelProductId: orphanA!.channelProductId, mode: "link", productId: p1.id, actorUserId });
@@ -103,11 +107,12 @@ async function run(): Promise<void> {
 
     ok("\nSMOKE 27 — TÜM ADIMLAR BAŞARILI ✓");
   } finally {
-    try { await updateSettings({ marketplaceSyncEnabled: originalFlag }); } catch { /* yut */ }
+    try { await updateSettings({ marketplaceSyncEnabled: originalFlag, stockTrackingEnabled: originalStockFlag }); } catch { /* yut */ }
     // channel_products (trendyol smoke) temizle
     await pool.query(`DELETE FROM channel_products WHERE external_id = ANY($1::text[])`, [[BC_A, BC_B]]);
     if (productIds.length > 0) {
-      // channel_listings ON DELETE CASCADE; product_sale_items yok.
+      // channel_listings ON DELETE CASCADE; stock_movements FK RESTRICT → önce sil.
+      await pool.query(`DELETE FROM stock_movements WHERE product_id = ANY($1::bigint[])`, [productIds]);
       await pool.query(`DELETE FROM products WHERE id = ANY($1::bigint[])`, [productIds]);
     }
     await closePool();

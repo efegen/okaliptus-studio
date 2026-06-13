@@ -14,6 +14,7 @@ import { ValidationError, toServiceError } from "../errors.js";
 import { getSettings } from "../settings.service.js";
 import { ProductNotFoundError } from "../products.service.js";
 import { ChannelListingConflictError } from "../channel-listings.service.js";
+import { isStockTrackingEnabled, setStock } from "../stock.service.js";
 import {
   centsToMoney,
   insertAuditLog,
@@ -229,8 +230,9 @@ export async function adoptChannelProduct(input: AdoptInput): Promise<AdoptResul
     const cpRes = await client.query<{
       id: string; external_id: string; title: string | null; sale_price: string | null;
       list_price: string | null; archived: boolean | null; image_url: string | null;
+      quantity: number | null;
     }>(
-      `SELECT id, external_id, title, sale_price, list_price, archived, image_url
+      `SELECT id, external_id, title, sale_price, list_price, archived, image_url, quantity
          FROM channel_products
         WHERE id = $1 AND channel = 'trendyol'
         FOR UPDATE`,
@@ -295,6 +297,19 @@ export async function adoptChannelProduct(input: AdoptInput): Promise<AdoptResul
         note: "kanal eşleştirmeden oluşturuldu (trendyol)",
         actorUserId: input.actorUserId ?? null,
       });
+
+      // Açılış stoğu: stok takibi açıksa, yeni ürünün iç stoğunu Trendyol adediyle
+      // tohumla — aksi halde iç stok 0, Trendyol 5 gibi yanıltıcı tutarsızlık olur.
+      // (İki stok ayrı kavram; bu yalnız oluşturma anındaki en iyi tahmin. Sonra
+      // otomatik senkron YOK.) qty null/0 ise setStock no-op'tur.
+      if (cp.quantity !== null && Number.isInteger(cp.quantity) && (await isStockTrackingEnabled(client))) {
+        await setStock(client, {
+          productId,
+          newOnHand: cp.quantity,
+          note: "Trendyol eşleştirmesinden açılış stoğu",
+          actorUserId: input.actorUserId ?? null,
+        });
+      }
     }
 
     // channel_listing oluştur (eşleme). channel_price = snapshot satış fiyatı,
