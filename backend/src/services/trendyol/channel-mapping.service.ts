@@ -204,6 +204,67 @@ export async function getMappingOverview(): Promise<MappingOverview> {
   };
 }
 
+// Barkodla toplu otomatik eşleme: external_id (TY barkodu) == products.barcode
+// olan ve henüz TY eşlemesi olmayan her çift için channel_listing oluşturur.
+// Mevcut iç ürünü bağlar (stoğa dokunmaz). Tek transaction; her bağ için audit.
+export async function autoMatchByBarcode(
+  actorUserId: number | string | null = null,
+): Promise<{ matched: number; links: Array<{ productId: string; externalId: string }> }> {
+  await assertEnabled();
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    // Eşleşme adayları: barkodu bir TY snapshot satırına eşit aktif iç ürünler,
+    // o external_id için henüz TY listing yokken.
+    const pairs = await client.query<{
+      external_id: string; product_id: string; sale_price: string | null; archived: boolean | null;
+    }>(
+      `SELECT cp.external_id, p.id AS product_id, cp.sale_price, cp.archived
+         FROM channel_products cp
+         JOIN products p ON p.barcode = cp.external_id AND p.archived_at IS NULL
+         LEFT JOIN channel_listings cl ON cl.channel = 'trendyol' AND cl.external_id = cp.external_id
+        WHERE cp.channel = 'trendyol' AND cl.id IS NULL`,
+    );
+
+    const links: Array<{ productId: string; externalId: string }> = [];
+    for (const row of pairs.rows) {
+      // Bu ürünün zaten (farklı barkodla) bir TY eşlemesi varsa atla — çift TY
+      // listing oluşmasın. (products.barcode UNIQUE olduğundan normalde olmaz.)
+      const existing = await client.query<{ id: string }>(
+        `SELECT id FROM channel_listings WHERE product_id = $1 AND channel = 'trendyol' LIMIT 1`,
+        [row.product_id],
+      );
+      if (existing.rows[0]) continue;
+
+      const isListed = row.archived === true ? false : true;
+      const ins = await client.query<{ id: string }>(
+        `INSERT INTO channel_listings (product_id, channel, external_id, channel_price, is_listed)
+         VALUES ($1, 'trendyol', $2, $3, $4) RETURNING id`,
+        [row.product_id, row.external_id, row.sale_price ?? null, isListed],
+      );
+      await insertAuditLog(client, {
+        action: "channel_listing_changed",
+        entityType: "product",
+        entityId: row.product_id,
+        after: { id: ins.rows[0].id, channel: "trendyol", external_id: row.external_id, source: "auto-match" },
+        note: "barkodla otomatik eşleme",
+        actorUserId,
+      });
+      links.push({ productId: row.product_id, externalId: row.external_id });
+    }
+
+    await client.query("COMMIT");
+    return { matched: links.length, links };
+  } catch (error) {
+    await rollbackQuietly(client);
+    throw toServiceError(error);
+  } finally {
+    client.release();
+  }
+}
+
 export type AdoptInput = {
   channelProductId: EntityId;
   mode: "link" | "create";

@@ -701,6 +701,12 @@ export async function getMappingOverview() {
   return payload.data;
 }
 
+// Barkodu eşleşen iç ürünleri TY snapshot'ına toplu bağlar. → { matched, links }
+export async function autoMatchByBarcode() {
+  const payload = await apiRequest("/mapping/auto-match", { method: "POST" });
+  return ensureMutationResult(payload, "Otomatik eşleme yapılamadı.");
+}
+
 // Bir orphan TY ürününü iç kataloga benimse: mode 'link' (mevcut ürüne bağla) veya
 // 'create' (yeni iç ürün oluştur + bağla). → { productId, listingId, created }
 export async function adoptChannelProduct({ channelProductId, mode, productId }) {

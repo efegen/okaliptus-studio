@@ -6,6 +6,7 @@ import { Router } from "express";
 
 import {
   adoptChannelProduct,
+  autoMatchByBarcode,
   getMappingOverview,
 } from "../../services/trendyol/channel-mapping.service.js";
 import { sendError } from "../middleware/response.js";
@@ -16,6 +17,17 @@ export const mappingRouter = Router();
 mappingRouter.get("/", async (_req, res) => {
   try {
     const data = await getMappingOverview();
+    res.json({ data });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+// POST /mapping/auto-match — barkodu eşleşen iç ürünleri TY'ye toplu bağla.
+// → { matched, links }
+mappingRouter.post("/auto-match", async (req, res) => {
+  try {
+    const data = await autoMatchByBarcode(req.currentUser.id);
     res.json({ data });
   } catch (err) {
     sendError(res, err);

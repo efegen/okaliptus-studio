@@ -9,6 +9,7 @@ import {
   getMappingOverview,
   syncTrendyolProducts,
   adoptChannelProduct,
+  autoMatchByBarcode,
   createProductChannel,
   deleteChannelListing,
 } from './api';
@@ -184,6 +185,7 @@ export function MappingPage() {
   const [tab, setTab] = React.useState('orphans');
   const [q, setQ] = React.useState('');
   const [syncing, setSyncing] = React.useState(false);
+  const [automatching, setAutomatching] = React.useState(false);
   const [busyId, setBusyId] = React.useState(null);  // orphan adopt
   const [busyKey, setBusyKey] = React.useState(null); // listing unlink/hb add
   const [feedback, setFeedback] = React.useState(null);
@@ -211,6 +213,25 @@ export function MappingPage() {
       setFeedback({ ok: false, msg: e.message || 'Senkron başarısız.' });
     } finally {
       setSyncing(false);
+    }
+  }
+
+  async function handleAutoMatch() {
+    setAutomatching(true); setFeedback(null);
+    try {
+      const r = await autoMatchByBarcode();
+      setFeedback({
+        ok: true,
+        msg: r.matched > 0
+          ? `Barkodla ${r.matched} ürün otomatik eşlendi.`
+          : 'Barkodla eşleşen yeni ürün bulunamadı (eşleşme = iç ürünün barkodu = TY barkodu).',
+      });
+      refetch();
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+    } catch (e) {
+      setFeedback({ ok: false, msg: e.message || 'Otomatik eşleme başarısız.' });
+    } finally {
+      setAutomatching(false);
     }
   }
 
@@ -306,6 +327,9 @@ export function MappingPage() {
           <Icon.Search width="15" height="15" />
           <input placeholder="Ara (ad / barkod)…" value={q} onChange={e => setQ(e.target.value)} />
         </div>
+        <button className="btn btn-ghost btn-sm" onClick={handleAutoMatch} disabled={automatching || syncing}>
+          <Icon.Link width="14" height="14" /> {automatching ? 'Eşleniyor…' : 'Barkodla otomatik eşle'}
+        </button>
       </div>
 
       {overviewQuery.isLoading && <div className="stu-state-msg">Yükleniyor…</div>}

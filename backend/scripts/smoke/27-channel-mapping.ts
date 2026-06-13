@@ -22,6 +22,7 @@ import { syncTrendyolProducts } from "../../src/services/trendyol/channel-sync.s
 import {
   getMappingOverview,
   adoptChannelProduct,
+  autoMatchByBarcode,
 } from "../../src/services/trendyol/channel-mapping.service.js";
 import { getSettings, updateSettings } from "../../src/services/settings.service.js";
 import { pool } from "../../src/db/connection.js";
@@ -81,10 +82,10 @@ async function run(): Promise<void> {
     const onHand = await pool.query<{ on_hand: number }>(`SELECT on_hand FROM v_product_stock WHERE product_id = $1`, [created.productId]);
     assertEqual(Number(onHand.rows[0]?.on_hand), 3, "yeni ürünün iç stoğu Trendyol adediyle (3) tohumlandı");
 
-    step("adopt BC_A mode=link (P1)...");
-    const linked = await adoptChannelProduct({ channelProductId: orphanA!.channelProductId, mode: "link", productId: p1.id, actorUserId });
-    assertEqual(linked.created, false, "link modunda yeni ürün oluşturulmadı");
-    assertEqual(linked.productId, p1.id, "P1'e bağlandı");
+    step("autoMatchByBarcode → BC_A (barkod=P1.barcode) otomatik bağlanmalı...");
+    const am = await autoMatchByBarcode(actorUserId);
+    assertEqual(am.matched, 1, "barkodla 1 ürün otomatik eşlendi (BC_A → P1)");
+    assertEqual(am.links[0]?.productId, p1.id, "eşleşen ürün P1");
 
     step("overview tekrar: orphan 0, iki ürün TY eşleşik...");
     ov = await getMappingOverview();
