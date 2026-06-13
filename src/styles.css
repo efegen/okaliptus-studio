@@ -4028,6 +4028,10 @@ input, select { font-family: inherit; }
 .stg-toggle.is-on .stg-toggle-knob {
   transform: translateX(17px);
 }
+.stg-toggle.is-disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
 
 .stg-num-wrap {
   display: flex;
@@ -5640,6 +5644,78 @@ input, select { font-family: inherit; }
 }
 .prod-stock-msg.is-ok { color: var(--success, #2e7d32); }
 .prod-stock-msg.is-err { color: var(--danger, #c0392b); }
+
+/* ─── Bundle (paket) bölümü — ürün modalı (Faz 1.5) ───────────────────────── */
+.prod-bundle-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.prod-bundle-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.prod-bundle-toggle input { width: 16px; height: 16px; cursor: pointer; }
+.prod-bundle-stock { font-size: 13px; color: var(--ink-3); }
+.prod-bundle-stock strong { color: var(--ink-1); }
+.prod-bundle-components { margin: 8px 0; display: flex; flex-direction: column; gap: 6px; }
+.prod-bundle-empty { color: var(--ink-4); font-size: 13px; padding: 4px 0; }
+.prod-bundle-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.prod-bundle-cname {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  font-size: 13px;
+  min-width: 0;
+}
+.prod-bundle-csub { font-size: 11px; color: var(--ink-4); }
+.prod-bundle-qty { width: 72px; flex: 0 0 auto; }
+.prod-bundle-picker {
+  margin-top: 6px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg-2, rgba(0,0,0,0.02));
+}
+.prod-bundle-picklist { max-height: 200px; overflow-y: auto; margin: 6px 0; }
+.prod-bundle-pickitem {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  text-align: left;
+  padding: 6px 8px;
+  border: none;
+  background: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.prod-bundle-pickitem:hover { background: var(--line); }
+.prod-bundle-actions { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+.prod-bundle-tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  background: var(--accent-soft, rgba(120,140,100,0.18));
+  color: var(--accent-ink, var(--ink-2));
+  vertical-align: middle;
+}
 
 /* Kanal eşleştirme bölümü (ürün modalı) */
 .prod-channels-section {

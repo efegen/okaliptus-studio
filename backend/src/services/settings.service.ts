@@ -11,6 +11,7 @@ export type StudioSettings = {
   lessonColorSaturation: number;
   stockTrackingEnabled: boolean;
   marketplaceSyncEnabled: boolean;
+  marketplaceOrdersEnabled: boolean;
 };
 
 function rowToSettings(row: Record<string, unknown>): StudioSettings {
@@ -23,6 +24,7 @@ function rowToSettings(row: Record<string, unknown>): StudioSettings {
     lessonColorSaturation: Number(row.lesson_color_saturation ?? 1),
     stockTrackingEnabled: row.stock_tracking_enabled === true,
     marketplaceSyncEnabled: row.marketplace_sync_enabled === true,
+    marketplaceOrdersEnabled: row.marketplace_orders_enabled === true,
   };
 }
 
@@ -34,7 +36,8 @@ export async function getSettings(): Promise<StudioSettings> {
       default_currency,
       lesson_color_saturation,
       stock_tracking_enabled,
-      marketplace_sync_enabled
+      marketplace_sync_enabled,
+      marketplace_orders_enabled
     FROM studio_settings WHERE id = 1
   `);
 
@@ -52,6 +55,7 @@ type SettingsPatch = {
   lessonColorSaturation?: number;
   stockTrackingEnabled?: boolean;
   marketplaceSyncEnabled?: boolean;
+  marketplaceOrdersEnabled?: boolean;
 };
 
 export async function updateSettings(patch: SettingsPatch, actorUserId?: number | string | null): Promise<StudioSettings> {
@@ -127,6 +131,10 @@ export async function updateSettings(patch: SettingsPatch, actorUserId?: number 
   if (patch.marketplaceSyncEnabled !== undefined) {
     sets.push(`marketplace_sync_enabled = $${i++}`);
     values.push(patch.marketplaceSyncEnabled);
+  }
+  if (patch.marketplaceOrdersEnabled !== undefined) {
+    sets.push(`marketplace_orders_enabled = $${i++}`);
+    values.push(patch.marketplaceOrdersEnabled);
   }
 
   if (sets.length === 0) {

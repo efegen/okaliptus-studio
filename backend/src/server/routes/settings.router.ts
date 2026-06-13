@@ -61,6 +61,13 @@ settingsRouter.patch("/", async (req, res) => {
       patch.marketplaceSyncEnabled = body.marketplaceSyncEnabled;
     }
 
+    if ("marketplaceOrdersEnabled" in body) {
+      if (typeof body.marketplaceOrdersEnabled !== "boolean") {
+        throw new ValidationError("marketplaceOrdersEnabled boolean olmalı.");
+      }
+      patch.marketplaceOrdersEnabled = body.marketplaceOrdersEnabled;
+    }
+
     const data = await updateSettings(patch, req.currentUser.id);
     res.json({ data });
   } catch (err) {

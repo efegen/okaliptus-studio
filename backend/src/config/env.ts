@@ -58,4 +58,9 @@ export const env = {
   trendyolSellerId: (process.env.TRENDYOL_SELLER_ID ?? "").trim(),
   trendyolApiKey: (process.env.TRENDYOL_API_KEY ?? "").trim(),
   trendyolApiSecret: (process.env.TRENDYOL_API_SECRET ?? "").trim(),
+
+  // Model C / Faz 1 sipariş poller'ı. 0 → poller hiç başlamaz (manuel uç yine
+  // çalışır). Pencere TY'nin ~2 haftalık sipariş aralığı kısıtına uyar (≤14 gün).
+  trendyolOrderPollMs: Math.max(0, Number.parseInt(process.env.TRENDYOL_ORDER_POLL_MS ?? "180000", 10) || 0),
+  trendyolOrderWindowDays: Math.min(14, Math.max(1, Number.parseInt(process.env.TRENDYOL_ORDER_WINDOW_DAYS ?? "14", 10) || 14)),
 } as const;

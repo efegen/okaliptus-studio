@@ -38,15 +38,16 @@ function NumInput({ value, onChange, min = 0, max, unit }) {
   );
 }
 
-function Toggle({ checked, onChange, label }) {
+function Toggle({ checked, onChange, label, disabled }) {
   return (
     <button
       type="button"
       role="switch"
       aria-checked={checked}
       aria-label={label}
-      className={'stg-toggle' + (checked ? ' is-on' : '')}
-      onClick={() => onChange(!checked)}
+      disabled={disabled}
+      className={'stg-toggle' + (checked ? ' is-on' : '') + (disabled ? ' is-disabled' : '')}
+      onClick={() => { if (!disabled) onChange(!checked); }}
     >
       <span className="stg-toggle-knob" aria-hidden="true" />
     </button>
@@ -362,7 +363,8 @@ export function SettingsPage() {
       form.calendarEndHour !== saved.calendarEndHour ||
       form.lessonColorSaturation !== saved.lessonColorSaturation ||
       form.stockTrackingEnabled !== saved.stockTrackingEnabled ||
-      form.marketplaceSyncEnabled !== saved.marketplaceSyncEnabled
+      form.marketplaceSyncEnabled !== saved.marketplaceSyncEnabled ||
+      form.marketplaceOrdersEnabled !== saved.marketplaceOrdersEnabled
     );
   }, [saved, form]);
 
@@ -389,6 +391,7 @@ export function SettingsPage() {
         lessonColorSaturation: form.lessonColorSaturation,
         stockTrackingEnabled: !!form.stockTrackingEnabled,
         marketplaceSyncEnabled: !!form.marketplaceSyncEnabled,
+        marketplaceOrdersEnabled: !!form.marketplaceOrdersEnabled,
       });
       savedSatRef.current = updated.lessonColorSaturation ?? 1;
       setSaved(updated);
@@ -492,7 +495,11 @@ export function SettingsPage() {
           >
             <Toggle
               checked={!!form.stockTrackingEnabled}
-              onChange={v => set('stockTrackingEnabled', v)}
+              onChange={v => {
+                set('stockTrackingEnabled', v);
+                // Stok takibi kapanırsa sipariş senkronu da anlamsız → birlikte kapat.
+                if (!v) set('marketplaceOrdersEnabled', false);
+              }}
               label="Stok takibini aç/kapat"
             />
           </SettingRow>
@@ -507,6 +514,21 @@ export function SettingsPage() {
               checked={!!form.marketplaceSyncEnabled}
               onChange={v => set('marketplaceSyncEnabled', v)}
               label="Kanal eşleştirmeyi aç/kapat"
+            />
+          </SettingRow>
+          <SettingRow
+            label="Sipariş senkronu"
+            info={
+              form.stockTrackingEnabled
+                ? "Açıkken Trendyol siparişleri ~3 dakikada bir otomatik çekilir; satılan kalemlerin iç stoğu düşer, iptaller geri eklenir. İadeler ve eşleşmeyen satışlar Eşleştirme'deki inceleme kuyruğuna düşer (otomatik değil). Trendyol'a hiçbir şey yazılmaz — stok push'u yok."
+                : "Önce 'Stok takibi'ni açın: sipariş senkronu iç stoğa yazar, stok takibi kapalıyken anlamı yoktur."
+            }
+          >
+            <Toggle
+              checked={!!form.marketplaceOrdersEnabled}
+              onChange={v => set('marketplaceOrdersEnabled', v)}
+              label="Sipariş senkronunu aç/kapat"
+              disabled={!form.stockTrackingEnabled}
             />
           </SettingRow>
           {saved?.marketplaceSyncEnabled && (

@@ -12,7 +12,12 @@ import {
   autoMatchByBarcode,
   createProductChannel,
   deleteChannelListing,
+  syncTrendyolOrders,
+  getOrderReviewQueue,
+  resolveOrderReviewItem,
+  getSettings,
 } from './api';
+import { queryKeys } from './hooks/queryKeys';
 import { Icon } from './layout';
 
 function fmtTL(raw) {
@@ -180,14 +185,66 @@ function InternalRow({ row, onAddHb, onUnlink, busyKey }) {
   );
 }
 
+// ─── İnceleme kuyruğu kalemi (iade / eşleşmeyen / kurulum bekleyen paket) ────
+const REVIEW_META = {
+  return_pending: {
+    label: 'İade bekliyor', warn: true, icon: 'Repeat',
+    hint: 'İade geldi. Mal sağlamsa ürün düzenlemeden stoğu elle ekleyip "Çözüldü" işaretleyin (otomatik eklenmez).',
+  },
+  unmatched: {
+    label: 'Eşleşmeyen satış', warn: false, icon: 'Tag',
+    hint: 'Bu satışın iç ürünü yok. "Eşleşmeyen Trendyol" sekmesinden eşleyin; sonraki senkronda stok düşer. Eşlemeyecekseniz "Çözüldü" ile kapatın.',
+  },
+  setup_pending: {
+    label: 'Kurulum bekliyor (paket)', warn: true, icon: 'Tag',
+    hint: 'Bu ürün paket olarak işaretli ama bileşeni yok. Ürün düzenlemeden bileşenleri tanımlayın; sonraki senkronda bileşen stoğu düşer. Aksi halde stok düşmez.',
+  },
+};
+
+function ReviewCard({ item, onResolve, busy }) {
+  const meta = REVIEW_META[item.state] || REVIEW_META.unmatched;
+  const IconC = Icon[meta.icon] || Icon.Tag;
+  return (
+    <div className="map-orphan">
+      <div className="map-orphan-img">
+        <span aria-hidden="true"><IconC width="18" height="18" /></span>
+      </div>
+      <div className="map-orphan-body">
+        <div className="map-orphan-title">
+          {item.productName || item.barcode || item.orderNumber}
+          <span className={'map-chip ' + (meta.warn ? 'is-warn' : '')} style={{ marginLeft: 8 }}>
+            {meta.label}
+          </span>
+        </div>
+        <div className="map-orphan-meta">
+          <span>Sipariş <span className="prod-td-mono">{item.orderNumber}</span></span>
+          <span className="prod-td-mono">{item.barcode || '—'}</span>
+          <span>adet {item.quantity}</span>
+          {item.channelStatus && <span className="map-chip">{item.channelStatus}</span>}
+          {item.customerName && <span>{item.customerName}</span>}
+        </div>
+        <div className="map-sub">{meta.hint}</div>
+      </div>
+      <div className="map-orphan-actions">
+        <button type="button" className="btn btn-ghost btn-xs" disabled={busy}
+          onClick={() => onResolve(item.id)}>
+          {busy ? '…' : 'Çözüldü'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function MappingPage() {
   const queryClient = useQueryClient();
   const [tab, setTab] = React.useState('orphans');
   const [q, setQ] = React.useState('');
   const [syncing, setSyncing] = React.useState(false);
+  const [syncingOrders, setSyncingOrders] = React.useState(false);
   const [automatching, setAutomatching] = React.useState(false);
   const [busyId, setBusyId] = React.useState(null);  // orphan adopt
   const [busyKey, setBusyKey] = React.useState(null); // listing unlink/hb add
+  const [busyReviewId, setBusyReviewId] = React.useState(null); // review resolve
   const [feedback, setFeedback] = React.useState(null);
 
   const overviewQuery = useQuery({
@@ -196,12 +253,65 @@ export function MappingPage() {
     staleTime: 30 * 1000,
   });
 
+  const settingsQuery = useQuery({
+    queryKey: queryKeys.settings(),
+    queryFn: getSettings,
+    staleTime: 60 * 1000,
+  });
+  const ordersEnabled = !!settingsQuery.data?.marketplaceOrdersEnabled;
+
+  const reviewQuery = useQuery({
+    queryKey: ['orderReview'],
+    queryFn: getOrderReviewQueue,
+    enabled: ordersEnabled,
+    staleTime: 15 * 1000,
+  });
+
   const data = overviewQuery.data;
   const products = data?.products ?? [];
   const orphans = data?.orphanTrendyol ?? [];
   const summary = data?.summary;
+  const reviewItems = reviewQuery.data?.items ?? [];
 
   function refetch() { queryClient.invalidateQueries({ queryKey: ['mapping'] }); }
+  function refetchReview() { queryClient.invalidateQueries({ queryKey: ['orderReview'] }); }
+
+  async function handleSyncOrders() {
+    setSyncingOrders(true); setFeedback(null);
+    try {
+      const r = await syncTrendyolOrders();
+      const parts = [];
+      if (r.unitsDecremented) parts.push(`${r.unitsDecremented} adet stok düştü`);
+      if (r.unitsRestored) parts.push(`${r.unitsRestored} adet geri eklendi`);
+      if (r.returnPending) parts.push(`${r.returnPending} iade bekliyor`);
+      if (r.unmatched) parts.push(`${r.unmatched} eşleşmeyen`);
+      setFeedback({
+        ok: true,
+        msg: parts.length
+          ? `Sipariş senkronu: ${parts.join(', ')}.`
+          : `Sipariş senkronu tamam: ${r.ordersSeen} sipariş tarandı, değişiklik yok.`,
+      });
+      refetchReview();
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: ['mapping'] });
+    } catch (e) {
+      setFeedback({ ok: false, msg: e.message || 'Sipariş senkronu başarısız.' });
+    } finally {
+      setSyncingOrders(false);
+    }
+  }
+
+  async function handleResolve(id) {
+    setBusyReviewId(id); setFeedback(null);
+    try {
+      await resolveOrderReviewItem(id);
+      refetchReview();
+    } catch (e) {
+      setFeedback({ ok: false, msg: e.message || 'Kuyruk kalemi güncellenemedi.' });
+    } finally {
+      setBusyReviewId(null);
+    }
+  }
 
   async function handleSync() {
     setSyncing(true); setFeedback(null);
@@ -292,8 +402,13 @@ export function MappingPage() {
         </div>
         <div className="map-head-actions">
           <span className="map-synced">Son senkron: {fmtWhen(summary?.snapshotSyncedAt)}</span>
+          {ordersEnabled && (
+            <button className="btn btn-ghost" onClick={handleSyncOrders} disabled={syncingOrders}>
+              <Icon.Repeat width="14" height="14" /> {syncingOrders ? 'Siparişler çekiliyor…' : 'Siparişleri senkronla'}
+            </button>
+          )}
           <button className="btn btn-primary" onClick={handleSync} disabled={syncing}>
-            <Icon.Repeat width="14" height="14" /> {syncing ? 'Senkronlanıyor…' : 'Trendyol senkronla'}
+            <Icon.Repeat width="14" height="14" /> {syncing ? 'Senkronlanıyor…' : 'Ürünleri senkronla'}
           </button>
         </div>
       </div>
@@ -320,17 +435,24 @@ export function MappingPage() {
         <button className={'map-tab' + (tab === 'internal' ? ' is-active' : '')} onClick={() => setTab('internal')}>
           İç ürünler ({products.length})
         </button>
+        {ordersEnabled && (
+          <button className={'map-tab' + (tab === 'review' ? ' is-active' : '')} onClick={() => setTab('review')}>
+            İnceleme kuyruğu ({reviewItems.length})
+          </button>
+        )}
       </div>
 
-      <div className="map-toolbar">
-        <div className="map-search">
-          <Icon.Search width="15" height="15" />
-          <input placeholder="Ara (ad / barkod)…" value={q} onChange={e => setQ(e.target.value)} />
+      {tab !== 'review' && (
+        <div className="map-toolbar">
+          <div className="map-search">
+            <Icon.Search width="15" height="15" />
+            <input placeholder="Ara (ad / barkod)…" value={q} onChange={e => setQ(e.target.value)} />
+          </div>
+          <button className="btn btn-ghost btn-sm" onClick={handleAutoMatch} disabled={automatching || syncing}>
+            <Icon.Link width="14" height="14" /> {automatching ? 'Eşleniyor…' : 'Barkodla otomatik eşle'}
+          </button>
         </div>
-        <button className="btn btn-ghost btn-sm" onClick={handleAutoMatch} disabled={automatching || syncing}>
-          <Icon.Link width="14" height="14" /> {automatching ? 'Eşleniyor…' : 'Barkodla otomatik eşle'}
-        </button>
-      </div>
+      )}
 
       {overviewQuery.isLoading && <div className="stu-state-msg">Yükleniyor…</div>}
       {overviewQuery.isError && <div className="stg-feedback stg-feedback-err">{overviewQuery.error?.message || 'Veri alınamadı.'}</div>}
@@ -368,6 +490,24 @@ export function MappingPage() {
             )}
           </tbody>
         </table>
+      )}
+
+      {ordersEnabled && tab === 'review' && (
+        <>
+          {reviewQuery.isLoading && <div className="stu-state-msg">Yükleniyor…</div>}
+          {reviewQuery.isError && (
+            <div className="stg-feedback stg-feedback-err">{reviewQuery.error?.message || 'Kuyruk alınamadı.'}</div>
+          )}
+          {!reviewQuery.isLoading && reviewItems.length === 0 ? (
+            <div className="stu-state-msg">İnceleme kuyruğu boş. İade ve eşleşmeyen satışlar burada birikir.</div>
+          ) : (
+            <div className="map-orphan-list">
+              {reviewItems.map(it => (
+                <ReviewCard key={it.id} item={it} onResolve={handleResolve} busy={busyReviewId === it.id} />
+              ))}
+            </div>
+          )}
+        </>
       )}
     </div>
   );

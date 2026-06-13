@@ -10,6 +10,11 @@ import { Router } from "express";
 
 import { previewTrendyolOrders } from "../../services/trendyol/orders.service.js";
 import { syncTrendyolProducts } from "../../services/trendyol/channel-sync.service.js";
+import {
+  syncTrendyolOrders,
+  getOrderReviewQueue,
+  resolveOrderReviewItem,
+} from "../../services/trendyol/order-sync.service.js";
 import { sendError } from "../middleware/response.js";
 
 export const trendyolRouter = Router();
@@ -42,6 +47,41 @@ trendyolRouter.post("/orders/preview", async (req, res) => {
       page: toNum(body.page),
       size: toNum(body.size),
     });
+    res.json({ data });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+// ── Model C / Faz 1: sipariş → stok senkronu + inceleme kuyruğu ──────────────
+
+// POST /trendyol/orders/sync — siparişleri çekip iç stoğu uzlaştırır (poller'ın
+// manuel ikizi). Trendyol'a YAZMAZ. Flag kapalıysa 409. → sync özeti
+trendyolRouter.post("/orders/sync", async (_req, res) => {
+  try {
+    const data = await syncTrendyolOrders();
+    res.json({ data });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+// GET /trendyol/orders/review — açık inceleme kuyruğu (iade bekleyen + eşleşmeyen).
+trendyolRouter.get("/orders/review", async (_req, res) => {
+  try {
+    const data = await getOrderReviewQueue();
+    res.json({ data });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+// POST /trendyol/orders/review/:id/resolve — bir kuyruk kalemini çözüldü işaretle
+// (operatör iadeyi setStock'la ekledikten / eşleşmeyeni inceledikten sonra).
+// Stoğa dokunmaz; yalnız kuyruktan çıkarır.
+trendyolRouter.post("/orders/review/:id/resolve", async (req, res) => {
+  try {
+    const data = await resolveOrderReviewItem(req.params.id, req.currentUser.id);
     res.json({ data });
   } catch (err) {
     sendError(res, err);

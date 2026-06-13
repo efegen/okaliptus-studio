@@ -626,6 +626,34 @@ export async function updateProduct(productId, patch) {
   return ensureMutationResult(payload, "Ürün güncellenemedi.");
 }
 
+// ─── Bundle (paket) bileşenleri (Model C / Faz 1.5) ──────────────────────────
+// Paket ürünün kendi stoğu yoktur; on_hand bileşenlerden türetilir. Satışta
+// (POS + TY) bileşenler düşer. İç içe paket yok.
+
+// Paket bileşenleri + türev efektif stok. → { productId, isBundle, effectiveStock, components[] }
+export async function getBundle(productId) {
+  const payload = await apiGet(`/products/${encodeURIComponent(productId)}/bundle`);
+  return ensureMutationResult(payload, "Paket bilgisi alınamadı.");
+}
+
+// Ürünü paket yap + bileşenleri (tam liste) ayarla. components: [{ productId, quantity }].
+// Boş liste → "kurulum bekliyor" paket. → güncel BundleView
+export async function setBundle(productId, components) {
+  const payload = await apiRequest(`/products/${encodeURIComponent(productId)}/bundle`, {
+    method: "PUT",
+    body: JSON.stringify({ components }),
+  });
+  return ensureMutationResult(payload, "Paket kaydedilemedi.");
+}
+
+// Paketi çöz (basit ürüne döndür). → güncel BundleView
+export async function clearBundle(productId) {
+  const payload = await apiRequest(`/products/${encodeURIComponent(productId)}/bundle`, {
+    method: "DELETE",
+  });
+  return ensureMutationResult(payload, "Paket çözülemedi.");
+}
+
 // Dahili stok: hedef on_hand'i mutlak olarak ayarlar (açılış stoğu + elle
 // düzeltme). Backend delta'yı hesaplar. Stok takibi ayardan kapalıyken UI bu
 // çağrıyı hiç göstermez. → { on_hand }
@@ -715,6 +743,32 @@ export async function adoptChannelProduct({ channelProductId, mode, productId })
     body: JSON.stringify({ channelProductId, mode, productId: productId ?? null }),
   });
   return ensureMutationResult(payload, "Eşleştirme yapılamadı.");
+}
+
+// ─── Trendyol sipariş → stok senkronu (Model C / Faz 1) ──────────────────────
+// Siparişleri çekip iç stoğu uzlaştırır (in-process poller'ın manuel ikizi).
+// Trendyol'a hiçbir yazma yapılmaz (pull-only). marketplaceOrdersEnabled kapalıyken
+// 409 döner. → sync özeti { counted, reversed, returnPending, unmatched, units… }
+export async function syncTrendyolOrders() {
+  const payload = await apiRequest("/trendyol/orders/sync", { method: "POST" });
+  return ensureMutationResult(payload, "Siparişler senkronlanamadı.");
+}
+
+// Açık inceleme kuyruğu: iade bekleyenler (operatör elle ekler) + eşleşmeyen satışlar.
+export async function getOrderReviewQueue() {
+  const payload = await apiGet("/trendyol/orders/review");
+  if (typeof payload?.data !== "object" || payload.data === null || Array.isArray(payload.data)) {
+    throw new Error("İnceleme kuyruğu alınamadı.");
+  }
+  return payload.data;
+}
+
+// Bir kuyruk kalemini "çözüldü" işaretler (stoğa dokunmaz; yalnız kuyruktan çıkarır).
+export async function resolveOrderReviewItem(id) {
+  const payload = await apiRequest(`/trendyol/orders/review/${encodeURIComponent(id)}/resolve`, {
+    method: "POST",
+  });
+  return ensureMutationResult(payload, "Kuyruk kalemi güncellenemedi.");
 }
 
 export async function archiveProduct(productId) {

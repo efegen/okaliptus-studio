@@ -59,19 +59,25 @@ export type GetOrdersParams = {
 };
 
 // Trendyol orders yanıtı (yalnız kullandığımız alanlar; yanıt daha geniş olabilir).
+// id = orderLineId: satır granülerliğinde idempotensi anahtarı (kısmi iptal olur).
+// orderLineItemStatusName = satır bazlı status; paket status'undan farklı olabilir
+// (bir pakette bir satır iptal, diğeri canlı olabilir) → varsa bunu kullanırız.
 export type TrendyolOrderLine = {
+  id?: number | string;
   barcode?: string;
   quantity?: number;
   productName?: string;
   merchantSku?: string;
   sku?: string;
   price?: number;
+  orderLineItemStatusName?: string;
 };
 
 export type TrendyolOrder = {
   orderNumber?: string;
   orderDate?: number;
   status?: string;
+  shipmentPackageStatus?: string;
   grossAmount?: number;
   totalPrice?: number;
   customerFirstName?: string;
