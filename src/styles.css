@@ -5887,6 +5887,12 @@ input, select { font-family: inherit; }
 .map-hb-add { display: flex; align-items: center; gap: 6px; }
 .map-hb-price { width: 80px; }
 
+/* Stok gönderimi (Faz 2 push) */
+.map-push-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 4px 0 16px; }
+.map-push-h { font-size: 14px; font-weight: 600; color: var(--ink); margin: 18px 0 8px; }
+.map-push-h.is-warn { color: var(--danger, #c0392b); }
+.map-internal-table td.prod-td.is-warn { color: var(--danger, #c0392b); font-weight: 600; }
+
 /* Selection checkbox + column */
 .prod-checkbox {
   width: 16px;

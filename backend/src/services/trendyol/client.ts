@@ -1,11 +1,20 @@
-// v1.6 — Trendyol Marketplace read-only client.
+// v1.6 — Trendyol Marketplace client.
 //
-// YALNIZ sipariş OKUMA (GET). Bu dosya hiçbir yazma (POST/PUT/DELETE) isteği
-// yapmaz; collection'daki yazma uçları kapsam dışı.
+// Çoğunlukla OKUMA (GET: getOrders / getApprovedProducts / getClaims). Model C /
+// Faz 2 ile TEK bir yazma yolu eklendi: updateStock (price-and-inventory) — yalnız
+// STOK alanını gönderir, fiyata dokunmaz. Yazmanın gerçekten uygulandığını
+// doğrulamak için getBatchRequestResult (GET) eşlik eder. Diğer yazma uçları
+// (ürün oluşturma, fiyat güncelleme, listing aç/kapat) KAPSAM DIŞI.
+//
+// !!! updateStock CANLI KATALOĞA YAZAR. Bu fonksiyon yalnız stock-push.service
+// tarafından, çok katmanlı kilit (baseline + dry-run + circuit-breaker +
+// change-only) DOĞRULANDIKTAN sonra çağrılmalı. Geliştirme/smoke'ta ASLA gerçek
+// çağrılmaz: stock-push.service enjekte client kullanır (deps.updateStock),
+// smoke offline fake enjekte eder.
 //
 // Kaynak: docs/trendyol-stage-collection.json (KESİN endpoint/method/header
 // kaynağı). Collection STAGE; base URL ve kimlik env'den gelir, demo token
-// HARDCODE EDİLMEZ. Biz PROD + read-only kullanıyoruz (base URL varsayılanı PROD).
+// HARDCODE EDİLMEZ. Biz PROD kullanıyoruz (base URL varsayılanı PROD).
 //
 // Endpoint (collection "Get Order Packages"):
 //   GET {base}/integration/order/sellers/{sellerId}/orders
@@ -18,6 +27,7 @@ import { env } from "../../config/env.js";
 import { AppError } from "../errors.js";
 
 const ORDERS_TIMEOUT_MS = 15_000;
+const WRITE_TIMEOUT_MS = 20_000;
 
 export class TrendyolNotConfiguredError extends AppError {
   constructor(message = "Trendyol API kimliği yapılandırılmamış (TRENDYOL_SELLER_ID / API_KEY / API_SECRET).") {
@@ -328,4 +338,124 @@ export async function getClaims(params: GetClaimsParams = {}): Promise<TrendyolC
   }
 
   return (await res.json()) as TrendyolClaimsResponse;
+}
+
+// ── Stok güncelleme / YAZMA (Model C / Faz 2) ───────────────────────────────
+//
+// POST {base}/integration/inventory/sellers/{sellerId}/products/price-and-inventory
+// Collection "Stock and Price Update (Stok ve Fiyat Güncelleme)" gövdesi:
+//   { "items": [ { "barcode", "quantity", "salePrice"?, "listPrice"? } ] }
+// Yanıt async batch: { "batchRequestId": "..." }. Asıl uygulanma sonucu AYRI
+// uçtan (getBatchRequestResult) sorgulanır; 2xx-submit "uygulandı" DEMEK DEĞİLDİR.
+//
+// STOK-ONLY: yalnız { barcode, quantity }. Tip salePrice/listPrice TAŞIMAZ ve
+// updateStock gövdeyi bu iki alana indirgeyerek kurar (whitelist) → buggy/kötü bir
+// çağıran bile TY'ye fiyat gönderemez (#5 ağ sınırında zorlanır). Fiyat TY'de
+// yönetilir; ileride fiyat-passthrough gerekirse AYRI ve açık bir metot eklenir.
+export type TrendyolStockItem = {
+  barcode: string;
+  quantity: number;
+};
+
+export type TrendyolBatchSubmitResponse = {
+  batchRequestId?: string;
+};
+
+export async function updateStock(items: TrendyolStockItem[]): Promise<TrendyolBatchSubmitResponse> {
+  if (!isTrendyolConfigured()) {
+    throw new TrendyolNotConfiguredError();
+  }
+  if (items.length === 0) {
+    // Boş gönderim anlamsız; çağıran zaten boşsa hiç çağırmamalı (savunmacı).
+    return {};
+  }
+
+  const url = new URL(
+    `${env.trendyolApiBaseUrl}/integration/inventory/sellers/${env.trendyolSellerId}/products/price-and-inventory`,
+  );
+
+  // STOK-ONLY whitelist: gövdeyi yalnız barcode+quantity ile yeniden kur; gelen
+  // nesnedeki başka HİÇBİR alan (özellikle fiyat) tele çıkmaz.
+  const safeItems = items.map((i) => ({ barcode: i.barcode, quantity: i.quantity }));
+
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: { ...buildHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify({ items: safeItems }),
+      signal: AbortSignal.timeout(WRITE_TIMEOUT_MS),
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new TrendyolApiError(0, `Trendyol'a bağlanılamadı: ${msg}`);
+  }
+
+  if (!res.ok) {
+    let body = "";
+    try {
+      body = (await res.text()).slice(0, 500);
+    } catch {
+      // yut
+    }
+    throw new TrendyolApiError(res.status, `Trendyol stok güncellemesi gönderilemedi (HTTP ${res.status}). ${body}`);
+  }
+
+  return (await res.json()) as TrendyolBatchSubmitResponse;
+}
+
+// GET {base}/integration/product/sellers/{sellerId}/products/batch-requests/{batchRequestId}
+// Yazmanın gerçekten uygulanıp uygulanmadığını DOĞRULAR. Trendyol'un kanonik batch
+// sonucu şekli (yanıt collection'da boş döndüğü için savunmacı/hepsi opsiyonel):
+//   { status, batchRequestId, itemCount, failedItemCount, items: [
+//       { requestItem: { barcode, quantity, ... }, status: 'SUCCESS'|'FAILED'|...,
+//         failureReasons: ["..."] } ] }
+// status üst seviyede 'COMPLETED' olunca itemlar kesinleşir; 'PROCESSING' ise
+// henüz hazır değil (çağıran tekrar poll'lar).
+export type TrendyolBatchItem = {
+  requestItem?: { barcode?: string; quantity?: number; sellerId?: number };
+  status?: string; // SUCCESS / FAILED / INVALID …
+  failureReasons?: string[];
+};
+
+export type TrendyolBatchResult = {
+  batchRequestId?: string;
+  status?: string; // COMPLETED / PROCESSING …
+  itemCount?: number;
+  failedItemCount?: number;
+  items?: TrendyolBatchItem[];
+};
+
+export async function getBatchRequestResult(batchRequestId: string): Promise<TrendyolBatchResult> {
+  if (!isTrendyolConfigured()) {
+    throw new TrendyolNotConfiguredError();
+  }
+
+  const url = new URL(
+    `${env.trendyolApiBaseUrl}/integration/product/sellers/${env.trendyolSellerId}/products/batch-requests/${encodeURIComponent(batchRequestId)}`,
+  );
+
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "GET",
+      headers: buildHeaders(),
+      signal: AbortSignal.timeout(ORDERS_TIMEOUT_MS),
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new TrendyolApiError(0, `Trendyol'a bağlanılamadı: ${msg}`);
+  }
+
+  if (!res.ok) {
+    let body = "";
+    try {
+      body = (await res.text()).slice(0, 500);
+    } catch {
+      // yut
+    }
+    throw new TrendyolApiError(res.status, `Trendyol batch sonucu alınamadı (HTTP ${res.status}). ${body}`);
+  }
+
+  return (await res.json()) as TrendyolBatchResult;
 }

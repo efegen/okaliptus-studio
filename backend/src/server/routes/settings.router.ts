@@ -68,6 +68,20 @@ settingsRouter.patch("/", async (req, res) => {
       patch.marketplaceOrdersEnabled = body.marketplaceOrdersEnabled;
     }
 
+    if ("marketplaceStockPushEnabled" in body) {
+      if (typeof body.marketplaceStockPushEnabled !== "boolean") {
+        throw new ValidationError("marketplaceStockPushEnabled boolean olmalı.");
+      }
+      patch.marketplaceStockPushEnabled = body.marketplaceStockPushEnabled;
+    }
+
+    if ("marketplaceStockPushDryRun" in body) {
+      if (typeof body.marketplaceStockPushDryRun !== "boolean") {
+        throw new ValidationError("marketplaceStockPushDryRun boolean olmalı.");
+      }
+      patch.marketplaceStockPushDryRun = body.marketplaceStockPushDryRun;
+    }
+
     const data = await updateSettings(patch, req.currentUser.id);
     res.json({ data });
   } catch (err) {

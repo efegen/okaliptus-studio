@@ -16,6 +16,11 @@ import {
   resolveOrderReviewItem,
 } from "../../services/trendyol/order-sync.service.js";
 import { syncTrendyolClaims } from "../../services/trendyol/claims-sync.service.js";
+import {
+  baselineChannelListings,
+  runStockPush,
+  getStockPushStatus,
+} from "../../services/trendyol/stock-push.service.js";
 import { sendError } from "../middleware/response.js";
 
 export const trendyolRouter = Router();
@@ -95,6 +100,62 @@ trendyolRouter.get("/orders/review", async (_req, res) => {
 trendyolRouter.post("/orders/review/:id/resolve", async (req, res) => {
   try {
     const data = await resolveOrderReviewItem(req.params.id, req.currentUser.id);
+    res.json({ data });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+// ── Model C / Faz 2: iç stoğu Trendyol'a PUSH (yazma) ────────────────────────
+
+// POST /trendyol/stock/baseline — her eşli ürünün iç açılış stoğunu o anki TY
+// adedine hizalar ve last_pushed = TY adedi işaretler (push'un ön koşulu). Trendyol'a
+// YAZMAZ (yalnız iç stok + işaret). body: { force?: boolean }. → baseline özeti
+trendyolRouter.post("/stock/baseline", async (req, res) => {
+  try {
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const data = await baselineChannelListings({
+      force: body.force === true,
+      actorUserId: req.currentUser.id,
+    });
+    res.json({ data });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+// POST /trendyol/stock/push — iç efektif stoğu TY'ye gönderir (poller'ın manuel
+// ikizi). Kill switch (marketplace_stock_push_enabled) kapalıysa 409. dry-run açıkken
+// yalnız plan döner, TY'ye yazmaz. body:
+//   { force?: boolean }         → devre kesiciyi aş (toplu reconcile)
+//   { productId, live: true }   → KASITLI tek-ürün CANLI yazma (dry-run'ı aşar; ilk
+//                                 gerçek yazma bununla yapılır). live olmadan productId
+//                                 = yalnız o ürünü reconcile (dry-run'a saygı).
+// → push sonucu { mode, pushedCount, failedCount, items, breaker, … }
+trendyolRouter.post("/stock/push", async (req, res) => {
+  try {
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const productId =
+      body.productId === undefined || body.productId === null || body.productId === ""
+        ? null
+        : String(body.productId);
+    const data = await runStockPush({
+      force: body.force === true,
+      onlyProductId: productId,
+      overrideDryRun: body.live === true,
+      actorUserId: req.currentUser.id,
+    });
+    res.json({ data });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+// GET /trendyol/stock/status — baseline durumu + push önizlemesi (değişecek kalemler)
+// + push hataları + flag'ler. Salt-okuma; TY'ye dokunmaz.
+trendyolRouter.get("/stock/status", async (_req, res) => {
+  try {
+    const data = await getStockPushStatus();
     res.json({ data });
   } catch (err) {
     sendError(res, err);

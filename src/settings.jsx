@@ -364,7 +364,9 @@ export function SettingsPage() {
       form.lessonColorSaturation !== saved.lessonColorSaturation ||
       form.stockTrackingEnabled !== saved.stockTrackingEnabled ||
       form.marketplaceSyncEnabled !== saved.marketplaceSyncEnabled ||
-      form.marketplaceOrdersEnabled !== saved.marketplaceOrdersEnabled
+      form.marketplaceOrdersEnabled !== saved.marketplaceOrdersEnabled ||
+      form.marketplaceStockPushEnabled !== saved.marketplaceStockPushEnabled ||
+      form.marketplaceStockPushDryRun !== saved.marketplaceStockPushDryRun
     );
   }, [saved, form]);
 
@@ -392,6 +394,8 @@ export function SettingsPage() {
         stockTrackingEnabled: !!form.stockTrackingEnabled,
         marketplaceSyncEnabled: !!form.marketplaceSyncEnabled,
         marketplaceOrdersEnabled: !!form.marketplaceOrdersEnabled,
+        marketplaceStockPushEnabled: !!form.marketplaceStockPushEnabled,
+        marketplaceStockPushDryRun: !!form.marketplaceStockPushDryRun,
       });
       savedSatRef.current = updated.lessonColorSaturation ?? 1;
       setSaved(updated);
@@ -497,8 +501,8 @@ export function SettingsPage() {
               checked={!!form.stockTrackingEnabled}
               onChange={v => {
                 set('stockTrackingEnabled', v);
-                // Stok takibi kapanırsa sipariş senkronu da anlamsız → birlikte kapat.
-                if (!v) set('marketplaceOrdersEnabled', false);
+                // Stok takibi kapanırsa sipariş senkronu + stok push da anlamsız → birlikte kapat.
+                if (!v) { set('marketplaceOrdersEnabled', false); set('marketplaceStockPushEnabled', false); }
               }}
               label="Stok takibini aç/kapat"
             />
@@ -512,7 +516,11 @@ export function SettingsPage() {
           >
             <Toggle
               checked={!!form.marketplaceSyncEnabled}
-              onChange={v => set('marketplaceSyncEnabled', v)}
+              onChange={v => {
+                set('marketplaceSyncEnabled', v);
+                // Kanal eşleştirme kapanırsa stok push'un dayanağı (baseline/eşleme) gider → kapat.
+                if (!v) set('marketplaceStockPushEnabled', false);
+              }}
               label="Kanal eşleştirmeyi aç/kapat"
             />
           </SettingRow>
@@ -531,6 +539,37 @@ export function SettingsPage() {
               disabled={!form.stockTrackingEnabled}
             />
           </SettingRow>
+          <SettingRow
+            label="Stok gönderimi (TY'ye yaz)"
+            info={
+              (form.stockTrackingEnabled && form.marketplaceSyncEnabled)
+                ? "CANLI Trendyol listelerine STOK yazar (fiyata dokunmaz). Açmadan önce Eşleştirme'den 'Baseline' alın (iç stoğu TY adediyle hizalar), yoksa push reddedilir. Açılınca varsayılan DENEME modudur — gerçek yazma için aşağıdaki 'Deneme modu'nu kapatın. Kütlesel sıfırlama devre kesiciyle durdurulur."
+                : "Önce 'Stok takibi' ve 'Kanal eşleştirme' açık olmalı: stok push iç efektif stoğu okuyup eşli TY listesine yazar."
+            }
+          >
+            <Toggle
+              checked={!!form.marketplaceStockPushEnabled}
+              onChange={v => set('marketplaceStockPushEnabled', v)}
+              label="Stok gönderimini aç/kapat"
+              disabled={!form.stockTrackingEnabled || !form.marketplaceSyncEnabled}
+            />
+          </SettingRow>
+          {form.marketplaceStockPushEnabled && (
+            <SettingRow
+              label="Deneme modu (dry-run)"
+              info={
+                form.marketplaceStockPushDryRun
+                  ? "AÇIK: Trendyol'a hiçbir şey yazılmaz; yalnız 'ne yazılacaktı' Eşleştirme'de önizlenir ve loglanır. Önce baseline sonrası önizlemenin ~0 değişiklik gösterdiğini doğrulayın."
+                  : "KAPALI: otomatik reconcile artık CANLI Trendyol'a yazar. Yalnız baseline + tek-ürün deneme yazmasını doğruladıktan sonra kapatın."
+              }
+            >
+              <Toggle
+                checked={!!form.marketplaceStockPushDryRun}
+                onChange={v => set('marketplaceStockPushDryRun', v)}
+                label="Deneme modunu aç/kapat"
+              />
+            </SettingRow>
+          )}
           {saved?.marketplaceSyncEnabled && (
             <SettingRow label="Trendyol siparişleri" top>
               <TrendyolOrderPreview />

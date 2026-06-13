@@ -12,6 +12,8 @@ export type StudioSettings = {
   stockTrackingEnabled: boolean;
   marketplaceSyncEnabled: boolean;
   marketplaceOrdersEnabled: boolean;
+  marketplaceStockPushEnabled: boolean;
+  marketplaceStockPushDryRun: boolean;
 };
 
 function rowToSettings(row: Record<string, unknown>): StudioSettings {
@@ -25,6 +27,8 @@ function rowToSettings(row: Record<string, unknown>): StudioSettings {
     stockTrackingEnabled: row.stock_tracking_enabled === true,
     marketplaceSyncEnabled: row.marketplace_sync_enabled === true,
     marketplaceOrdersEnabled: row.marketplace_orders_enabled === true,
+    marketplaceStockPushEnabled: row.marketplace_stock_push_enabled === true,
+    marketplaceStockPushDryRun: row.marketplace_stock_push_dry_run === true,
   };
 }
 
@@ -37,7 +41,9 @@ export async function getSettings(): Promise<StudioSettings> {
       lesson_color_saturation,
       stock_tracking_enabled,
       marketplace_sync_enabled,
-      marketplace_orders_enabled
+      marketplace_orders_enabled,
+      marketplace_stock_push_enabled,
+      marketplace_stock_push_dry_run
     FROM studio_settings WHERE id = 1
   `);
 
@@ -56,6 +62,8 @@ type SettingsPatch = {
   stockTrackingEnabled?: boolean;
   marketplaceSyncEnabled?: boolean;
   marketplaceOrdersEnabled?: boolean;
+  marketplaceStockPushEnabled?: boolean;
+  marketplaceStockPushDryRun?: boolean;
 };
 
 export async function updateSettings(patch: SettingsPatch, actorUserId?: number | string | null): Promise<StudioSettings> {
@@ -135,6 +143,14 @@ export async function updateSettings(patch: SettingsPatch, actorUserId?: number 
   if (patch.marketplaceOrdersEnabled !== undefined) {
     sets.push(`marketplace_orders_enabled = $${i++}`);
     values.push(patch.marketplaceOrdersEnabled);
+  }
+  if (patch.marketplaceStockPushEnabled !== undefined) {
+    sets.push(`marketplace_stock_push_enabled = $${i++}`);
+    values.push(patch.marketplaceStockPushEnabled);
+  }
+  if (patch.marketplaceStockPushDryRun !== undefined) {
+    sets.push(`marketplace_stock_push_dry_run = $${i++}`);
+    values.push(patch.marketplaceStockPushDryRun);
   }
 
   if (sets.length === 0) {

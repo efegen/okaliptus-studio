@@ -16,6 +16,9 @@ import {
   syncTrendyolClaims,
   getOrderReviewQueue,
   resolveOrderReviewItem,
+  getStockPushStatus,
+  baselineStockPush,
+  runStockPush,
   getSettings,
 } from './api';
 import { queryKeys } from './hooks/queryKeys';
@@ -244,6 +247,205 @@ function ReviewCard({ item, onResolve, busy }) {
   );
 }
 
+// ─── Stok gönderimi (Model C / Faz 2): iç efektif stoğu Trendyol'a yaz ───────
+// CANLI listelere STOK yazar (fiyata dokunmaz). Çok katmanlı kilit: baseline +
+// dry-run + devre kesici + change-only + batch doğrulama. Tab yalnız push açıkken.
+function StockPushTab() {
+  const queryClient = useQueryClient();
+  const [busy, setBusy] = React.useState(null); // 'baseline' | 'push' | 'force' | productId
+  const [feedback, setFeedback] = React.useState(null);
+
+  const statusQuery = useQuery({
+    queryKey: ['stockPushStatus'],
+    queryFn: getStockPushStatus,
+    staleTime: 15 * 1000,
+  });
+  const data = statusQuery.data;
+  const s = data?.summary;
+  const dryRun = data?.settings?.dryRun !== false;
+  const preview = data?.preview ?? [];
+  const errors = data?.errors ?? [];
+
+  function refetchAll() {
+    queryClient.invalidateQueries({ queryKey: ['stockPushStatus'] });
+    queryClient.invalidateQueries({ queryKey: ['mapping'] });
+    queryClient.invalidateQueries({ queryKey: ['products'] });
+  }
+
+  async function handleBaseline() {
+    setBusy('baseline'); setFeedback(null);
+    try {
+      const r = await baselineStockPush(false);
+      const parts = [`${r.baselined} liste baseline'landı`];
+      if (r.seeded) parts.push(`${r.seeded} ürünün iç açılış stoğu TY adediyle hizalandı`);
+      if (r.skippedNoSnapshot) parts.push(`${r.skippedNoSnapshot} liste atlandı (snapshot yok — önce ürünleri senkronla)`);
+      if (r.skippedArchived) parts.push(`${r.skippedArchived} arşivli atlandı`);
+      setFeedback({ ok: true, msg: parts.join('; ') + '.' });
+      refetchAll();
+    } catch (e) {
+      setFeedback({ ok: false, msg: e.message || 'Baseline başarısız.' });
+    } finally { setBusy(null); }
+  }
+
+  function describePush(r) {
+    if (r.mode === 'noop') return 'Değişiklik yok — iç stok TY ile uyumlu.';
+    if (r.mode === 'already_running') return 'Başka bir gönderim sürüyor; sonra tekrar deneyin.';
+    if (r.mode === 'breaker_tripped') {
+      return `DEVRE KESİCİ DURDURDU: ${r.breaker?.dangerousCount} tehlikeli düşüş (%${Math.round((r.breaker?.ratio ?? 0) * 100)}). Veriyi doğrulayın; emin iseniz "Yine de gönder" ile force kullanın.`;
+    }
+    if (r.mode === 'dry_run') return `Deneme: ${r.changedCount} kalem yazılacaktı (Trendyol'a GÖNDERİLMEDİ). Gerçek yazma için Ayarlar'dan deneme modunu kapatın.`;
+    if (r.mode === 'live') {
+      const p = [`${r.pushedCount} başarılı`];
+      if (r.failedCount) p.push(`${r.failedCount} başarısız`);
+      if (r.pendingCount) p.push(`${r.pendingCount} beklemede`);
+      return `Gönderildi: ${p.join(', ')}.`;
+    }
+    return 'Gönderim tamamlandı.';
+  }
+
+  async function handlePush(force) {
+    setBusy(force ? 'force' : 'push'); setFeedback(null);
+    try {
+      const r = await runStockPush(force ? { force: true } : {});
+      setFeedback({ ok: r.mode !== 'breaker_tripped', msg: describePush(r), breaker: r.mode === 'breaker_tripped' });
+      refetchAll();
+    } catch (e) {
+      setFeedback({ ok: false, msg: e.message || 'Gönderim başarısız.' });
+    } finally { setBusy(null); }
+  }
+
+  async function handlePushSingleLive(item) {
+    const ok = window.confirm(
+      `CANLI YAZMA\n\n"${item.productName || item.externalId}" ürününün Trendyol stoğu ${item.lastPushed ?? '—'} → ${item.desired} olarak GÜNCELLENECEK.\n\nBu gerçek bir yazmadır (deneme modunu aşar). Devam edilsin mi?`,
+    );
+    if (!ok) return;
+    setBusy(item.productId); setFeedback(null);
+    try {
+      const r = await runStockPush({ productId: item.productId, live: true });
+      setFeedback({ ok: r.failedCount === 0, msg: describePush(r) });
+      refetchAll();
+    } catch (e) {
+      setFeedback({ ok: false, msg: e.message || 'Tek ürün gönderimi başarısız.' });
+    } finally { setBusy(null); }
+  }
+
+  return (
+    <div className="map-push">
+      <div className="map-summary">
+        <span><strong>{s?.totalListings ?? 0}</strong> TY listesi</span>
+        <span className={s?.notBaselined ? 'is-warn' : ''}><strong>{s?.baselined ?? 0}</strong> baseline'lı</span>
+        {s?.notBaselined ? <span className="is-warn"><strong>{s.notBaselined}</strong> baseline'sız</span> : null}
+        <span><strong>{s?.changed ?? 0}</strong> değişecek</span>
+        {s?.failed ? <span className="is-warn"><strong>{s.failed}</strong> hatalı</span> : null}
+        <span className={'map-chip ' + (dryRun ? '' : 'is-warn')}>
+          {dryRun ? 'Deneme modu (TY\'ye yazılmaz)' : 'CANLI yazma açık'}
+        </span>
+      </div>
+
+      {feedback && (
+        <div className={'stg-feedback ' + (feedback.ok ? 'stg-feedback-ok' : 'stg-feedback-err')} style={{ marginBottom: 12 }}>
+          {feedback.msg}
+        </div>
+      )}
+
+      <div className="map-push-actions">
+        <button className="btn btn-ghost" onClick={handleBaseline} disabled={busy !== null}>
+          {busy === 'baseline' ? 'Baseline alınıyor…' : 'Baseline al (iç stoğu TY ile hizala)'}
+        </button>
+        <button className="btn btn-primary" onClick={() => handlePush(false)} disabled={busy !== null}>
+          <Icon.Repeat width="14" height="14" /> {busy === 'push' ? 'Gönderiliyor…' : (dryRun ? 'Önizle / Gönder (deneme)' : 'Stoğu gönder')}
+        </button>
+        {feedback?.breaker && (
+          <button className="btn btn-danger" onClick={() => handlePush(true)} disabled={busy !== null}>
+            {busy === 'force' ? 'Gönderiliyor…' : 'Yine de gönder (force)'}
+          </button>
+        )}
+      </div>
+
+      {statusQuery.isLoading && <div className="stu-state-msg">Yükleniyor…</div>}
+      {statusQuery.isError && <div className="stg-feedback stg-feedback-err">{statusQuery.error?.message || 'Durum alınamadı.'}</div>}
+
+      {!statusQuery.isLoading && (
+        <>
+          <h3 className="map-push-h">Gönderilecek değişiklikler ({preview.length})</h3>
+          {preview.length === 0 ? (
+            <div className="stu-state-msg">
+              {s?.notBaselined ? 'Önce baseline alın; baseline\'sız listeye yazılmaz.' : 'Değişiklik yok — iç efektif stok Trendyol ile uyumlu.'}
+            </div>
+          ) : (
+            <table className="prod-table map-internal-table">
+              <thead className="stu-thead">
+                <tr>
+                  <th className="stu-th">Ürün</th>
+                  <th className="stu-th">TY (son)</th>
+                  <th className="stu-th">İç efektif</th>
+                  <th className="stu-th">Gönderilecek</th>
+                  <th className="stu-th">Δ</th>
+                  <th className="stu-th"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {preview.map(it => (
+                  <tr key={it.listingId}>
+                    <td className="prod-td">
+                      <div className="map-prodname">
+                        {it.productName || it.externalId}
+                        {it.isBundle && <span className="map-chip" style={{ marginLeft: 6 }}>paket</span>}
+                      </div>
+                      <div className="map-sub prod-td-mono">{it.externalId}</div>
+                    </td>
+                    <td className="prod-td">{it.lastPushed ?? '—'}</td>
+                    <td className="prod-td">{it.effective}{it.effective !== it.desired && <span className="map-sub"> → {it.desired}</span>}</td>
+                    <td className="prod-td"><strong>{it.desired}</strong></td>
+                    <td className={'prod-td' + ((it.delta ?? 0) < 0 ? ' is-warn' : '')}>
+                      {it.delta === null ? '—' : (it.delta > 0 ? `+${it.delta}` : it.delta)}
+                    </td>
+                    <td className="prod-td">
+                      <button type="button" className="btn btn-ghost btn-xs" disabled={busy !== null}
+                        onClick={() => handlePushSingleLive(it)} title="Yalnız bu ürünü canlı gönder (deneme modunu aşar)">
+                        {busy === it.productId ? '…' : 'Tek canlı gönder'}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          {errors.length > 0 && (
+            <>
+              <h3 className="map-push-h is-warn">Push hataları ({errors.length})</h3>
+              <div className="map-orphan-list">
+                {errors.map(it => (
+                  <div className="map-orphan" key={'err-' + it.listingId}>
+                    <div className="map-orphan-img"><span aria-hidden="true"><Icon.Tag width="18" height="18" /></span></div>
+                    <div className="map-orphan-body">
+                      <div className="map-orphan-title">{it.productName || it.externalId}</div>
+                      <div className="map-orphan-meta">
+                        <span className="prod-td-mono">{it.externalId}</span>
+                        <span>hedef {it.desired}</span>
+                        {it.lastPushBatchId && <span className="map-chip">batch {String(it.lastPushBatchId).slice(0, 8)}</span>}
+                        {it.lastPushedAt && <span>{fmtWhen(it.lastPushedAt)}</span>}
+                      </div>
+                      <div className="map-sub is-warn">{it.lastPushError || 'Bilinmeyen hata'}</div>
+                    </div>
+                    <div className="map-orphan-actions">
+                      <button type="button" className="btn btn-ghost btn-xs" disabled={busy !== null}
+                        onClick={() => handlePushSingleLive(it)}>
+                        {busy === it.productId ? '…' : 'Yeniden dene'}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 export function MappingPage() {
   const queryClient = useQueryClient();
   const [tab, setTab] = React.useState('orphans');
@@ -269,6 +471,7 @@ export function MappingPage() {
     staleTime: 60 * 1000,
   });
   const ordersEnabled = !!settingsQuery.data?.marketplaceOrdersEnabled;
+  const pushEnabled = !!settingsQuery.data?.marketplaceStockPushEnabled;
 
   const reviewQuery = useQuery({
     queryKey: ['orderReview'],
@@ -478,9 +681,14 @@ export function MappingPage() {
             İnceleme kuyruğu ({reviewItems.length})
           </button>
         )}
+        {pushEnabled && (
+          <button className={'map-tab' + (tab === 'push' ? ' is-active' : '')} onClick={() => setTab('push')}>
+            Stok gönderimi
+          </button>
+        )}
       </div>
 
-      {tab !== 'review' && (
+      {tab !== 'review' && tab !== 'push' && (
         <div className="map-toolbar">
           <div className="map-search">
             <Icon.Search width="15" height="15" />
@@ -547,6 +755,8 @@ export function MappingPage() {
           )}
         </>
       )}
+
+      {pushEnabled && tab === 'push' && <StockPushTab />}
     </div>
   );
 }

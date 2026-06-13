@@ -780,6 +780,47 @@ export async function resolveOrderReviewItem(id) {
   return ensureMutationResult(payload, "Kuyruk kalemi güncellenemedi.");
 }
 
+// ─── Trendyol stok PUSH (Model C / Faz 2) ────────────────────────────────────
+// CANLI pazaryeri listelerine yazma. Çok katmanlı kilit arkasında (baseline +
+// dry-run + circuit-breaker + change-only + batch-doğrulama). UI bunları yalnız
+// stok push açıkken gösterir.
+
+// Her eşli ürünün iç açılış stoğunu o anki TY adedine hizalar + last_pushed işaretler
+// (push'un ön koşulu). Trendyol'a YAZMAZ. → { baselined, seeded, skipped… }
+export async function baselineStockPush(force = false) {
+  const payload = await apiRequest("/trendyol/stock/baseline", {
+    method: "POST",
+    body: JSON.stringify({ force: !!force }),
+  });
+  return ensureMutationResult(payload, "Baseline yapılamadı.");
+}
+
+// İç efektif stoğu TY'ye gönderir. opts:
+//   {}                        → toplu reconcile (dry-run flag'ine saygı)
+//   { force: true }           → devre kesiciyi aş
+//   { productId, live: true } → KASITLI tek-ürün CANLI yazma (dry-run'ı aşar)
+// → { mode, pushedCount, failedCount, changedCount, items, breaker, … }
+export async function runStockPush(opts = {}) {
+  const payload = await apiRequest("/trendyol/stock/push", {
+    method: "POST",
+    body: JSON.stringify({
+      force: opts.force === true,
+      productId: opts.productId ?? null,
+      live: opts.live === true,
+    }),
+  });
+  return ensureMutationResult(payload, "Stok gönderimi başarısız.");
+}
+
+// Baseline durumu + push önizlemesi (değişecek kalemler) + push hataları + flag'ler.
+export async function getStockPushStatus() {
+  const payload = await apiGet("/trendyol/stock/status");
+  if (typeof payload?.data !== "object" || payload.data === null || Array.isArray(payload.data)) {
+    throw new Error("Stok gönderim durumu alınamadı.");
+  }
+  return payload.data;
+}
+
 export async function archiveProduct(productId) {
   const payload = await apiRequest(`/products/${encodeURIComponent(productId)}/archive`, {
     method: "POST",
