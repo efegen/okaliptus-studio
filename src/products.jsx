@@ -15,6 +15,8 @@ import {
   bulkSetProductCategory,
   bulkUpdateProductPrice,
   renameProductCategory,
+  getSettings,
+  setProductStock,
 } from './api';
 import { queryKeys } from './hooks/queryKeys';
 import { Icon } from './layout';
@@ -34,6 +36,22 @@ function fmtPrice(raw) {
 function fmtPriceRange(min, max) {
   if (min === max) return fmtPrice(min);
   return `${fmtPrice(min)}–${fmtPrice(max)}`;
+}
+
+// Stok rozeti — yalnız stok takibi açıkken render edilir. 0/negatif kırmızı
+// (kayıt eksik / tükendi sinyali), pozitif nötr.
+function StockBadge({ onHand }) {
+  const n = Number(onHand);
+  if (!Number.isFinite(n)) return null;
+  const low = n <= 0;
+  return (
+    <span
+      className={'prod-stock-badge' + (low ? ' is-low' : '')}
+      title={low ? 'Stok tükendi / kayıt eksik' : 'Eldeki stok'}
+    >
+      {n} adet
+    </span>
+  );
 }
 
 function fmtDate(iso) {
@@ -345,7 +363,7 @@ function WebcamCaptureModal({ onCapture, onClose }) {
 
 // ─── ProductModal ───────────────────────────────────────────────────────────
 
-function ProductModal({ initial, knownCategories, onClose, onSaved }) {
+function ProductModal({ initial, knownCategories, stockEnabled, onClose, onSaved, onStockSaved }) {
   const isNew = !initial;
   const [form, setForm] = React.useState(() => ({
     name: initial?.name ?? '',
@@ -362,6 +380,17 @@ function ProductModal({ initial, knownCategories, onClose, onSaved }) {
   const [saving, setSaving] = React.useState(false);
   const [err, setErr] = React.useState(null);
   const [confirmDelete, setConfirmDelete] = React.useState(false);
+
+  // Stok düzenleme — ana ürün formundan ayrı bir endpoint (PUT /:id/stock).
+  // Yalnız stok takibi açık + mevcut ürün düzenlenirken görünür. Hedef on_hand'i
+  // mutlak ayarlar; backend delta'yı hesaplar.
+  const showStock = stockEnabled && !isNew;
+  const [stockValue, setStockValue] = React.useState(
+    initial && initial.on_hand != null ? String(initial.on_hand) : '',
+  );
+  const [stockBusy, setStockBusy] = React.useState(false);
+  const [stockMsg, setStockMsg] = React.useState(null); // { ok, msg }
+  const currentOnHand = initial && initial.on_hand != null ? Number(initial.on_hand) : 0;
 
   // Görsel staging: çekilen/seçilen foto kaydedilene kadar bekler. cleared =
   // mevcut görseli kaldırma niyeti (kaydet'te uygulanır). Mobildeki ProductEditor
@@ -464,6 +493,25 @@ function ProductModal({ initial, knownCategories, onClose, onSaved }) {
     } catch (e) {
       setErr(e.message || 'Kaydedilemedi.');
       setSaving(false);
+    }
+  }
+
+  async function handleStockSave() {
+    if (!initial) return;
+    const n = parseInt(stockValue, 10);
+    if (!Number.isInteger(n)) { setStockMsg({ ok: false, msg: 'Stok adedi tam sayı olmalı.' }); return; }
+    setStockBusy(true);
+    setStockMsg(null);
+    try {
+      const res = await setProductStock(initial.id, n);
+      // res = { on_hand }. Liste rozetini tazelemek için parent'ı bilgilendir
+      // (modal kapanmaz).
+      onStockSaved?.();
+      setStockMsg({ ok: true, msg: `Stok güncellendi: ${res?.on_hand ?? n} adet.` });
+    } catch (e) {
+      setStockMsg({ ok: false, msg: e.message || 'Stok güncellenemedi.' });
+    } finally {
+      setStockBusy(false);
     }
   }
 
@@ -608,6 +656,38 @@ function ProductModal({ initial, knownCategories, onClose, onSaved }) {
                   />
                 </div>
               </div>
+
+              {showStock && (
+                <div className="form-row prod-stock-row">
+                  <label>Stok (eldeki adet)</label>
+                  <div className="prod-stock-edit">
+                    <input
+                      className="prod-modal-input prod-stock-input"
+                      type="number"
+                      step="1"
+                      value={stockValue}
+                      onChange={e => { setStockValue(e.target.value); setStockMsg(null); }}
+                      placeholder={String(currentOnHand)}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-xs"
+                      onClick={handleStockSave}
+                      disabled={stockBusy || String(parseInt(stockValue, 10)) === String(currentOnHand)}
+                    >
+                      {stockBusy ? 'Kaydediliyor…' : 'Stoğu güncelle'}
+                    </button>
+                  </div>
+                  <span className="prod-modal-hint">
+                    Mevcut: {currentOnHand} adet. Açılış stoğu veya elle düzeltme; satışta otomatik düşer.
+                  </span>
+                  {stockMsg && (
+                    <span className={'prod-stock-msg' + (stockMsg.ok ? ' is-ok' : ' is-err')}>
+                      {stockMsg.msg}
+                    </span>
+                  )}
+                </div>
+              )}
 
               <div className="form-row-2">
                 <div className="form-row" style={{ margin: 0 }}>
@@ -1296,7 +1376,7 @@ function SelectCheckbox({ state, onChange, label }) {
   );
 }
 
-function VariantRow({ variant, isSelected, onToggleSelect, onOpen }) {
+function VariantRow({ variant, isSelected, onToggleSelect, onOpen, stockEnabled }) {
   return (
     <tr className={'prod-tr prod-tr-variant' + (isSelected ? ' is-selected' : '')} onClick={() => onOpen(variant)}>
       <td className="prod-td prod-td-checkbox" onClick={e => e.stopPropagation()}>
@@ -1308,11 +1388,13 @@ function VariantRow({ variant, isSelected, onToggleSelect, onOpen }) {
       </td>
       <td className="prod-td">
         <div className="prod-name-cell prod-name-cell-variant">
+          {/* stockEnabled prop'u VariantRow imzasından gelir */}
           <span className="prod-variant-arrow" aria-hidden="true">↳</span>
           <ProductImage product={variant} size={36} />
           <div className="prod-name-block">
             <span className="prod-name prod-name-variant">
               {variant.variant_label || variant.name}
+              {stockEnabled && <StockBadge onHand={variant.on_hand} />}
             </span>
             {variant.barcode && (
               <span className="prod-name-sub prod-td-mono">{variant.barcode}</span>
@@ -1414,7 +1496,7 @@ function GroupRow({ group, expanded, selectionState, onToggleSelect, onToggle, o
   );
 }
 
-function SingleRow({ entry, isSelected, onToggleSelect, onOpen }) {
+function SingleRow({ entry, isSelected, onToggleSelect, onOpen, stockEnabled }) {
   const product = entry.variants[0];
   return (
     <tr className={'prod-tr' + (isSelected ? ' is-selected' : '')} onClick={() => onOpen(product)}>
@@ -1429,7 +1511,10 @@ function SingleRow({ entry, isSelected, onToggleSelect, onOpen }) {
         <div className="prod-name-cell">
           <ProductImage product={product} />
           <div className="prod-name-block">
-            <span className="prod-name">{product.name}</span>
+            <span className="prod-name">
+              {product.name}
+              {stockEnabled && <StockBadge onHand={product.on_hand} />}
+            </span>
             {(product.variant_label || product.notes) && (
               <span className="prod-name-sub">
                 {product.variant_label || product.notes}
@@ -1496,6 +1581,15 @@ export function ProductsPage() {
     queryFn: getProductCategories,
     staleTime: 60 * 1000,
   });
+
+  // Stok takibi flag'i — kapalıyken stok kolonu/alanları hiç render edilmez
+  // (dark ship). Hata olsa bile katalog çalışmaya devam etsin diye sessiz.
+  const settingsQuery = useQuery({
+    queryKey: queryKeys.settings(),
+    queryFn: getSettings,
+    staleTime: 5 * 60 * 1000,
+  });
+  const stockEnabled = settingsQuery.data?.stockTrackingEnabled === true;
 
   const allProducts = productsQuery.data ?? [];
   const categories = categoriesQuery.data ?? [];
@@ -1811,6 +1905,7 @@ export function ProductsPage() {
                           isSelected={selected.has(v.id)}
                           onToggleSelect={toggleSelectId}
                           onOpen={setModal}
+                          stockEnabled={stockEnabled}
                         />
                       ))}
                     </React.Fragment>
@@ -1824,6 +1919,7 @@ export function ProductsPage() {
                     isSelected={selected.has(single.id)}
                     onToggleSelect={toggleSelectId}
                     onOpen={setModal}
+                    stockEnabled={stockEnabled}
                   />
                 );
               })}
@@ -1836,6 +1932,8 @@ export function ProductsPage() {
         <ProductModal
           initial={modal === 'new' ? null : modal}
           knownCategories={mergedCategories}
+          stockEnabled={stockEnabled}
+          onStockSaved={() => queryClient.invalidateQueries({ queryKey: ['products'] })}
           onClose={() => setModal(null)}
           onSaved={(saved) => {
             // Kullanıcı yeni kategori adı yazıp ürünü kaydettiyse, o kategori

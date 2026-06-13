@@ -38,6 +38,21 @@ function NumInput({ value, onChange, min = 0, max, unit }) {
   );
 }
 
+function Toggle({ checked, onChange, label }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      className={'stg-toggle' + (checked ? ' is-on' : '')}
+      onClick={() => onChange(!checked)}
+    >
+      <span className="stg-toggle-knob" aria-hidden="true" />
+    </button>
+  );
+}
+
 function SettingRow({ label, children, info, top }) {
   return (
     <div className={'stg-row' + (top ? ' stg-row-top' : '')}>
@@ -263,7 +278,8 @@ export function SettingsPage() {
       form.weeklyCapacity !== saved.weeklyCapacity ||
       form.calendarStartHour !== saved.calendarStartHour ||
       form.calendarEndHour !== saved.calendarEndHour ||
-      form.lessonColorSaturation !== saved.lessonColorSaturation
+      form.lessonColorSaturation !== saved.lessonColorSaturation ||
+      form.stockTrackingEnabled !== saved.stockTrackingEnabled
     );
   }, [saved, form]);
 
@@ -288,6 +304,7 @@ export function SettingsPage() {
         calendarStartHour: form.calendarStartHour,
         calendarEndHour: form.calendarEndHour,
         lessonColorSaturation: form.lessonColorSaturation,
+        stockTrackingEnabled: !!form.stockTrackingEnabled,
       });
       savedSatRef.current = updated.lessonColorSaturation ?? 1;
       setSaved(updated);
@@ -381,6 +398,19 @@ export function SettingsPage() {
                 max={24}
               />
             </div>
+          </SettingRow>
+        </Section>
+
+        <Section title="Stok">
+          <SettingRow
+            label="Stok takibi"
+            info="Açıkken ürün elden satılınca stok düşer; katalogda kalan adet görünür ve ürün düzenlemede açılış stoğu / düzeltme yapılır. Marketplace stoklarını etkilemez."
+          >
+            <Toggle
+              checked={!!form.stockTrackingEnabled}
+              onChange={v => set('stockTrackingEnabled', v)}
+              label="Stok takibini aç/kapat"
+            />
           </SettingRow>
         </Section>
 

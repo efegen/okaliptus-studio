@@ -91,6 +91,16 @@ export function assertTryCurrency(currency: string): void {
   }
 }
 
+// Transaction-scoped advisory lock. completeLesson'daki
+// `SELECT pg_advisory_xact_lock(hashtext($1))` kalıbının yeniden kullanılabilir
+// hâli. Aynı string key için seri erişim sağlar; transaction commit/rollback ile
+// otomatik bırakılır (manuel unlock gerekmez). Açık bir transaction içinden
+// çağrılmalıdır (xact-scoped). completeLesson'a DOKUNULMAZ; bu yalnız yeni
+// stok kodu içindir.
+export async function withAdvisoryLock(client: PoolClient, key: string): Promise<void> {
+  await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [key]);
+}
+
 export async function rollbackQuietly(client: PoolClient): Promise<void> {
   try {
     await client.query("ROLLBACK");

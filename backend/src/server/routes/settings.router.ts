@@ -47,6 +47,13 @@ settingsRouter.patch("/", async (req, res) => {
       patch.lessonColorSaturation = v;
     }
 
+    if ("stockTrackingEnabled" in body) {
+      if (typeof body.stockTrackingEnabled !== "boolean") {
+        throw new ValidationError("stockTrackingEnabled boolean olmalı.");
+      }
+      patch.stockTrackingEnabled = body.stockTrackingEnabled;
+    }
+
     const data = await updateSettings(patch, req.currentUser.id);
     res.json({ data });
   } catch (err) {

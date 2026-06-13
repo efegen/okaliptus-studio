@@ -626,6 +626,17 @@ export async function updateProduct(productId, patch) {
   return ensureMutationResult(payload, "Ürün güncellenemedi.");
 }
 
+// Dahili stok: hedef on_hand'i mutlak olarak ayarlar (açılış stoğu + elle
+// düzeltme). Backend delta'yı hesaplar. Stok takibi ayardan kapalıyken UI bu
+// çağrıyı hiç göstermez. → { on_hand }
+export async function setProductStock(productId, onHand, note) {
+  const payload = await apiRequest(`/products/${encodeURIComponent(productId)}/stock`, {
+    method: "PUT",
+    body: JSON.stringify({ onHand, note: note ?? null }),
+  });
+  return ensureMutationResult(payload, "Stok güncellenemedi.");
+}
+
 export async function archiveProduct(productId) {
   const payload = await apiRequest(`/products/${encodeURIComponent(productId)}/archive`, {
     method: "POST",

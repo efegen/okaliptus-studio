@@ -37,6 +37,11 @@ export type ProductRow = {
   archived_at: string | null;
   created_at: string;
   updated_at: string;
+  // v_product_stock'tan LEFT JOIN ile gelir (migration 0241). Stok takibi
+  // flag'inden bağımsız her zaman döner; UI flag'e göre gösterir/gizler.
+  // Hareketi olmayan ürün 0 döner. Yetersiz stok satışı engellenmediği için
+  // eksi olabilir.
+  on_hand?: number;
 };
 
 export class ProductNotFoundError extends AppError {
@@ -112,7 +117,10 @@ export async function listProducts(
   // Aynı parent_product_code'u paylaşan varyantların yan yana gelmesi için
   // sıralama: önce parent code (NULL'lar sona), sonra ad, sonra id.
   const result = await pool.query<ProductRow>(
-    `SELECT * FROM products ${where}
+    `SELECT products.*, COALESCE(ps.on_hand, 0)::int AS on_hand
+       FROM products
+       LEFT JOIN v_product_stock ps ON ps.product_id = products.id
+       ${where}
      ORDER BY parent_product_code IS NULL, parent_product_code ASC, name ASC, id ASC`,
     values,
   );
@@ -134,7 +142,10 @@ export async function listCategories(): Promise<Array<{ category: string; count:
 
 export async function getProductById(productId: EntityId): Promise<ProductRow> {
   const result = await pool.query<ProductRow>(
-    `SELECT * FROM products WHERE id = $1`,
+    `SELECT products.*, COALESCE(ps.on_hand, 0)::int AS on_hand
+       FROM products
+       LEFT JOIN v_product_stock ps ON ps.product_id = products.id
+      WHERE products.id = $1`,
     [productId],
   );
   const product = result.rows[0];

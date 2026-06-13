@@ -21,6 +21,7 @@ import {
   updateProduct,
   type BulkPriceMode,
 } from "../../services/products.service.js";
+import { adjustProductStock } from "../../services/stock.service.js";
 import { parseId, sendError } from "../middleware/response.js";
 
 function parseIdsArray(raw: unknown): Array<string | number> {
@@ -225,6 +226,27 @@ productsRouter.delete("/:id/image", async (req, res) => {
   try {
     const id = parseId(req.params.id);
     const data = await deleteProductImage(id, req.currentUser.id);
+    res.json({ data });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+// PUT /products/:id/stock — açılış stoğu + elle düzeltme. Hedef on_hand'i
+// mutlak olarak ayarlar (delta servis tarafında hesaplanır). body: { onHand, note? }
+// Stok takibi flag'i kapalıyken de çalışır; UI'ı flag gizler. requireAuth +
+// currentUser.id zinciri diğer yazma route'larıyla aynı.
+productsRouter.put("/:id/stock", async (req, res) => {
+  try {
+    const id = parseId(req.params.id);
+    const body = req.body as Record<string, unknown>;
+    const onHand = Number(body.onHand);
+    if (!Number.isInteger(onHand)) {
+      res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "onHand tam sayı olmalı." } });
+      return;
+    }
+    const note = body.note === null || body.note === undefined || body.note === "" ? null : String(body.note);
+    const data = await adjustProductStock({ productId: id, newOnHand: onHand, note, actorUserId: req.currentUser.id });
     res.json({ data });
   } catch (err) {
     sendError(res, err);

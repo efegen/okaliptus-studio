@@ -3997,6 +3997,38 @@ input, select { font-family: inherit; }
   color: var(--ink-4);
 }
 
+/* Stok takibi vb. açık/kapalı anahtarı */
+.stg-toggle {
+  flex: 0 0 auto;
+  position: relative;
+  width: 40px;
+  height: 23px;
+  border-radius: 999px;
+  border: 1px solid var(--line-2);
+  background: var(--bg);
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.stg-toggle.is-on {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.stg-toggle-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  transition: transform 0.15s ease;
+}
+.stg-toggle.is-on .stg-toggle-knob {
+  transform: translateX(17px);
+}
+
 .stg-num-wrap {
   display: flex;
   align-items: center;
@@ -5574,6 +5606,40 @@ input, select { font-family: inherit; }
   font-weight: 500;
   white-space: nowrap;
 }
+
+/* Stok rozeti (katalog satırı) + düzenleme alanı (ürün modalı) */
+.prod-stock-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 100px;
+  background: var(--bg-2);
+  color: var(--ink-2);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.prod-stock-badge.is-low {
+  background: var(--danger-bg, #fdecec);
+  color: var(--danger, #c0392b);
+}
+
+.prod-stock-edit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.prod-stock-input {
+  width: 110px;
+}
+.prod-stock-msg {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+}
+.prod-stock-msg.is-ok { color: var(--success, #2e7d32); }
+.prod-stock-msg.is-err { color: var(--danger, #c0392b); }
 
 /* Selection checkbox + column */
 .prod-checkbox {
