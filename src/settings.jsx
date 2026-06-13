@@ -279,7 +279,8 @@ export function SettingsPage() {
       form.calendarStartHour !== saved.calendarStartHour ||
       form.calendarEndHour !== saved.calendarEndHour ||
       form.lessonColorSaturation !== saved.lessonColorSaturation ||
-      form.stockTrackingEnabled !== saved.stockTrackingEnabled
+      form.stockTrackingEnabled !== saved.stockTrackingEnabled ||
+      form.marketplaceSyncEnabled !== saved.marketplaceSyncEnabled
     );
   }, [saved, form]);
 
@@ -305,6 +306,7 @@ export function SettingsPage() {
         calendarEndHour: form.calendarEndHour,
         lessonColorSaturation: form.lessonColorSaturation,
         stockTrackingEnabled: !!form.stockTrackingEnabled,
+        marketplaceSyncEnabled: !!form.marketplaceSyncEnabled,
       });
       savedSatRef.current = updated.lessonColorSaturation ?? 1;
       setSaved(updated);
@@ -410,6 +412,19 @@ export function SettingsPage() {
               checked={!!form.stockTrackingEnabled}
               onChange={v => set('stockTrackingEnabled', v)}
               label="Stok takibini aç/kapat"
+            />
+          </SettingRow>
+        </Section>
+
+        <Section title="Pazaryeri">
+          <SettingRow
+            label="Kanal eşleştirme"
+            info="Açıkken ürün düzenlemede Trendyol/Hepsiburada listing eşleştirmesi (kanal, kod, fiyat, listeli mi) yapılır. Bu sürümde yalnız eşleştirme verisi tutulur; otomatik senkron/sipariş çekme yoktur."
+          >
+            <Toggle
+              checked={!!form.marketplaceSyncEnabled}
+              onChange={v => set('marketplaceSyncEnabled', v)}
+              label="Kanal eşleştirmeyi aç/kapat"
             />
           </SettingRow>
         </Section>

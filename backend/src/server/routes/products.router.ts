@@ -22,6 +22,10 @@ import {
   type BulkPriceMode,
 } from "../../services/products.service.js";
 import { adjustProductStock } from "../../services/stock.service.js";
+import {
+  createChannelListing,
+  listByProduct,
+} from "../../services/channel-listings.service.js";
 import { parseId, sendError } from "../middleware/response.js";
 
 function parseIdsArray(raw: unknown): Array<string | number> {
@@ -248,6 +252,43 @@ productsRouter.put("/:id/stock", async (req, res) => {
     const note = body.note === null || body.note === undefined || body.note === "" ? null : String(body.note);
     const data = await adjustProductStock({ productId: id, newOnHand: onHand, note, actorUserId: req.currentUser.id });
     res.json({ data });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+// ── Kanal eşleştirme (channel_listings) ─────────────────────────────────────
+// İç veri modeli CRUD; dış API yok. marketplace_sync_enabled flag'i UI'ı gizler
+// ama endpoint'ler çalışır (flag yalnız frontend görünürlüğünü kontrol eder).
+
+// GET /products/:id/channels — o ürünün kanal listing'leri
+productsRouter.get("/:id/channels", async (req, res) => {
+  try {
+    const id = parseId(req.params.id);
+    const data = await listByProduct(id);
+    res.json({ data });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+// POST /products/:id/channels — yeni listing
+// body: { channel: 'trendyol'|'hepsiburada', externalId, channelPrice?, isListed? }
+productsRouter.post("/:id/channels", async (req, res) => {
+  try {
+    const id = parseId(req.params.id);
+    const body = req.body as Record<string, unknown>;
+    const data = await createChannelListing(id, {
+      channel: String(body.channel ?? ""),
+      externalId: String(body.externalId ?? ""),
+      channelPrice:
+        body.channelPrice === null || body.channelPrice === undefined || body.channelPrice === ""
+          ? null
+          : (body.channelPrice as string | number),
+      isListed: body.isListed === undefined ? undefined : !!body.isListed,
+      actorUserId: req.currentUser.id,
+    });
+    res.status(201).json({ data });
   } catch (err) {
     sendError(res, err);
   }

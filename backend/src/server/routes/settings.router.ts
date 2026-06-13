@@ -54,6 +54,13 @@ settingsRouter.patch("/", async (req, res) => {
       patch.stockTrackingEnabled = body.stockTrackingEnabled;
     }
 
+    if ("marketplaceSyncEnabled" in body) {
+      if (typeof body.marketplaceSyncEnabled !== "boolean") {
+        throw new ValidationError("marketplaceSyncEnabled boolean olmalı.");
+      }
+      patch.marketplaceSyncEnabled = body.marketplaceSyncEnabled;
+    }
+
     const data = await updateSettings(patch, req.currentUser.id);
     res.json({ data });
   } catch (err) {

@@ -5641,6 +5641,68 @@ input, select { font-family: inherit; }
 .prod-stock-msg.is-ok { color: var(--success, #2e7d32); }
 .prod-stock-msg.is-err { color: var(--danger, #c0392b); }
 
+/* Kanal eşleştirme bölümü (ürün modalı) */
+.prod-channels-section {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.prod-channels-head {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink-2);
+  margin-bottom: 4px;
+}
+.prod-channels-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 6px 0;
+}
+.prod-ch-cell {
+  padding: 5px 6px 5px 0;
+  vertical-align: middle;
+  font-size: 13px;
+}
+.prod-ch-channel { font-weight: 600; white-space: nowrap; }
+.prod-channels-empty {
+  padding: 8px 0;
+  color: var(--ink-4);
+  font-size: 13px;
+}
+.prod-ch-price { width: 90px; }
+.prod-ch-actions { text-align: right; width: 32px; }
+.prod-ch-listed {
+  padding: 3px 10px;
+  border-radius: 100px;
+  border: 1px solid var(--line-2);
+  background: var(--bg);
+  color: var(--ink-3);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.prod-ch-listed.is-on {
+  background: var(--accent-2);
+  color: var(--accent-ink, var(--ink));
+  border-color: var(--accent-2);
+}
+.prod-channels-add {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+.prod-ch-select { width: auto; }
+.prod-ch-listed-check {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
 /* Selection checkbox + column */
 .prod-checkbox {
   width: 16px;

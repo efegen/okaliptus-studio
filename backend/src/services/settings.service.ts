@@ -10,6 +10,7 @@ export type StudioSettings = {
   defaultCurrency: string;
   lessonColorSaturation: number;
   stockTrackingEnabled: boolean;
+  marketplaceSyncEnabled: boolean;
 };
 
 function rowToSettings(row: Record<string, unknown>): StudioSettings {
@@ -21,6 +22,7 @@ function rowToSettings(row: Record<string, unknown>): StudioSettings {
     defaultCurrency: row.default_currency as string,
     lessonColorSaturation: Number(row.lesson_color_saturation ?? 1),
     stockTrackingEnabled: row.stock_tracking_enabled === true,
+    marketplaceSyncEnabled: row.marketplace_sync_enabled === true,
   };
 }
 
@@ -31,7 +33,8 @@ export async function getSettings(): Promise<StudioSettings> {
       calendar_start_hour, calendar_end_hour,
       default_currency,
       lesson_color_saturation,
-      stock_tracking_enabled
+      stock_tracking_enabled,
+      marketplace_sync_enabled
     FROM studio_settings WHERE id = 1
   `);
 
@@ -48,6 +51,7 @@ type SettingsPatch = {
   calendarEndHour?: number;
   lessonColorSaturation?: number;
   stockTrackingEnabled?: boolean;
+  marketplaceSyncEnabled?: boolean;
 };
 
 export async function updateSettings(patch: SettingsPatch, actorUserId?: number | string | null): Promise<StudioSettings> {
@@ -119,6 +123,10 @@ export async function updateSettings(patch: SettingsPatch, actorUserId?: number 
   if (patch.stockTrackingEnabled !== undefined) {
     sets.push(`stock_tracking_enabled = $${i++}`);
     values.push(patch.stockTrackingEnabled);
+  }
+  if (patch.marketplaceSyncEnabled !== undefined) {
+    sets.push(`marketplace_sync_enabled = $${i++}`);
+    values.push(patch.marketplaceSyncEnabled);
   }
 
   if (sets.length === 0) {

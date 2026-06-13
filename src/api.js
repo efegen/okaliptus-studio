@@ -637,6 +637,39 @@ export async function setProductStock(productId, onHand, note) {
   return ensureMutationResult(payload, "Stok güncellenemedi.");
 }
 
+// ─── Kanal eşleştirme (channel_listings) ─────────────────────────────────────
+// İç veri modeli; dış API çağrısı yok. marketplaceSyncEnabled ayarı kapalıyken
+// UI bu fonksiyonları hiç çağırmaz.
+
+export async function getProductChannels(productId) {
+  const payload = await apiGet(`/products/${encodeURIComponent(productId)}/channels`);
+  if (!Array.isArray(payload?.data)) throw new Error("Kanal listesi alınamadı.");
+  return payload.data;
+}
+
+export async function createProductChannel(productId, input) {
+  const payload = await apiRequest(`/products/${encodeURIComponent(productId)}/channels`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return ensureMutationResult(payload, "Kanal eşleştirmesi eklenemedi.");
+}
+
+export async function updateChannelListing(listingId, patch) {
+  const payload = await apiRequest(`/channels/${encodeURIComponent(listingId)}`, {
+    method: "PUT",
+    body: JSON.stringify(patch),
+  });
+  return ensureMutationResult(payload, "Kanal eşleştirmesi güncellenemedi.");
+}
+
+export async function deleteChannelListing(listingId) {
+  const payload = await apiRequest(`/channels/${encodeURIComponent(listingId)}`, {
+    method: "DELETE",
+  });
+  return ensureMutationResult(payload, "Kanal eşleştirmesi silinemedi.");
+}
+
 export async function archiveProduct(productId) {
   const payload = await apiRequest(`/products/${encodeURIComponent(productId)}/archive`, {
     method: "POST",

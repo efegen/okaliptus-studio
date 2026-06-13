@@ -396,6 +396,10 @@ export async function deleteProduct(
       `UPDATE product_sale_items SET product_id = NULL WHERE product_id = $1`,
       [productId],
     );
+    // stock_movements FK'si ON DELETE RESTRICT (tarihçe kasıtlı korunur). Ürün
+    // kalıcı silinirken ledger'ı da gitmeli — ürün gidince stok hareketi
+    // anlamsız. product_sale_items snapshot'ı zaten satışı bağımsız korur.
+    await client.query(`DELETE FROM stock_movements WHERE product_id = $1`, [productId]);
     await client.query(`DELETE FROM products WHERE id = $1`, [productId]);
 
     await insertAuditLog(client, {

@@ -17,6 +17,10 @@ import {
   renameProductCategory,
   getSettings,
   setProductStock,
+  getProductChannels,
+  createProductChannel,
+  updateChannelListing,
+  deleteChannelListing,
 } from './api';
 import { queryKeys } from './hooks/queryKeys';
 import { Icon } from './layout';
@@ -361,9 +365,203 @@ function WebcamCaptureModal({ onCapture, onClose }) {
   );
 }
 
+// ─── ChannelsSection (ürün modalı içi) ──────────────────────────────────────
+//
+// İç veri modeli: ürünün Trendyol/Hepsiburada listing eşleştirmeleri. Dış API
+// çağrısı YOK. Yalnız marketplaceSyncEnabled açıkken render edilir.
+
+const CHANNEL_LABELS = { trendyol: 'Trendyol', hepsiburada: 'Hepsiburada' };
+
+function ChannelsSection({ productId, productBarcode }) {
+  const [rows, setRows] = React.useState(null); // null = yükleniyor
+  const [err, setErr] = React.useState(null);
+  const [busyId, setBusyId] = React.useState(null); // güncellenen/silenen listing id
+  const [adding, setAdding] = React.useState(false);
+  const [addForm, setAddForm] = React.useState(() => ({
+    channel: 'trendyol',
+    externalId: productBarcode || '',
+    channelPrice: '',
+    isListed: true,
+  }));
+
+  React.useEffect(() => {
+    let cancelled = false;
+    getProductChannels(productId)
+      .then(data => { if (!cancelled) setRows(data); })
+      .catch(e => { if (!cancelled) { setErr(e.message || 'Kanallar alınamadı.'); setRows([]); } });
+    return () => { cancelled = true; };
+  }, [productId]);
+
+  async function handleAdd() {
+    const externalId = addForm.externalId.trim();
+    if (!externalId) { setErr('Kanal kodu (external_id) zorunlu.'); return; }
+    setAdding(true);
+    setErr(null);
+    try {
+      const created = await createProductChannel(productId, {
+        channel: addForm.channel,
+        externalId,
+        channelPrice: addForm.channelPrice.trim() === '' ? null : Number(addForm.channelPrice),
+        isListed: addForm.isListed,
+      });
+      setRows(list => [...(list || []), created]);
+      setAddForm({ channel: 'trendyol', externalId: '', channelPrice: '', isListed: true });
+    } catch (e) {
+      setErr(e.message || 'Eklenemedi.');
+    } finally {
+      setAdding(false);
+    }
+  }
+
+  async function handleToggleListed(row) {
+    setBusyId(row.id);
+    setErr(null);
+    try {
+      const updated = await updateChannelListing(row.id, { isListed: !row.is_listed });
+      setRows(list => list.map(r => (r.id === row.id ? updated : r)));
+    } catch (e) {
+      setErr(e.message || 'Güncellenemedi.');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handlePriceBlur(row, raw) {
+    const next = raw.trim() === '' ? null : Number(raw);
+    const current = row.channel_price === null ? null : Number(row.channel_price);
+    if (next === current) return;
+    if (next !== null && !Number.isFinite(next)) { setErr('Fiyat geçersiz.'); return; }
+    setBusyId(row.id);
+    setErr(null);
+    try {
+      const updated = await updateChannelListing(row.id, { channelPrice: next });
+      setRows(list => list.map(r => (r.id === row.id ? updated : r)));
+    } catch (e) {
+      setErr(e.message || 'Fiyat güncellenemedi.');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleRemove(row) {
+    setBusyId(row.id);
+    setErr(null);
+    try {
+      await deleteChannelListing(row.id);
+      setRows(list => list.filter(r => r.id !== row.id));
+    } catch (e) {
+      setErr(e.message || 'Silinemedi.');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  return (
+    <div className="prod-channels-section">
+      <div className="prod-channels-head">Kanal eşleştirme</div>
+      <p className="prod-modal-hint">
+        Hangi pazaryeri listing'i bu ürüne karşılık geliyor. Kod = gelen siparişi
+        ürüne bağlayan anahtar (Trendyol: barkod, Hepsiburada: merchantSku).
+      </p>
+
+      {rows === null ? (
+        <div className="prod-modal-hint">Yükleniyor…</div>
+      ) : (
+        <table className="prod-channels-table">
+          <tbody>
+            {rows.length === 0 && (
+              <tr><td className="prod-channels-empty" colSpan={5}>Henüz kanal eşleştirmesi yok.</td></tr>
+            )}
+            {rows.map(row => (
+              <tr key={row.id}>
+                <td className="prod-ch-cell prod-ch-channel">{CHANNEL_LABELS[row.channel] || row.channel}</td>
+                <td className="prod-ch-cell prod-td-mono">{row.external_id}</td>
+                <td className="prod-ch-cell">
+                  <input
+                    className="prod-modal-input prod-ch-price"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    defaultValue={row.channel_price ?? ''}
+                    placeholder="—"
+                    disabled={busyId === row.id}
+                    onBlur={e => handlePriceBlur(row, e.target.value)}
+                  />
+                </td>
+                <td className="prod-ch-cell">
+                  <button
+                    type="button"
+                    className={'prod-ch-listed' + (row.is_listed ? ' is-on' : '')}
+                    onClick={() => handleToggleListed(row)}
+                    disabled={busyId === row.id}
+                    title="Listeli mi"
+                  >
+                    {row.is_listed ? 'Listeli' : 'Pasif'}
+                  </button>
+                </td>
+                <td className="prod-ch-cell prod-ch-actions">
+                  <button
+                    type="button"
+                    className="iconbtn"
+                    aria-label="Kanal eşleştirmesini sil"
+                    title="Sil"
+                    onClick={() => handleRemove(row)}
+                    disabled={busyId === row.id}
+                  >
+                    <Icon.Trash width="13" height="13" />
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      <div className="prod-channels-add">
+        <select
+          className="prod-modal-input prod-ch-select"
+          value={addForm.channel}
+          onChange={e => setAddForm(f => ({ ...f, channel: e.target.value }))}
+        >
+          <option value="trendyol">Trendyol</option>
+          <option value="hepsiburada">Hepsiburada</option>
+        </select>
+        <input
+          className="prod-modal-input"
+          value={addForm.externalId}
+          onChange={e => setAddForm(f => ({ ...f, externalId: e.target.value }))}
+          placeholder="Kanal kodu (barkod / merchantSku)"
+        />
+        <input
+          className="prod-modal-input prod-ch-price"
+          type="number"
+          step="0.01"
+          min="0"
+          value={addForm.channelPrice}
+          onChange={e => setAddForm(f => ({ ...f, channelPrice: e.target.value }))}
+          placeholder="Fiyat"
+        />
+        <label className="prod-ch-listed-check">
+          <input
+            type="checkbox"
+            checked={addForm.isListed}
+            onChange={e => setAddForm(f => ({ ...f, isListed: e.target.checked }))}
+          />
+          Listeli
+        </label>
+        <button type="button" className="btn btn-ghost btn-xs" onClick={handleAdd} disabled={adding}>
+          {adding ? 'Ekleniyor…' : 'Ekle'}
+        </button>
+      </div>
+
+      {err && <span className="prod-stock-msg is-err">{err}</span>}
+    </div>
+  );
+}
+
 // ─── ProductModal ───────────────────────────────────────────────────────────
 
-function ProductModal({ initial, knownCategories, stockEnabled, onClose, onSaved, onStockSaved }) {
+function ProductModal({ initial, knownCategories, stockEnabled, marketplaceEnabled, onClose, onSaved, onStockSaved }) {
   const isNew = !initial;
   const [form, setForm] = React.useState(() => ({
     name: initial?.name ?? '',
@@ -762,6 +960,10 @@ function ProductModal({ initial, knownCategories, stockEnabled, onClose, onSaved
               </div>
             </div>
           </div>
+
+          {marketplaceEnabled && !isNew && (
+            <ChannelsSection productId={initial.id} productBarcode={initial.barcode} />
+          )}
 
           {err && <div className="stg-feedback stg-feedback-err" style={{ marginTop: 12 }}>{err}</div>}
 
@@ -1590,6 +1792,7 @@ export function ProductsPage() {
     staleTime: 5 * 60 * 1000,
   });
   const stockEnabled = settingsQuery.data?.stockTrackingEnabled === true;
+  const marketplaceEnabled = settingsQuery.data?.marketplaceSyncEnabled === true;
 
   const allProducts = productsQuery.data ?? [];
   const categories = categoriesQuery.data ?? [];
@@ -1933,6 +2136,7 @@ export function ProductsPage() {
           initial={modal === 'new' ? null : modal}
           knownCategories={mergedCategories}
           stockEnabled={stockEnabled}
+          marketplaceEnabled={marketplaceEnabled}
           onStockSaved={() => queryClient.invalidateQueries({ queryKey: ['products'] })}
           onClose={() => setModal(null)}
           onSaved={(saved) => {
