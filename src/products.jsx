@@ -21,6 +21,9 @@ import {
   createProductChannel,
   updateChannelListing,
   deleteChannelListing,
+  getBundle,
+  setBundle,
+  clearBundle,
 } from './api';
 import { queryKeys } from './hooks/queryKeys';
 import { Icon } from './layout';
@@ -561,6 +564,197 @@ function ChannelsSection({ productId, productBarcode }) {
 
 // ─── ProductModal ───────────────────────────────────────────────────────────
 
+// ─── BundleSection (ürün modalı içi) — Faz 1.5 ──────────────────────────────
+//
+// Bir ürünü "paket" (set) yapar ve bileşenlerini yönetir. Paketin kendi stoğu
+// yoktur; satışta (POS + Trendyol) bileşenler düşer, stok bileşenlerden türetilir
+// (min(floor(bileşen_stok/adet))). İç içe paket yok (bileşen seçici paketleri eler).
+// Yalnız stok takibi açık + mevcut ürün düzenlenirken render edilir.
+
+function BundleSection({ productId, initialIsBundle, onBundleChange }) {
+  const [loading, setLoading] = React.useState(true);
+  const [isBundle, setIsBundle] = React.useState(!!initialIsBundle);
+  const [persisted, setPersisted] = React.useState(!!initialIsBundle);
+  const [components, setComponents] = React.useState([]); // {componentProductId,name,barcode,quantity,componentOnHand}
+  const [savedEffective, setSavedEffective] = React.useState(null);
+  const [saving, setSaving] = React.useState(false);
+  const [msg, setMsg] = React.useState(null);
+  const [picking, setPicking] = React.useState(false);
+  const [candidates, setCandidates] = React.useState(null); // null = yüklenmedi
+  const [pickQ, setPickQ] = React.useState('');
+
+  React.useEffect(() => {
+    let cancelled = false;
+    getBundle(productId)
+      .then(view => {
+        if (cancelled) return;
+        setIsBundle(view.isBundle);
+        setPersisted(view.isBundle);
+        setComponents(view.components.map(c => ({
+          componentProductId: c.componentProductId, name: c.name, barcode: c.barcode,
+          quantity: c.quantity, componentOnHand: c.componentOnHand,
+        })));
+        setSavedEffective(view.isBundle ? view.effectiveStock : null);
+        setLoading(false);
+      })
+      .catch(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [productId]);
+
+  async function ensureCandidates() {
+    if (candidates !== null) return;
+    try {
+      const all = await getProducts({});
+      setCandidates(all.filter(p => !p.is_bundle && String(p.id) !== String(productId)));
+    } catch { setCandidates([]); }
+  }
+
+  function toggle(v) { setIsBundle(v); setMsg(null); onBundleChange?.(v); }
+  function addComponent(p) {
+    setComponents(cs => cs.some(c => String(c.componentProductId) === String(p.id))
+      ? cs
+      : [...cs, { componentProductId: p.id, name: p.name, barcode: p.barcode, quantity: 1, componentOnHand: p.on_hand }]);
+    setPicking(false); setPickQ(''); setMsg(null);
+  }
+  function removeComponent(id) {
+    setComponents(cs => cs.filter(c => String(c.componentProductId) !== String(id))); setMsg(null);
+  }
+  function setQty(id, q) {
+    setComponents(cs => cs.map(c => String(c.componentProductId) === String(id) ? { ...c, quantity: q } : c)); setMsg(null);
+  }
+
+  // Canlı türev stok önizlemesi: min(floor(bileşen_stok/adet)).
+  const livePreview = React.useMemo(() => {
+    if (!isBundle || components.length === 0) return null;
+    let min = Infinity;
+    for (const c of components) {
+      const q = parseInt(c.quantity, 10);
+      if (!Number.isInteger(q) || q <= 0) return null;
+      min = Math.min(min, Math.floor(Number(c.componentOnHand ?? 0) / q));
+    }
+    return Number.isFinite(min) ? min : null;
+  }, [isBundle, components]);
+
+  async function handleSave() {
+    setSaving(true); setMsg(null);
+    try {
+      if (isBundle) {
+        for (const c of components) {
+          const q = parseInt(c.quantity, 10);
+          if (!Number.isInteger(q) || q <= 0) throw new Error('Bileşen adedi pozitif tam sayı olmalı.');
+        }
+        const view = await setBundle(productId, components.map(c => ({
+          productId: c.componentProductId, quantity: parseInt(c.quantity, 10),
+        })));
+        setComponents(view.components.map(c => ({
+          componentProductId: c.componentProductId, name: c.name, barcode: c.barcode,
+          quantity: c.quantity, componentOnHand: c.componentOnHand,
+        })));
+        setSavedEffective(view.effectiveStock);
+        setPersisted(true);
+        onBundleChange?.(true);
+        setMsg({ ok: true, msg: 'Paket kaydedildi.' });
+      } else {
+        await clearBundle(productId);
+        setComponents([]); setSavedEffective(null); setPersisted(false);
+        onBundleChange?.(false);
+        setMsg({ ok: true, msg: 'Paket çözüldü (basit ürün).' });
+      }
+    } catch (e) {
+      setMsg({ ok: false, msg: e.message || 'Kaydedilemedi.' });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loading) return null;
+
+  const nq = pickQ.trim().toLocaleLowerCase('tr-TR');
+  const filteredCandidates = (candidates || []).filter(p =>
+    !components.some(c => String(c.componentProductId) === String(p.id)) &&
+    (!nq || (p.name || '').toLocaleLowerCase('tr-TR').includes(nq) || (p.barcode || '').toLocaleLowerCase('tr-TR').includes(nq)));
+  const showAction = isBundle || persisted;
+
+  return (
+    <div className="prod-channels-section prod-bundle-section">
+      <div className="prod-bundle-head">
+        <label className="prod-bundle-toggle">
+          <input type="checkbox" checked={isBundle} onChange={e => toggle(e.target.checked)} />
+          <span>Bu bir paket (set) ürünü</span>
+        </label>
+        {isBundle && (
+          <span className="prod-bundle-stock">
+            Türev stok: <strong>{livePreview ?? savedEffective ?? 0}</strong>
+            {components.length === 0 && <span className="map-chip is-warn" style={{ marginLeft: 8 }}>kurulum bekliyor</span>}
+          </span>
+        )}
+      </div>
+
+      {isBundle && (
+        <>
+          <p className="prod-modal-hint" style={{ marginTop: 2 }}>
+            Paketin kendi stoğu yoktur; satışta (elden + Trendyol) bileşenler düşer.
+          </p>
+          <div className="prod-bundle-components">
+            {components.length === 0 && <div className="prod-bundle-empty">Henüz bileşen yok.</div>}
+            {components.map(c => (
+              <div key={c.componentProductId} className="prod-bundle-row">
+                <span className="prod-bundle-cname">
+                  {c.name}
+                  <span className="prod-bundle-csub">{c.barcode || '—'} · stok {c.componentOnHand ?? '—'}</span>
+                </span>
+                <input
+                  className="prod-modal-input prod-bundle-qty"
+                  type="number" min="1" step="1" value={c.quantity}
+                  onChange={e => setQty(c.componentProductId, e.target.value)}
+                  aria-label="Adet"
+                />
+                <button type="button" className="iconbtn" title="Bileşeni çıkar" onClick={() => removeComponent(c.componentProductId)}>
+                  <Icon.Trash width="13" height="13" />
+                </button>
+              </div>
+            ))}
+          </div>
+
+          {picking ? (
+            <div className="prod-bundle-picker" onClick={e => e.stopPropagation()}>
+              <input
+                autoFocus className="prod-modal-input"
+                placeholder="Bileşen ara (ad/barkod)…"
+                value={pickQ} onChange={e => setPickQ(e.target.value)} onFocus={ensureCandidates}
+              />
+              <div className="prod-bundle-picklist">
+                {candidates === null && <div className="map-muted">Yükleniyor…</div>}
+                {candidates !== null && filteredCandidates.length === 0 && <div className="map-muted">Uygun ürün yok.</div>}
+                {filteredCandidates.slice(0, 30).map(p => (
+                  <button key={p.id} type="button" className="prod-bundle-pickitem" onClick={() => addComponent(p)}>
+                    <span>{p.name}</span>
+                    <span className="prod-bundle-csub">{p.barcode || '—'} · stok {p.on_hand ?? '—'}</span>
+                  </button>
+                ))}
+              </div>
+              <button type="button" className="btn btn-ghost btn-xs" onClick={() => { setPicking(false); setPickQ(''); }}>Kapat</button>
+            </div>
+          ) : (
+            <button type="button" className="btn btn-ghost btn-xs" onClick={() => { setPicking(true); ensureCandidates(); }}>
+              + Bileşen ekle
+            </button>
+          )}
+        </>
+      )}
+
+      {showAction && (
+        <div className="prod-bundle-actions">
+          <button type="button" className="btn btn-primary btn-xs" onClick={handleSave} disabled={saving}>
+            {saving ? 'Kaydediliyor…' : (isBundle ? 'Paketi kaydet' : 'Paketi çöz')}
+          </button>
+          {msg && <span className={'prod-stock-msg' + (msg.ok ? ' is-ok' : ' is-err')}>{msg.msg}</span>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ProductModal({ initial, knownCategories, stockEnabled, marketplaceEnabled, onClose, onSaved, onStockSaved }) {
   const isNew = !initial;
   const [form, setForm] = React.useState(() => ({
@@ -579,10 +773,13 @@ function ProductModal({ initial, knownCategories, stockEnabled, marketplaceEnabl
   const [err, setErr] = React.useState(null);
   const [confirmDelete, setConfirmDelete] = React.useState(false);
 
+  // Paket (bundle) durumu — BundleSection canlı günceller; paket iken elle stok
+  // düzenleme gizlenir (paket stoğu bileşenlerden türetilir, setStock backend'de yasak).
+  const [bundleIsBundle, setBundleIsBundle] = React.useState(!!initial?.is_bundle);
+
   // Stok düzenleme — ana ürün formundan ayrı bir endpoint (PUT /:id/stock).
-  // Yalnız stok takibi açık + mevcut ürün düzenlenirken görünür. Hedef on_hand'i
-  // mutlak ayarlar; backend delta'yı hesaplar.
-  const showStock = stockEnabled && !isNew;
+  // Yalnız stok takibi açık + mevcut ürün düzenlenirken + paket DEĞİLken görünür.
+  const showStock = stockEnabled && !isNew && !bundleIsBundle;
   const [stockValue, setStockValue] = React.useState(
     initial && initial.on_hand != null ? String(initial.on_hand) : '',
   );
@@ -963,6 +1160,14 @@ function ProductModal({ initial, knownCategories, stockEnabled, marketplaceEnabl
 
           {marketplaceEnabled && !isNew && (
             <ChannelsSection productId={initial.id} productBarcode={initial.barcode} />
+          )}
+
+          {stockEnabled && !isNew && (
+            <BundleSection
+              productId={initial.id}
+              initialIsBundle={!!initial.is_bundle}
+              onBundleChange={setBundleIsBundle}
+            />
           )}
 
           {err && <div className="stg-feedback stg-feedback-err" style={{ marginTop: 12 }}>{err}</div>}
@@ -1715,6 +1920,7 @@ function SingleRow({ entry, isSelected, onToggleSelect, onOpen, stockEnabled }) 
           <div className="prod-name-block">
             <span className="prod-name">
               {product.name}
+              {product.is_bundle && <span className="prod-bundle-tag" title="Paket (set) ürünü">paket</span>}
               {stockEnabled && <StockBadge onHand={product.on_hand} />}
             </span>
             {(product.variant_label || product.notes) && (

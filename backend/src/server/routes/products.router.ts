@@ -26,6 +26,12 @@ import {
   createChannelListing,
   listByProduct,
 } from "../../services/channel-listings.service.js";
+import {
+  clearBundle,
+  getBundle,
+  setBundle,
+  type BundleComponentInput,
+} from "../../services/bundle-components.service.js";
 import { parseId, sendError } from "../middleware/response.js";
 
 function parseIdsArray(raw: unknown): Array<string | number> {
@@ -289,6 +295,48 @@ productsRouter.post("/:id/channels", async (req, res) => {
       actorUserId: req.currentUser.id,
     });
     res.status(201).json({ data });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+// ── Bundle (paket) bileşenleri (Faz 1.5) ────────────────────────────────────
+
+// GET /products/:id/bundle — paket bileşenleri + türev efektif stok
+productsRouter.get("/:id/bundle", async (req, res) => {
+  try {
+    const id = parseId(req.params.id);
+    const data = await getBundle(id);
+    res.json({ data });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+// PUT /products/:id/bundle — ürünü paket yap + bileşenleri (tam liste) ayarla.
+// body: { components: [{ productId, quantity }] }  (boş liste → kurulum bekliyor)
+productsRouter.put("/:id/bundle", async (req, res) => {
+  try {
+    const id = parseId(req.params.id);
+    const body = req.body as Record<string, unknown>;
+    const rawComponents = Array.isArray(body.components) ? body.components : [];
+    const components: BundleComponentInput[] = rawComponents.map(c => {
+      const obj = (c ?? {}) as Record<string, unknown>;
+      return { productId: String(obj.productId ?? ""), quantity: Number(obj.quantity) };
+    });
+    const data = await setBundle(id, components, req.currentUser.id);
+    res.json({ data });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+// DELETE /products/:id/bundle — paketi çöz (is_bundle=false + bileşenleri sil)
+productsRouter.delete("/:id/bundle", async (req, res) => {
+  try {
+    const id = parseId(req.params.id);
+    const data = await clearBundle(id, req.currentUser.id);
+    res.json({ data });
   } catch (err) {
     sendError(res, err);
   }

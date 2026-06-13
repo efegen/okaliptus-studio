@@ -35,12 +35,13 @@ export type ProductRow = {
   variant_label: string | null;
   category: string | null;
   archived_at: string | null;
+  is_bundle: boolean;
   created_at: string;
   updated_at: string;
-  // v_product_stock'tan LEFT JOIN ile gelir (migration 0241). Stok takibi
-  // flag'inden bağımsız her zaman döner; UI flag'e göre gösterir/gizler.
-  // Hareketi olmayan ürün 0 döner. Yetersiz stok satışı engellenmediği için
-  // eksi olabilir.
+  // v_product_effective_stock'tan LEFT JOIN ile gelir. Basit ürün/bileşen → ham
+  // hareket toplamı (v_product_stock); paket (is_bundle) → türev min(floor(bileşen/qty)).
+  // Stok takibi flag'inden bağımsız her zaman döner; UI flag'e göre gösterir/gizler.
+  // Yetersiz stok satışı engellenmediği için eksi olabilir.
   on_hand?: number;
 };
 
@@ -119,7 +120,7 @@ export async function listProducts(
   const result = await pool.query<ProductRow>(
     `SELECT products.*, COALESCE(ps.on_hand, 0)::int AS on_hand
        FROM products
-       LEFT JOIN v_product_stock ps ON ps.product_id = products.id
+       LEFT JOIN v_product_effective_stock ps ON ps.product_id = products.id
        ${where}
      ORDER BY parent_product_code IS NULL, parent_product_code ASC, name ASC, id ASC`,
     values,
@@ -144,7 +145,7 @@ export async function getProductById(productId: EntityId): Promise<ProductRow> {
   const result = await pool.query<ProductRow>(
     `SELECT products.*, COALESCE(ps.on_hand, 0)::int AS on_hand
        FROM products
-       LEFT JOIN v_product_stock ps ON ps.product_id = products.id
+       LEFT JOIN v_product_effective_stock ps ON ps.product_id = products.id
       WHERE products.id = $1`,
     [productId],
   );
@@ -389,6 +390,18 @@ export async function deleteProduct(
     if (before.archived_at === null) {
       throw new DeleteConflictError(
         "Yalnızca arşivlenmiş ürünler silinebilir. Önce ürünü arşivleyin.",
+      );
+    }
+
+    // Bu ürün bir paketin bileşeni mi? Öyleyse silmek paketi sessizce bileşensiz
+    // bırakır (on_hand 0'a düşer) → engelle; önce paketten çıkarılmalı (Faz 1.5).
+    const asComponent = await client.query<{ bundle_product_id: string }>(
+      `SELECT bundle_product_id FROM bundle_components WHERE component_product_id = $1 LIMIT 1`,
+      [productId],
+    );
+    if (asComponent.rows[0]) {
+      throw new DeleteConflictError(
+        "Bu ürün bir paketin bileşeni. Önce ilgili paketten çıkarın, sonra silin.",
       );
     }
 
