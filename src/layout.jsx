@@ -3,7 +3,7 @@
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { initials } from './data';
-import { getStudents } from './api';
+import { getStudents, getSettings } from './api';
 import { queryKeys } from './hooks/queryKeys';
 
 export const Icon = {
@@ -23,6 +23,7 @@ export const Icon = {
   Bell: (p) => (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" {...p}><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10 21a2 2 0 0 0 4 0"/></svg>),
   MessageCircle: (p) => (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" {...p}><path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8z"/></svg>),
   Repeat: (p) => (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" {...p}><path d="M17 1l4 4-4 4M3 11V9a4 4 0 0 1 4-4h14M7 23l-4-4 4-4M21 13v2a4 4 0 0 1-4 4H3"/></svg>),
+  Link: (p) => (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>),
   Tag: (p) => (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" {...p}><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><circle cx="7" cy="7" r="1.2" fill="currentColor" stroke="none"/></svg>),
   Layers: (p) => (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" {...p}><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>),
   Edit: (p) => (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" {...p}><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>),
@@ -43,11 +44,20 @@ export const Icon = {
 };
 
 export function Sidebar({ page, setPage }) {
+  // Eşleştirme sekmesi yalnız pazaryeri senkronu açıkken görünür (dark ship).
+  const settingsQuery = useQuery({
+    queryKey: queryKeys.settings(),
+    queryFn: getSettings,
+    staleTime: 5 * 60 * 1000,
+  });
+  const marketplaceEnabled = settingsQuery.data?.marketplaceSyncEnabled === true;
+
   const topItems = [
     { id: "home",     label: "Ana Sayfa",            icon: Icon.Home },
     { id: "students", label: "Öğrenciler",           icon: Icon.Users },
     { id: "catalog",  label: "Dersler ve Eğitmenler", icon: Icon.Layers },
     { id: "products", label: "Ürünler",                icon: Icon.Tag },
+    ...(marketplaceEnabled ? [{ id: "mapping", label: "Eşleştirme", icon: Icon.Link }] : []),
     { id: "movements",label: "Hareketler",             icon: Icon.Repeat },
   ];
   return (
@@ -88,6 +98,7 @@ export const PAGE_LABELS = {
   students: "Öğrenciler",
   catalog: "Dersler ve Eğitmenler",
   products: "Ürünler",
+  mapping: "Eşleştirme",
   movements: "Hareketler",
   settings: "Ayarlar",
 };

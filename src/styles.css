@@ -5735,6 +5735,82 @@ input, select { font-family: inherit; }
 .ty-match.is-ok { color: var(--success, #2e7d32); font-weight: 600; }
 .ty-match.is-no { color: var(--danger, #c0392b); font-weight: 600; }
 
+/* ─── Ürün Eşleştirme kokpiti ─────────────────────────────────────────────── */
+.map-head-actions { display: flex; align-items: center; gap: 12px; }
+.map-synced { font-size: 12px; color: var(--ink-4); white-space: nowrap; }
+.map-summary {
+  display: flex; gap: 18px; flex-wrap: wrap;
+  padding: 10px 14px; margin-bottom: 14px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg);
+  font-size: 13px; color: var(--ink-2);
+}
+.map-summary .is-warn { color: var(--danger, #c0392b); }
+.map-summary strong { font-size: 15px; color: var(--ink); }
+
+.map-tabs { display: flex; gap: 6px; margin-bottom: 12px; border-bottom: 1px solid var(--line); }
+.map-tab {
+  background: none; border: none; padding: 8px 14px; cursor: pointer;
+  font-size: 13px; font-weight: 600; color: var(--ink-3);
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.map-tab.is-active { color: var(--accent); border-bottom-color: var(--accent); }
+
+.map-toolbar { margin-bottom: 12px; }
+.map-search { display: flex; align-items: center; gap: 8px; max-width: 360px;
+  padding: 7px 12px; border: 1px solid var(--line-2); border-radius: var(--radius-sm); color: var(--ink-3); }
+.map-search input { border: none; outline: none; background: none; flex: 1; font-size: 13px; color: var(--ink); }
+
+.map-muted { color: var(--ink-4); font-size: 13px; }
+.map-sub { font-size: 12px; color: var(--ink-4); }
+.map-prodname { font-weight: 600; }
+
+/* Orphan kartları */
+.map-orphan-list { display: flex; flex-direction: column; gap: 8px; }
+.map-orphan {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 12px; background: var(--surface);
+  border: 1px solid var(--line); border-radius: var(--radius-lg);
+}
+.map-orphan-img {
+  flex: 0 0 44px; width: 44px; height: 44px; border-radius: var(--radius-sm);
+  background: var(--bg-2); display: grid; place-items: center; overflow: hidden; color: var(--ink-4);
+}
+.map-orphan-img img { width: 100%; height: 100%; object-fit: cover; }
+.map-orphan-body { flex: 1; min-width: 0; }
+.map-orphan-title { font-weight: 600; font-size: 14px; }
+.map-orphan-meta { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; font-size: 12px; color: var(--ink-3); margin-top: 2px; }
+.map-orphan-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
+
+.map-chip { padding: 1px 7px; border-radius: 100px; background: var(--bg-2); color: var(--ink-3); font-weight: 600; }
+.map-chip.is-warn { background: var(--danger-bg, #fdecec); color: var(--danger, #c0392b); }
+.map-link { color: var(--accent); text-decoration: none; }
+.map-suggest { border-color: var(--accent-2) !important; color: var(--accent) !important; }
+
+/* Bağla açılır kutusu */
+.map-linkpicker {
+  display: flex; flex-direction: column; gap: 6px; width: 260px;
+  padding: 8px; background: var(--surface); border: 1px solid var(--line-2);
+  border-radius: var(--radius-sm); box-shadow: var(--shadow-md, 0 6px 24px rgba(0,0,0,0.12));
+}
+.map-linkpicker-list { display: flex; flex-direction: column; max-height: 220px; overflow-y: auto; }
+.map-linkpicker-item {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
+  padding: 6px 8px; background: none; border: none; border-radius: var(--radius-sm);
+  cursor: pointer; text-align: left;
+}
+.map-linkpicker-item:hover { background: var(--bg-2); }
+.map-lp-name { font-size: 13px; font-weight: 600; color: var(--ink); }
+.map-lp-sub { font-size: 11px; color: var(--ink-4); }
+
+/* İç ürün tablosu */
+.map-internal-table td.prod-td { padding: 10px 12px; vertical-align: middle; }
+.map-cell { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.map-badge { padding: 1px 7px; border-radius: 100px; font-size: 11px; font-weight: 600; }
+.map-badge.is-on { background: var(--accent-2); color: var(--accent-ink, var(--ink)); }
+.map-badge.is-off { background: var(--bg-2); color: var(--ink-4); }
+.map-hb-add { display: flex; align-items: center; gap: 6px; }
+.map-hb-price { width: 80px; }
+
 /* Selection checkbox + column */
 .prod-checkbox {
   width: 16px;

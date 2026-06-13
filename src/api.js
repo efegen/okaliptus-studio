@@ -684,6 +684,33 @@ export async function previewTrendyolOrders(params = {}) {
   return payload.data;
 }
 
+// ─── Ürün eşleştirme kokpiti (iç katalog ↔ Trendyol ↔ Hepsiburada) ───────────
+
+// Trendyol onaylı ürünlerini çekip yerel snapshot'a yazar (read-only). → { synced, pages, pruned }
+export async function syncTrendyolProducts() {
+  const payload = await apiRequest("/trendyol/products/sync", { method: "POST" });
+  return ensureMutationResult(payload, "Trendyol ürünleri senkronlanamadı.");
+}
+
+// Kokpit verisi: iç ürünler + TY/HB eşlemeleri + eşleşmeyen TY ürünleri.
+export async function getMappingOverview() {
+  const payload = await apiGet("/mapping");
+  if (typeof payload?.data !== "object" || payload.data === null || Array.isArray(payload.data)) {
+    throw new Error("Eşleştirme verisi alınamadı.");
+  }
+  return payload.data;
+}
+
+// Bir orphan TY ürününü iç kataloga benimse: mode 'link' (mevcut ürüne bağla) veya
+// 'create' (yeni iç ürün oluştur + bağla). → { productId, listingId, created }
+export async function adoptChannelProduct({ channelProductId, mode, productId }) {
+  const payload = await apiRequest("/mapping/adopt", {
+    method: "POST",
+    body: JSON.stringify({ channelProductId, mode, productId: productId ?? null }),
+  });
+  return ensureMutationResult(payload, "Eşleştirme yapılamadı.");
+}
+
 export async function archiveProduct(productId) {
   const payload = await apiRequest(`/products/${encodeURIComponent(productId)}/archive`, {
     method: "POST",

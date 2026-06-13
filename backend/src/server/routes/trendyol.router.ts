@@ -9,9 +9,21 @@
 import { Router } from "express";
 
 import { previewTrendyolOrders } from "../../services/trendyol/orders.service.js";
+import { syncTrendyolProducts } from "../../services/trendyol/channel-sync.service.js";
 import { sendError } from "../middleware/response.js";
 
 export const trendyolRouter = Router();
+
+// POST /trendyol/products/sync — Trendyol onaylı ürünlerini (read-only) çekip
+// channel_products snapshot'ına yazar. Manuel; poller yok. → { synced, pages, pruned }
+trendyolRouter.post("/products/sync", async (_req, res) => {
+  try {
+    const data = await syncTrendyolProducts();
+    res.json({ data });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
 
 // POST /trendyol/orders/preview
 // body (hepsi opsiyonel): { status?, startDate?, endDate?, page?, size? }

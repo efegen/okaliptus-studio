@@ -11,6 +11,7 @@ import { StudentProfilePage } from './student-profile';
 import { SettingsPage } from './settings';
 import { CatalogPage } from './catalog';
 import { ProductsPage } from './products';
+import { MappingPage } from './mapping';
 import { MovementsPage } from './movements';
 import { LoginPage } from './login';
 import { ProductSalePage } from './ProductSalePage';
@@ -194,6 +195,7 @@ function App({ currentUser, onLogout }) {
           )}
           {page === "catalog" && <CatalogPage />}
           {page === "products" && <ProductsPage />}
+          {page === "mapping" && <MappingPage />}
           {page === "movements" && <MovementsPage onOpenStudent={openStudent} />}
           {page === "settings" && <SettingsPage />}
           {page === "product-sale" && (

@@ -16,6 +16,7 @@ import {
 import { productsRouter, serveProductImageHandler } from "./routes/products.router.js";
 import { channelsRouter } from "./routes/channels.router.js";
 import { trendyolRouter } from "./routes/trendyol.router.js";
+import { mappingRouter } from "./routes/mapping.router.js";
 import { kpiRouter } from "./routes/kpi.router.js";
 import { settingsRouter } from "./routes/settings.router.js";
 import { instructorsRouter } from "./routes/instructors.router.js";
@@ -97,6 +98,7 @@ export function createApp() {
   app.use("/products", productsRouter);
   app.use("/channels", channelsRouter);
   app.use("/trendyol", trendyolRouter);
+  app.use("/mapping", mappingRouter);
   app.use("/kpi", kpiRouter);
   app.use("/settings", settingsRouter);
   app.use("/instructors", instructorsRouter);

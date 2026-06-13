@@ -81,7 +81,7 @@ export default defineConfig({
   ],
   server: {
     proxy: {
-      '^/(auth|kpi|lessons|students|payments|packages|product-sales|products|channels|trendyol|settings|instructors|lesson-types|health|audit-logs|movements)': {
+      '^/(auth|kpi|lessons|students|payments|packages|product-sales|products|channels|trendyol|mapping|settings|instructors|lesson-types|health|audit-logs|movements)': {
         target: 'http://127.0.0.1:4000',
         changeOrigin: true,
       },
@@ -89,7 +89,7 @@ export default defineConfig({
   },
   preview: {
     proxy: {
-      '^/(auth|kpi|lessons|students|payments|packages|product-sales|products|channels|trendyol|settings|instructors|lesson-types|health|audit-logs|movements)': {
+      '^/(auth|kpi|lessons|students|payments|packages|product-sales|products|channels|trendyol|mapping|settings|instructors|lesson-types|health|audit-logs|movements)': {
         target: 'http://127.0.0.1:4000',
         changeOrigin: true,
       },

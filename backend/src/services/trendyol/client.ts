@@ -129,3 +129,81 @@ export async function getOrders(params: GetOrdersParams = {}): Promise<TrendyolO
 
   return (await res.json()) as TrendyolOrdersResponse;
 }
+
+// ── Ürün listesi (read-only) ────────────────────────────────────────────────
+//
+// GET {base}/integration/product/sellers/{sellerId}/products/approved
+// Yanıt: { totalElements, totalPages, page, size, content: [ { productMainId,
+//   title, images, variants: [ { barcode, stockCode, stock:{quantity},
+//   price:{salePrice,listPrice}, onSale, archived, productUrl } ] } ] }
+// barkod/stok/fiyat ürün üstünde DEĞİL, variants[] içindedir.
+
+export type TrendyolVariant = {
+  barcode?: string;
+  stockCode?: string;
+  onSale?: boolean;
+  archived?: boolean;
+  productUrl?: string;
+  stock?: { quantity?: number };
+  price?: { salePrice?: number; listPrice?: number; priceSeenByCustomer?: number };
+};
+
+export type TrendyolProduct = {
+  productMainId?: string;
+  title?: string;
+  brand?: string;
+  category?: string;
+  images?: Array<{ url?: string }>;
+  variants?: TrendyolVariant[];
+};
+
+export type TrendyolProductsResponse = {
+  totalElements?: number;
+  totalPages?: number;
+  page?: number;
+  size?: number;
+  content?: TrendyolProduct[];
+};
+
+export type GetApprovedProductsParams = {
+  page?: number;
+  size?: number;
+};
+
+export async function getApprovedProducts(
+  params: GetApprovedProductsParams = {},
+): Promise<TrendyolProductsResponse> {
+  if (!isTrendyolConfigured()) {
+    throw new TrendyolNotConfiguredError();
+  }
+
+  const url = new URL(
+    `${env.trendyolApiBaseUrl}/integration/product/sellers/${env.trendyolSellerId}/products/approved`,
+  );
+  url.searchParams.set("page", String(params.page ?? 0));
+  url.searchParams.set("size", String(params.size ?? 50));
+
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "GET",
+      headers: buildHeaders(),
+      signal: AbortSignal.timeout(ORDERS_TIMEOUT_MS),
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new TrendyolApiError(0, `Trendyol'a bağlanılamadı: ${msg}`);
+  }
+
+  if (!res.ok) {
+    let body = "";
+    try {
+      body = (await res.text()).slice(0, 500);
+    } catch {
+      // yut
+    }
+    throw new TrendyolApiError(res.status, `Trendyol ürünleri alınamadı (HTTP ${res.status}). ${body}`);
+  }
+
+  return (await res.json()) as TrendyolProductsResponse;
+}
