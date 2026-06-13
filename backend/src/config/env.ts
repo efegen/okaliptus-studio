@@ -49,4 +49,13 @@ export const env = {
   vapidPrivateKey: process.env.VAPID_PRIVATE_KEY ?? "",
   vapidSubject: process.env.VAPID_SUBJECT ?? "mailto:froxefe@gmail.com",
   pushTestUsername: (process.env.PUSH_TEST_USERNAME ?? "").trim(),
+
+  // Trendyol Marketplace (yalnız sipariş OKUMA, read-only). Anahtarlar yoksa
+  // özellik kapalı kalır (preview ucu "yapılandırılmamış" hatası döner).
+  // Base URL PROD'a sabit DEĞİL; STAGE'e geçmek için env ile override edilir.
+  // Collection STAGE; biz PROD + read-only kullanıyoruz, demo token hardcode YOK.
+  trendyolApiBaseUrl: (process.env.TRENDYOL_API_BASE_URL ?? "https://apigw.trendyol.com").trim().replace(/\/+$/, ""),
+  trendyolSellerId: (process.env.TRENDYOL_SELLER_ID ?? "").trim(),
+  trendyolApiKey: (process.env.TRENDYOL_API_KEY ?? "").trim(),
+  trendyolApiSecret: (process.env.TRENDYOL_API_SECRET ?? "").trim(),
 } as const;

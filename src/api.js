@@ -670,6 +670,20 @@ export async function deleteChannelListing(listingId) {
   return ensureMutationResult(payload, "Kanal eşleştirmesi silinemedi.");
 }
 
+// ─── Trendyol sipariş önizleme (read-only) ───────────────────────────────────
+// Siparişleri GET ile çekip iç ürünlerle eşleştirilmiş önizleme döndürür. Hiçbir
+// kayıt yazmaz. marketplaceSyncEnabled kapalıyken UI bu çağrıyı göstermez.
+export async function previewTrendyolOrders(params = {}) {
+  const payload = await apiRequest("/trendyol/orders/preview", {
+    method: "POST",
+    body: JSON.stringify(params),
+  });
+  if (typeof payload?.data !== "object" || payload.data === null || Array.isArray(payload.data)) {
+    throw new Error("Sipariş önizlemesi alınamadı.");
+  }
+  return payload.data;
+}
+
 export async function archiveProduct(productId) {
   const payload = await apiRequest(`/products/${encodeURIComponent(productId)}/archive`, {
     method: "POST",

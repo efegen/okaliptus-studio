@@ -5703,6 +5703,38 @@ input, select { font-family: inherit; }
   white-space: nowrap;
 }
 
+/* Trendyol sipariş önizleme (ayarlar) */
+.ty-preview { width: 100%; }
+.ty-preview-result { margin-top: 12px; }
+.ty-preview-summary {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+  margin-bottom: 8px;
+}
+.ty-preview-warn { color: var(--danger, #c0392b); }
+.ty-preview-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.ty-preview-table th {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-3);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.ty-preview-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+.ty-match.is-ok { color: var(--success, #2e7d32); font-weight: 600; }
+.ty-match.is-no { color: var(--danger, #c0392b); font-weight: 600; }
+
 /* Selection checkbox + column */
 .prod-checkbox {
   width: 16px;

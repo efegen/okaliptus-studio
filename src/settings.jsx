@@ -1,5 +1,5 @@
 import React from 'react';
-import { getSettings, updateSettings, getPushConfig } from './api';
+import { getSettings, updateSettings, getPushConfig, previewTrendyolOrders } from './api';
 import { ActivityPanel } from './settings-activity';
 import { enablePush, disablePush, sendTest, getCurrentSubscription } from './push';
 
@@ -233,6 +233,88 @@ function PushTestCard() {
   );
 }
 
+// Trendyol sipariş önizleme — yalnız pazaryeri senkronu KAYITLI olarak açıkken
+// gösterilir. Manuel buton; otomatik çekme yok. Hiçbir şey yazmaz, yalnız
+// siparişleri çekip iç ürünlerle eşleştirme önizlemesi gösterir.
+function TrendyolOrderPreview() {
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState(null);
+  const [preview, setPreview] = React.useState(null);
+
+  async function handleFetch() {
+    setBusy(true);
+    setError(null);
+    try {
+      const data = await previewTrendyolOrders({});
+      setPreview(data);
+    } catch (err) {
+      setError(err.message || 'Siparişler alınamadı.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const s = preview?.summary;
+
+  return (
+    <div className="ty-preview">
+      <button type="button" className="btn btn-primary btn-sm" onClick={handleFetch} disabled={busy}>
+        {busy ? 'Çekiliyor…' : 'Trendyol siparişlerini çek (önizleme)'}
+      </button>
+      <p className="stg-row-info" style={{ marginTop: 6 }}>
+        Siparişleri salt-okunur çeker ve barkodla iç ürünlere eşleştirir. Hiçbir
+        kayıt oluşturmaz, stok/satış değiştirmez.
+      </p>
+
+      {error && <div className="stg-feedback stg-feedback-err" style={{ marginTop: 8 }}>{error}</div>}
+
+      {s && (
+        <div className="ty-preview-result">
+          <div className="ty-preview-summary">
+            {s.totalOrders} sipariş · {s.matchedLines}/{s.totalLines} satır eşleşti
+            {s.unmatchedLines > 0 && (
+              <span className="ty-preview-warn"> · {s.unmatchedLines} eşleşmeyen</span>
+            )}
+          </div>
+
+          {preview.orders.length === 0 ? (
+            <div className="stg-row-info">Bu kriterlerde sipariş bulunamadı.</div>
+          ) : (
+            <table className="ty-preview-table">
+              <thead>
+                <tr>
+                  <th>Sipariş</th>
+                  <th>Barkod</th>
+                  <th>Adet</th>
+                  <th>Eşleşme</th>
+                </tr>
+              </thead>
+              <tbody>
+                {preview.orders.flatMap(order =>
+                  order.lines.map((line, i) => (
+                    <tr key={`${order.orderNumber}-${i}`}>
+                      <td className="prod-td-mono">{i === 0 ? (order.orderNumber || '—') : ''}</td>
+                      <td className="prod-td-mono">{line.barcode || '—'}</td>
+                      <td>{line.quantity}</td>
+                      <td>
+                        {line.matched ? (
+                          <span className="ty-match is-ok">{line.internalName}</span>
+                        ) : (
+                          <span className="ty-match is-no">Eşleşmedi</span>
+                        )}
+                      </td>
+                    </tr>
+                  )),
+                )}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function SettingsPage() {
   const [tab, setTab] = React.useState('general');
   const [loading, setLoading] = React.useState(true);
@@ -427,6 +509,11 @@ export function SettingsPage() {
               label="Kanal eşleştirmeyi aç/kapat"
             />
           </SettingRow>
+          {saved?.marketplaceSyncEnabled && (
+            <SettingRow label="Trendyol siparişleri" top>
+              <TrendyolOrderPreview />
+            </SettingRow>
+          )}
         </Section>
 
         <Section title="Görünüm">
