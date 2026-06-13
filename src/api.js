@@ -754,6 +754,15 @@ export async function syncTrendyolOrders() {
   return ensureMutationResult(payload, "Siparişler senkronlanamadı.");
 }
 
+// İadeleri (claims) çekip ilgili sayılmış sipariş satırlarını "iade bekliyor"a taşır
+// → inceleme kuyruğunu besler. Trendyol'a yazmaz, stok hareketi yazmaz (Model C:
+// operatör malı sağlamsa elle ekler). marketplaceOrdersEnabled kapalıyken 409.
+// → özet { returnsRegistered, alreadyPending, inactiveClaims, unlinkedClaims, … }
+export async function syncTrendyolClaims() {
+  const payload = await apiRequest("/trendyol/claims/sync", { method: "POST" });
+  return ensureMutationResult(payload, "İadeler senkronlanamadı.");
+}
+
 // Açık inceleme kuyruğu: iade bekleyenler (operatör elle ekler) + eşleşmeyen satışlar.
 export async function getOrderReviewQueue() {
   const payload = await apiGet("/trendyol/orders/review");

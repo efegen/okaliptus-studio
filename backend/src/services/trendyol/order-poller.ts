@@ -17,18 +17,15 @@ import { env } from "../../config/env.js";
 import { getSettings } from "../settings.service.js";
 import { isTrendyolConfigured } from "./client.js";
 import { syncTrendyolOrders } from "./order-sync.service.js";
+import { syncTrendyolClaims } from "./claims-sync.service.js";
 
 let timer: ReturnType<typeof setInterval> | null = null;
 let running = false; // süreç-içi üst üste binme koruması
 
-async function tick(): Promise<void> {
-  if (running) return; // önceki tick hâlâ sürüyor
-  running = true;
+// Sipariş senkronu (stok düşür/geri al + eşleşmeyen/iade kuyrukları). Kendi
+// try'ında: hata sızmaz, claims senkronunu atlamaz.
+async function syncOrdersTick(): Promise<void> {
   try {
-    if (!isTrendyolConfigured()) return;
-    const settings = await getSettings();
-    if (!settings.marketplaceOrdersEnabled) return; // flag kapalı → sessizce atla
-
     const r = await syncTrendyolOrders();
     // Yalnız bir şey değiştiyse logla (sessiz turlar gürültü yapmasın).
     if (r.unitsDecremented || r.unitsRestored || r.returnPending || r.unmatched) {
@@ -38,6 +35,35 @@ async function tick(): Promise<void> {
           `kuyruk: iade=${r.returnPending} eşleşmeyen=${r.unmatched}`,
       );
     }
+  } catch (err) {
+    console.error("[trendyol-poll] sipariş hatası:", err instanceof Error ? err.message : err);
+  }
+}
+
+// İade (claims) senkronu: sayılmış satırları "iade bekliyor"a taşır. Stok YAZMAZ.
+async function syncClaimsTick(): Promise<void> {
+  try {
+    const c = await syncTrendyolClaims();
+    if (c.returnsRegistered) {
+      console.log(`[trendyol-poll] iade: ${c.returnsRegistered} satır 'iade bekliyor' kuyruğuna taşındı.`);
+    }
+  } catch (err) {
+    console.error("[trendyol-poll] iade hatası:", err instanceof Error ? err.message : err);
+  }
+}
+
+async function tick(): Promise<void> {
+  if (running) return; // önceki tick hâlâ sürüyor
+  running = true;
+  try {
+    if (!isTrendyolConfigured()) return;
+    const settings = await getSettings();
+    if (!settings.marketplaceOrdersEnabled) return; // flag kapalı → sessizce atla
+    // Önce siparişler (yeni satırları say), sonra iadeler (sayılmış satırları kuyruğa
+    // taşı) → aynı tick'te yakınsar. İkisi de AYNI advisory lock'u alır (tek-yazar);
+    // seri çalışırlar, yarış olmaz.
+    await syncOrdersTick();
+    await syncClaimsTick();
   } catch (err) {
     // Defansif: hata asla yukarı sızmaz, süreç ayakta kalır.
     console.error("[trendyol-poll] hata:", err instanceof Error ? err.message : err);

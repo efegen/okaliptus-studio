@@ -63,4 +63,9 @@ export const env = {
   // çalışır). Pencere TY'nin ~2 haftalık sipariş aralığı kısıtına uyar (≤14 gün).
   trendyolOrderPollMs: Math.max(0, Number.parseInt(process.env.TRENDYOL_ORDER_POLL_MS ?? "180000", 10) || 0),
   trendyolOrderWindowDays: Math.min(14, Math.max(1, Number.parseInt(process.env.TRENDYOL_ORDER_WINDOW_DAYS ?? "14", 10) || 14)),
+
+  // İade (claims) penceresi: claimDate'e göre süzülür (orders'tan AYRI, 2 hafta
+  // sınırı YOK — PROD'da doğrulandı). İadeler siparişten haftalar sonra açılabildiği
+  // için orders penceresinden geniştir; her tick yeniden görülür (idempotent).
+  trendyolClaimWindowDays: Math.min(180, Math.max(1, Number.parseInt(process.env.TRENDYOL_CLAIM_WINDOW_DAYS ?? "60", 10) || 60)),
 } as const;

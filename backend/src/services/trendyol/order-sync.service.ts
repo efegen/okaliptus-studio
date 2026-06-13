@@ -35,7 +35,9 @@ import { env } from "../../config/env.js";
 // Tüm sipariş senkronlarını (poller + manuel uç + çoklu instance) seri hale getiren
 // global advisory lock. İdempotensi zaten çift-sayımı önler; bu kilit iki çalışmanın
 // aynı anda aynı satıra yazıp yarış oluşturmasını engeller (tek-yazar garantisi).
-const ORDER_SYNC_LOCK = "trendyol_order_sync";
+// claims-sync de AYNI kilidi alır: ikisi de channel_order_lines.state yazar; tek-yazar
+// olmaları order-sync'in bir iade satırını eşzamanlı geri 'counted'a çevirmesini önler.
+export const ORDER_SYNC_LOCK = "trendyol_order_sync";
 
 export class MarketplaceOrdersDisabledError extends AppError {
   constructor(message = "Pazaryeri sipariş senkronu kapalı. Ayarlardan 'Sipariş senkronu'nu açın.") {
@@ -118,7 +120,7 @@ export type ReconcilePlan = {
   };
 };
 
-function lineKey(orderNumber: string, lineId: string): string {
+export function lineKey(orderNumber: string, lineId: string): string {
   return `${orderNumber}::${lineId}`;
 }
 
@@ -163,7 +165,16 @@ export function planOrderReconciliation(
       productId = matched.productId;
       stockProductId = matched.productId;
       if (line.category === "sold") {
-        if (matched.isBundle && !matched.hasComponents) {
+        if (prior?.state === "return_pending") {
+          // Bir iade (claims-sync) bu satırı return_pending'e taşımış. Orders ucu
+          // iadeyi güvenilir bildirmediği için (çoğu zaman hâlâ Delivered görünür)
+          // burada GERİ counted'a ÇEVİRMEYİZ — yoksa satır kuyruktan düşer ve operatör
+          // iadeyi kaçırır (kuyruğun boş kalma sorunu zaten buydu). Stok düşülü kalır
+          // (applied değişmez); operatör malı sağlamsa elle ekleyip resolve eder.
+          // Gerçek iptal gelirse category 'cancelled' olur, aşağıdaki dal stoğu geri ekler.
+          state = "return_pending";
+          appliedDelta = priorDelta;
+        } else if (matched.isBundle && !matched.hasComponents) {
           // Tanımlanmamış paket: bileşeni yok → decrement YOK, kuyruğa düş.
           // appliedDelta = priorDelta (ledger'a dokunma; sayılmışsa bile sapma yaratma).
           state = "setup_pending";
@@ -304,8 +315,8 @@ async function loadMatchMap(client: PoolClient, barcodes: string[]): Promise<Mat
   return map;
 }
 
-// Verilen order_number'lar için mevcut defter satırları.
-async function loadExisting(client: PoolClient, orderNumbers: string[]): Promise<Map<string, ExistingLine>> {
+// Verilen order_number'lar için mevcut defter satırları. (claims-sync de kullanır.)
+export async function loadExisting(client: PoolClient, orderNumbers: string[]): Promise<Map<string, ExistingLine>> {
   const map = new Map<string, ExistingLine>();
   if (orderNumbers.length === 0) return map;
   const res = await client.query<{
@@ -482,6 +493,12 @@ export type ReviewItem = {
   customerName: string | null;
   orderDate: string | null;
   lastSeenAt: string;
+  // İade (claims-sync) üst verisi; yalnız return_pending satırlarda dolu olur.
+  claimId: string | null;
+  claimStatus: string | null;
+  claimReason: string | null;
+  claimQuantity: number | null;
+  claimDate: string | null;
 };
 
 export type OrderReview = {
@@ -497,10 +514,13 @@ export async function getOrderReviewQueue(): Promise<OrderReview> {
     product_id: string | null; product_name: string | null; quantity: number;
     channel_status: string | null; state: LineState; applied_delta: number;
     customer_name: string | null; order_date: string | null; last_seen_at: string;
+    claim_id: string | null; claim_status: string | null; claim_reason: string | null;
+    claim_quantity: number | null; claim_date: string | null;
   }>(
     `SELECT col.id, col.order_number, col.line_id, col.barcode, col.product_id,
             p.name AS product_name, col.quantity, col.channel_status, col.state,
-            col.applied_delta, col.customer_name, col.order_date, col.last_seen_at
+            col.applied_delta, col.customer_name, col.order_date, col.last_seen_at,
+            col.claim_id, col.claim_status, col.claim_reason, col.claim_quantity, col.claim_date
        FROM channel_order_lines col
        LEFT JOIN products p ON p.id = col.product_id
       WHERE col.channel = 'trendyol'
@@ -530,6 +550,11 @@ export async function getOrderReviewQueue(): Promise<OrderReview> {
       customerName: r.customer_name,
       orderDate: r.order_date,
       lastSeenAt: r.last_seen_at,
+      claimId: r.claim_id,
+      claimStatus: r.claim_status,
+      claimReason: r.claim_reason,
+      claimQuantity: r.claim_quantity !== null ? Number(r.claim_quantity) : null,
+      claimDate: r.claim_date,
     };
   });
 

@@ -15,6 +15,7 @@ import {
   getOrderReviewQueue,
   resolveOrderReviewItem,
 } from "../../services/trendyol/order-sync.service.js";
+import { syncTrendyolClaims } from "../../services/trendyol/claims-sync.service.js";
 import { sendError } from "../middleware/response.js";
 
 export const trendyolRouter = Router();
@@ -60,6 +61,18 @@ trendyolRouter.post("/orders/preview", async (req, res) => {
 trendyolRouter.post("/orders/sync", async (_req, res) => {
   try {
     const data = await syncTrendyolOrders();
+    res.json({ data });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+// POST /trendyol/claims/sync — iadeleri (claims) çekip ilgili sayılmış sipariş
+// satırlarını "iade bekliyor"a taşır (inceleme kuyruğunu besler). Trendyol'a
+// YAZMAZ, stok hareketi YAZMAZ (Model C: operatör elle ekler). Flag kapalıysa 409.
+trendyolRouter.post("/claims/sync", async (_req, res) => {
+  try {
+    const data = await syncTrendyolClaims();
     res.json({ data });
   } catch (err) {
     sendError(res, err);

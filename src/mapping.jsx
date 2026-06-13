@@ -13,6 +13,7 @@ import {
   createProductChannel,
   deleteChannelListing,
   syncTrendyolOrders,
+  syncTrendyolClaims,
   getOrderReviewQueue,
   resolveOrderReviewItem,
   getSettings,
@@ -223,6 +224,14 @@ function ReviewCard({ item, onResolve, busy }) {
           {item.channelStatus && <span className="map-chip">{item.channelStatus}</span>}
           {item.customerName && <span>{item.customerName}</span>}
         </div>
+        {item.state === 'return_pending' && (item.claimReason || item.claimStatus || item.claimDate) && (
+          <div className="map-orphan-meta">
+            {item.claimReason && <span className="map-chip is-warn">İade sebebi: {item.claimReason}</span>}
+            {item.claimStatus && <span className="map-chip">{item.claimStatus}</span>}
+            {item.claimQuantity ? <span>iade adedi {item.claimQuantity}</span> : null}
+            {item.claimDate && <span>iade tarihi {fmtWhen(item.claimDate)}</span>}
+          </div>
+        )}
         <div className="map-sub">{meta.hint}</div>
       </div>
       <div className="map-orphan-actions">
@@ -241,6 +250,7 @@ export function MappingPage() {
   const [q, setQ] = React.useState('');
   const [syncing, setSyncing] = React.useState(false);
   const [syncingOrders, setSyncingOrders] = React.useState(false);
+  const [syncingClaims, setSyncingClaims] = React.useState(false);
   const [automatching, setAutomatching] = React.useState(false);
   const [busyId, setBusyId] = React.useState(null);  // orphan adopt
   const [busyKey, setBusyKey] = React.useState(null); // listing unlink/hb add
@@ -298,6 +308,29 @@ export function MappingPage() {
       setFeedback({ ok: false, msg: e.message || 'Sipariş senkronu başarısız.' });
     } finally {
       setSyncingOrders(false);
+    }
+  }
+
+  async function handleSyncClaims() {
+    setSyncingClaims(true); setFeedback(null);
+    try {
+      const r = await syncTrendyolClaims();
+      const registered = r.returnsRegistered || 0;
+      const pending = r.alreadyPending || 0;
+      setFeedback({
+        ok: true,
+        msg: registered
+          ? `İade senkronu: ${registered} satır "iade bekliyor" kuyruğuna taşındı. Mal sağlamsa stoğu elle ekleyip çözün.`
+          : pending
+            ? `İade senkronu tamam: yeni iade yok (${pending} kalem zaten kuyrukta).`
+            : 'İade senkronu tamam: bekleyen iade bulunamadı.',
+      });
+      refetchReview();
+      queryClient.invalidateQueries({ queryKey: ['mapping'] });
+    } catch (e) {
+      setFeedback({ ok: false, msg: e.message || 'İade senkronu başarısız.' });
+    } finally {
+      setSyncingClaims(false);
     }
   }
 
@@ -403,8 +436,13 @@ export function MappingPage() {
         <div className="map-head-actions">
           <span className="map-synced">Son senkron: {fmtWhen(summary?.snapshotSyncedAt)}</span>
           {ordersEnabled && (
-            <button className="btn btn-ghost" onClick={handleSyncOrders} disabled={syncingOrders}>
+            <button className="btn btn-ghost" onClick={handleSyncOrders} disabled={syncingOrders || syncingClaims}>
               <Icon.Repeat width="14" height="14" /> {syncingOrders ? 'Siparişler çekiliyor…' : 'Siparişleri senkronla'}
+            </button>
+          )}
+          {ordersEnabled && (
+            <button className="btn btn-ghost" onClick={handleSyncClaims} disabled={syncingClaims || syncingOrders}>
+              <Icon.Repeat width="14" height="14" /> {syncingClaims ? 'İadeler çekiliyor…' : 'İadeleri çek'}
             </button>
           )}
           <button className="btn btn-primary" onClick={handleSync} disabled={syncing}>
