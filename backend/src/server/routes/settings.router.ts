@@ -47,6 +47,48 @@ settingsRouter.patch("/", async (req, res) => {
       patch.lessonColorSaturation = v;
     }
 
+    if ("stockTrackingEnabled" in body) {
+      if (typeof body.stockTrackingEnabled !== "boolean") {
+        throw new ValidationError("stockTrackingEnabled boolean olmalı.");
+      }
+      patch.stockTrackingEnabled = body.stockTrackingEnabled;
+    }
+
+    if ("marketplaceSyncEnabled" in body) {
+      if (typeof body.marketplaceSyncEnabled !== "boolean") {
+        throw new ValidationError("marketplaceSyncEnabled boolean olmalı.");
+      }
+      patch.marketplaceSyncEnabled = body.marketplaceSyncEnabled;
+    }
+
+    if ("marketplaceOrdersEnabled" in body) {
+      if (typeof body.marketplaceOrdersEnabled !== "boolean") {
+        throw new ValidationError("marketplaceOrdersEnabled boolean olmalı.");
+      }
+      patch.marketplaceOrdersEnabled = body.marketplaceOrdersEnabled;
+    }
+
+    if ("marketplaceStockPushEnabled" in body) {
+      if (typeof body.marketplaceStockPushEnabled !== "boolean") {
+        throw new ValidationError("marketplaceStockPushEnabled boolean olmalı.");
+      }
+      patch.marketplaceStockPushEnabled = body.marketplaceStockPushEnabled;
+    }
+
+    if ("marketplaceStockPushDryRun" in body) {
+      if (typeof body.marketplaceStockPushDryRun !== "boolean") {
+        throw new ValidationError("marketplaceStockPushDryRun boolean olmalı.");
+      }
+      patch.marketplaceStockPushDryRun = body.marketplaceStockPushDryRun;
+    }
+
+    if ("marketplaceFulfillmentEnabled" in body) {
+      if (typeof body.marketplaceFulfillmentEnabled !== "boolean") {
+        throw new ValidationError("marketplaceFulfillmentEnabled boolean olmalı.");
+      }
+      patch.marketplaceFulfillmentEnabled = body.marketplaceFulfillmentEnabled;
+    }
+
     const data = await updateSettings(patch, req.currentUser.id);
     res.json({ data });
   } catch (err) {

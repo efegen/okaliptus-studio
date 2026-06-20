@@ -31,6 +31,7 @@ import {
   type EntityId,
   type MoneyInput,
 } from "./shared.js";
+import { isStockTrackingEnabled, recordSaleStockMovements } from "./stock.service.js";
 
 type ProductSaleRow = {
   id: string;
@@ -349,6 +350,20 @@ export async function createProductSaleWithClient(
         item.lineTotal,
       ],
     );
+  }
+
+  // Dahili stok düşümü (flag arkasında). Yalnız katalog kalemleri için, satışın
+  // KENDİ transaction'ı içinde. Stok için ayrı audit yazılmaz; satışın audit'i
+  // (aşağıda) zaten kapsar. Yetersiz stok satışı engellemez (on_hand eksiye
+  // düşebilir).
+  if (resolvedItems.length > 0 && (await isStockTrackingEnabled(client))) {
+    await recordSaleStockMovements(client, {
+      saleId: sale.id,
+      items: resolvedItems
+        .filter(it => it.productId !== null)
+        .map(it => ({ productId: it.productId as string, quantity: it.quantity })),
+      actorUserId: input.actorUserId ?? null,
+    });
   }
 
   await insertAuditLog(client, {

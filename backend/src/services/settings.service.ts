@@ -9,6 +9,12 @@ export type StudioSettings = {
   calendarEndHour: number;
   defaultCurrency: string;
   lessonColorSaturation: number;
+  stockTrackingEnabled: boolean;
+  marketplaceSyncEnabled: boolean;
+  marketplaceOrdersEnabled: boolean;
+  marketplaceStockPushEnabled: boolean;
+  marketplaceStockPushDryRun: boolean;
+  marketplaceFulfillmentEnabled: boolean;
 };
 
 function rowToSettings(row: Record<string, unknown>): StudioSettings {
@@ -19,6 +25,12 @@ function rowToSettings(row: Record<string, unknown>): StudioSettings {
     calendarEndHour: Number(row.calendar_end_hour),
     defaultCurrency: row.default_currency as string,
     lessonColorSaturation: Number(row.lesson_color_saturation ?? 1),
+    stockTrackingEnabled: row.stock_tracking_enabled === true,
+    marketplaceSyncEnabled: row.marketplace_sync_enabled === true,
+    marketplaceOrdersEnabled: row.marketplace_orders_enabled === true,
+    marketplaceStockPushEnabled: row.marketplace_stock_push_enabled === true,
+    marketplaceStockPushDryRun: row.marketplace_stock_push_dry_run === true,
+    marketplaceFulfillmentEnabled: row.marketplace_fulfillment_enabled === true,
   };
 }
 
@@ -28,7 +40,13 @@ export async function getSettings(): Promise<StudioSettings> {
       weekly_capacity, week_start,
       calendar_start_hour, calendar_end_hour,
       default_currency,
-      lesson_color_saturation
+      lesson_color_saturation,
+      stock_tracking_enabled,
+      marketplace_sync_enabled,
+      marketplace_orders_enabled,
+      marketplace_stock_push_enabled,
+      marketplace_stock_push_dry_run,
+      marketplace_fulfillment_enabled
     FROM studio_settings WHERE id = 1
   `);
 
@@ -44,6 +62,12 @@ type SettingsPatch = {
   calendarStartHour?: number;
   calendarEndHour?: number;
   lessonColorSaturation?: number;
+  stockTrackingEnabled?: boolean;
+  marketplaceSyncEnabled?: boolean;
+  marketplaceOrdersEnabled?: boolean;
+  marketplaceStockPushEnabled?: boolean;
+  marketplaceStockPushDryRun?: boolean;
+  marketplaceFulfillmentEnabled?: boolean;
 };
 
 export async function updateSettings(patch: SettingsPatch, actorUserId?: number | string | null): Promise<StudioSettings> {
@@ -111,6 +135,30 @@ export async function updateSettings(patch: SettingsPatch, actorUserId?: number 
   if (patch.lessonColorSaturation !== undefined) {
     sets.push(`lesson_color_saturation = $${i++}`);
     values.push(patch.lessonColorSaturation);
+  }
+  if (patch.stockTrackingEnabled !== undefined) {
+    sets.push(`stock_tracking_enabled = $${i++}`);
+    values.push(patch.stockTrackingEnabled);
+  }
+  if (patch.marketplaceSyncEnabled !== undefined) {
+    sets.push(`marketplace_sync_enabled = $${i++}`);
+    values.push(patch.marketplaceSyncEnabled);
+  }
+  if (patch.marketplaceOrdersEnabled !== undefined) {
+    sets.push(`marketplace_orders_enabled = $${i++}`);
+    values.push(patch.marketplaceOrdersEnabled);
+  }
+  if (patch.marketplaceStockPushEnabled !== undefined) {
+    sets.push(`marketplace_stock_push_enabled = $${i++}`);
+    values.push(patch.marketplaceStockPushEnabled);
+  }
+  if (patch.marketplaceStockPushDryRun !== undefined) {
+    sets.push(`marketplace_stock_push_dry_run = $${i++}`);
+    values.push(patch.marketplaceStockPushDryRun);
+  }
+  if (patch.marketplaceFulfillmentEnabled !== undefined) {
+    sets.push(`marketplace_fulfillment_enabled = $${i++}`);
+    values.push(patch.marketplaceFulfillmentEnabled);
   }
 
   if (sets.length === 0) {

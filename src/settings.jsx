@@ -1,5 +1,7 @@
 import React from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { getSettings, updateSettings, getPushConfig } from './api';
+import { queryKeys } from './hooks/queryKeys';
 import { ActivityPanel } from './settings-activity';
 import { enablePush, disablePush, sendTest, getCurrentSubscription } from './push';
 
@@ -35,6 +37,22 @@ function NumInput({ value, onChange, min = 0, max, unit }) {
       />
       {unit && <span className="stg-unit">{unit}</span>}
     </div>
+  );
+}
+
+function Toggle({ checked, onChange, label, disabled }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      disabled={disabled}
+      className={'stg-toggle' + (checked ? ' is-on' : '') + (disabled ? ' is-disabled' : '')}
+      onClick={() => { if (!disabled) onChange(!checked); }}
+    >
+      <span className="stg-toggle-knob" aria-hidden="true" />
+    </button>
   );
 }
 
@@ -218,6 +236,10 @@ function PushTestCard() {
   );
 }
 
+// (TrendyolOrderPreview kaldırıldı 2026-06-20 — tam "Pazaryeri Siparişleri" ekranı
+//  (orders.jsx) gerçek veriyle bunun işini görüyor; ayarlardaki önizleme butonu gereksizdi.
+//  api.js previewTrendyolOrders export'u + backend /trendyol/orders/preview ucu uykuda kaldı.)
+
 export function SettingsPage() {
   const [tab, setTab] = React.useState('general');
   const [loading, setLoading] = React.useState(true);
@@ -227,6 +249,7 @@ export function SettingsPage() {
   const [saving, setSaving] = React.useState(false);
   const [feedback, setFeedback] = React.useState(null); // { ok: bool, msg: string }
   const savedSatRef = React.useRef(1);
+  const queryClient = useQueryClient();
 
   React.useEffect(() => {
     let cancelled = false;
@@ -263,7 +286,13 @@ export function SettingsPage() {
       form.weeklyCapacity !== saved.weeklyCapacity ||
       form.calendarStartHour !== saved.calendarStartHour ||
       form.calendarEndHour !== saved.calendarEndHour ||
-      form.lessonColorSaturation !== saved.lessonColorSaturation
+      form.lessonColorSaturation !== saved.lessonColorSaturation ||
+      form.stockTrackingEnabled !== saved.stockTrackingEnabled ||
+      form.marketplaceSyncEnabled !== saved.marketplaceSyncEnabled ||
+      form.marketplaceOrdersEnabled !== saved.marketplaceOrdersEnabled ||
+      form.marketplaceStockPushEnabled !== saved.marketplaceStockPushEnabled ||
+      form.marketplaceStockPushDryRun !== saved.marketplaceStockPushDryRun ||
+      form.marketplaceFulfillmentEnabled !== saved.marketplaceFulfillmentEnabled
     );
   }, [saved, form]);
 
@@ -288,10 +317,20 @@ export function SettingsPage() {
         calendarStartHour: form.calendarStartHour,
         calendarEndHour: form.calendarEndHour,
         lessonColorSaturation: form.lessonColorSaturation,
+        stockTrackingEnabled: !!form.stockTrackingEnabled,
+        marketplaceSyncEnabled: !!form.marketplaceSyncEnabled,
+        marketplaceOrdersEnabled: !!form.marketplaceOrdersEnabled,
+        marketplaceStockPushEnabled: !!form.marketplaceStockPushEnabled,
+        marketplaceStockPushDryRun: !!form.marketplaceStockPushDryRun,
+        marketplaceFulfillmentEnabled: !!form.marketplaceFulfillmentEnabled,
       });
       savedSatRef.current = updated.lessonColorSaturation ?? 1;
       setSaved(updated);
       setForm(updated);
+      // Sidebar (pazaryeri nav) ve Siparişler ekranı (kargo etiketi flag'i) ortak
+      // 'settings' query'sini okur → kaydedince tazele ki flag değişiklikleri anında
+      // yansısın (yoksa staleTime dolana kadar eski flag görünür).
+      queryClient.invalidateQueries({ queryKey: queryKeys.settings() });
       setFeedback({ ok: true, msg: 'Ayarlar kaydedildi.' });
     } catch (err) {
       setFeedback({ ok: false, msg: err.message || 'Ayarlar kaydedilemedi.' });
@@ -381,6 +420,65 @@ export function SettingsPage() {
                 max={24}
               />
             </div>
+          </SettingRow>
+        </Section>
+
+        {/* "Stok" bölümü (Stok takibi toggle'ı) UI'dan GİZLENDİ (2026-06-20, kullanıcı kararı:
+            stok fazı ilk yayında devre dışı). Backend + flag DOKUNULMADI —
+            stock_tracking_enabled (DEFAULT false) kapalı kalır → elden satış stok düşmeden
+            çalışır (product-sales recordSaleStockMovements'ı atlar). handleSave/isDirty hâlâ
+            stockTrackingEnabled + marketplaceOrdersEnabled değerlerini round-trip eder.
+            GERİ EKLEME: stok fazı başlayınca bu Section + aşağıdaki "Sipariş senkronu"
+            SettingRow geri konacak (eski hâli git geçmişinde). */}
+
+        <Section title="Pazaryeri">
+          {/* Pazaryeri ANA ŞALTERİ (marketplaceSyncEnabled): açıkken "Siparişler" +
+              "Eşleştirme" nav'ları, mobil sipariş ekranı, kargo barkodu ve ürün
+              düzenlemedeki kanal eşleştirme alanları görünür. Salt-okunur: stoğa da
+              Trendyol'a da YAZMAZ. Kapatmak hepsini tek tıkta gizler (kill-switch). */}
+          <SettingRow
+            label="Trendyol entegrasyonu"
+            info="Açıkken Trendyol sipariş listesi, ürün eşleştirme ve kargo barkodu ekranlarını açar (sol menüde 'Siparişler' + 'Eşleştirme' sekmeleri). Salt-okunur — stoğa ve Trendyol'a hiçbir şey yazmaz. Kapatınca tüm pazaryeri ekranları gizlenir."
+          >
+            <Toggle
+              checked={!!form.marketplaceSyncEnabled}
+              onChange={v => {
+                set('marketplaceSyncEnabled', v);
+                // Kapanınca uykudaki yazma flag'lerini de defansif kapat.
+                if (!v) { set('marketplaceStockPushEnabled', false); set('marketplaceFulfillmentEnabled', false); }
+              }}
+              label="Trendyol entegrasyonunu aç/kapat"
+            />
+          </SettingRow>
+          {/* "Sipariş senkronu" toggle'ı GİZLENDİ (2026-06-20) — stok fazının parçası
+              (marketplaceOrdersEnabled iç stoğa yazar, stok takibi kapalıyken anlamsız).
+              Flag DOKUNULMADI (DEFAULT false); poller kapalıyken sessizce atlar. Stok fazı
+              geri gelince "Stok" Section'ıyla birlikte eklenecek. */}
+          {/* "Stok gönderimi (TY'ye yaz)" + "Deneme modu (dry-run)" toggle'ları UI'dan
+              GİZLENDİ (2026-06-20, kullanıcı kararı). Backend + flag'ler sağlam:
+              marketplaceStockPushEnabled (DEFAULT false) ve marketplaceStockPushDryRun
+              (DEFAULT true) kapalı/prova varsayılanlarında kaldıkları için poller TY'ye
+              ASLA canlı yazmaz. handleSave/isDirty hâlâ iki değeri de round-trip eder →
+              gizlemek veriyi bozmaz. GERİ EKLEME ŞARTI: stok push'u gerçek TY hesabında
+              baseline + tek-ürün deneme yazmasıyla doğruladıktan sonra bu iki SettingRow
+              (eski hâli git geçmişinde) geri konacak. */}
+          {/* "Pazaryeri sipariş işleme" (marketplaceFulfillmentEnabled): Siparişler
+              ekranındaki "Kargo Firması Değiştir" gibi CANLI TY yazmalarını açar. KAPALI
+              varsayılan + her işlemde ayrıca onay diyalogu (kazara yazmaya karşı kademeli
+              kilit). Kargo barkodu (Code128) bundan BAĞIMSIZ — hep istemci tarafı basılır.
+              Not (2026-06-20): bu toggle eskiden yalnız bloklu Ortak Etiket'i (Common Label,
+              COMMON_LABEL_NOT_ALLOWED) kapsadığı için gizlenmişti; artık TY'nin İZİN VERDİĞİ
+              kargo-firması-değiştirmeyi de kapsadığı için geri eklendi. */}
+          <SettingRow
+            label="Pazaryeri sipariş işleme"
+            info="Açıkken Siparişler ekranındaki 'Kargo Firması Değiştir' işlemi Trendyol'a CANLI yazar (gerçek müşteri paketinin kargo firmasını değiştirir). Her işlemde ayrıca onay istenir. Kapalıyken işlem engellenir. Kargo barkodu basımı bu ayardan bağımsızdır."
+          >
+            <Toggle
+              checked={!!form.marketplaceFulfillmentEnabled}
+              disabled={!form.marketplaceSyncEnabled}
+              onChange={v => set('marketplaceFulfillmentEnabled', v)}
+              label="Pazaryeri sipariş işlemeyi aç/kapat"
+            />
           </SettingRow>
         </Section>
 

@@ -21,6 +21,17 @@ import {
   updateProduct,
   type BulkPriceMode,
 } from "../../services/products.service.js";
+import { adjustProductStock } from "../../services/stock.service.js";
+import {
+  createChannelListing,
+  listByProduct,
+} from "../../services/channel-listings.service.js";
+import {
+  clearBundle,
+  getBundle,
+  setBundle,
+  type BundleComponentInput,
+} from "../../services/bundle-components.service.js";
 import { parseId, sendError } from "../middleware/response.js";
 
 function parseIdsArray(raw: unknown): Array<string | number> {
@@ -225,6 +236,106 @@ productsRouter.delete("/:id/image", async (req, res) => {
   try {
     const id = parseId(req.params.id);
     const data = await deleteProductImage(id, req.currentUser.id);
+    res.json({ data });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+// PUT /products/:id/stock — açılış stoğu + elle düzeltme. Hedef on_hand'i
+// mutlak olarak ayarlar (delta servis tarafında hesaplanır). body: { onHand, note? }
+// Stok takibi flag'i kapalıyken de çalışır; UI'ı flag gizler. requireAuth +
+// currentUser.id zinciri diğer yazma route'larıyla aynı.
+productsRouter.put("/:id/stock", async (req, res) => {
+  try {
+    const id = parseId(req.params.id);
+    const body = req.body as Record<string, unknown>;
+    const onHand = Number(body.onHand);
+    if (!Number.isInteger(onHand)) {
+      res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "onHand tam sayı olmalı." } });
+      return;
+    }
+    const note = body.note === null || body.note === undefined || body.note === "" ? null : String(body.note);
+    const data = await adjustProductStock({ productId: id, newOnHand: onHand, note, actorUserId: req.currentUser.id });
+    res.json({ data });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+// ── Kanal eşleştirme (channel_listings) ─────────────────────────────────────
+// İç veri modeli CRUD; dış API yok. marketplace_sync_enabled flag'i UI'ı gizler
+// ama endpoint'ler çalışır (flag yalnız frontend görünürlüğünü kontrol eder).
+
+// GET /products/:id/channels — o ürünün kanal listing'leri
+productsRouter.get("/:id/channels", async (req, res) => {
+  try {
+    const id = parseId(req.params.id);
+    const data = await listByProduct(id);
+    res.json({ data });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+// POST /products/:id/channels — yeni listing
+// body: { channel: 'trendyol'|'hepsiburada', externalId, channelPrice?, isListed? }
+productsRouter.post("/:id/channels", async (req, res) => {
+  try {
+    const id = parseId(req.params.id);
+    const body = req.body as Record<string, unknown>;
+    const data = await createChannelListing(id, {
+      channel: String(body.channel ?? ""),
+      externalId: String(body.externalId ?? ""),
+      channelPrice:
+        body.channelPrice === null || body.channelPrice === undefined || body.channelPrice === ""
+          ? null
+          : (body.channelPrice as string | number),
+      isListed: body.isListed === undefined ? undefined : !!body.isListed,
+      actorUserId: req.currentUser.id,
+    });
+    res.status(201).json({ data });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+// ── Bundle (paket) bileşenleri (Faz 1.5) ────────────────────────────────────
+
+// GET /products/:id/bundle — paket bileşenleri + türev efektif stok
+productsRouter.get("/:id/bundle", async (req, res) => {
+  try {
+    const id = parseId(req.params.id);
+    const data = await getBundle(id);
+    res.json({ data });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+// PUT /products/:id/bundle — ürünü paket yap + bileşenleri (tam liste) ayarla.
+// body: { components: [{ productId, quantity }] }  (boş liste → kurulum bekliyor)
+productsRouter.put("/:id/bundle", async (req, res) => {
+  try {
+    const id = parseId(req.params.id);
+    const body = req.body as Record<string, unknown>;
+    const rawComponents = Array.isArray(body.components) ? body.components : [];
+    const components: BundleComponentInput[] = rawComponents.map(c => {
+      const obj = (c ?? {}) as Record<string, unknown>;
+      return { productId: String(obj.productId ?? ""), quantity: Number(obj.quantity) };
+    });
+    const data = await setBundle(id, components, req.currentUser.id);
+    res.json({ data });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+// DELETE /products/:id/bundle — paketi çöz (is_bundle=false + bileşenleri sil)
+productsRouter.delete("/:id/bundle", async (req, res) => {
+  try {
+    const id = parseId(req.params.id);
+    const data = await clearBundle(id, req.currentUser.id);
     res.json({ data });
   } catch (err) {
     sendError(res, err);

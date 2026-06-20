@@ -3,6 +3,7 @@ import { createServer } from "node:http";
 import { env } from "./config/env.js";
 import { closeDatabaseConnection, verifyDatabaseConnection } from "./db/connection.js";
 import { createApp } from "./server/app.js";
+import { startOrderPoller, stopOrderPoller } from "./services/trendyol/order-poller.js";
 
 async function main(): Promise<void> {
   await verifyDatabaseConnection();
@@ -17,9 +18,14 @@ async function main(): Promise<void> {
     console.log(`Backend server listening on 0.0.0.0:${env.port}.`);
   });
 
+  // Model C / Faz 1: Trendyol sipariş poller'ı (flag + kimlik + interval kendi
+  // içinde kontrol edilir; gerekmiyorsa sessizce başlamaz).
+  startOrderPoller();
+
   const shutdown = async (signal: string) => {
     console.log(`${signal} received, shutting down.`);
 
+    stopOrderPoller();
     server.close(async () => {
       await closeDatabaseConnection();
       process.exit(0);

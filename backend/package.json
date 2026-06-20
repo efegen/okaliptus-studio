@@ -17,7 +17,8 @@
     "products:export": "tsx scripts/products-export.ts",
     "products:import": "tsx scripts/products-import.ts",
     "db:size": "tsx scripts/db-size-check.ts",
-    "db:backup": "tsx scripts/backup-db.ts"
+    "db:backup": "tsx scripts/backup-db.ts",
+    "seed:trendyol-listings": "tsx scripts/seed-trendyol-listings.ts"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

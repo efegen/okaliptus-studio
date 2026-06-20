@@ -208,6 +208,12 @@ async function run(): Promise<void> {
         `DELETE FROM product_sale_items WHERE product_id = ANY($1::bigint[])`,
         [productIds],
       );
+      // Stok takibi açıkken satış stok hareketi yazmış olabilir (FK RESTRICT) —
+      // ürünü silebilmek için önce temizle.
+      await pool.query(
+        `DELETE FROM stock_movements WHERE product_id = ANY($1::bigint[])`,
+        [productIds],
+      );
       await pool.query(
         `DELETE FROM products WHERE id = ANY($1::bigint[])`,
         [productIds],

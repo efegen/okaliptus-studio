@@ -626,6 +626,247 @@ export async function updateProduct(productId, patch) {
   return ensureMutationResult(payload, "Ürün güncellenemedi.");
 }
 
+// ─── Bundle (paket) bileşenleri (Model C / Faz 1.5) ──────────────────────────
+// Paket ürünün kendi stoğu yoktur; on_hand bileşenlerden türetilir. Satışta
+// (POS + TY) bileşenler düşer. İç içe paket yok.
+
+// Paket bileşenleri + türev efektif stok. → { productId, isBundle, effectiveStock, components[] }
+export async function getBundle(productId) {
+  const payload = await apiGet(`/products/${encodeURIComponent(productId)}/bundle`);
+  return ensureMutationResult(payload, "Paket bilgisi alınamadı.");
+}
+
+// Ürünü paket yap + bileşenleri (tam liste) ayarla. components: [{ productId, quantity }].
+// Boş liste → "kurulum bekliyor" paket. → güncel BundleView
+export async function setBundle(productId, components) {
+  const payload = await apiRequest(`/products/${encodeURIComponent(productId)}/bundle`, {
+    method: "PUT",
+    body: JSON.stringify({ components }),
+  });
+  return ensureMutationResult(payload, "Paket kaydedilemedi.");
+}
+
+// Paketi çöz (basit ürüne döndür). → güncel BundleView
+export async function clearBundle(productId) {
+  const payload = await apiRequest(`/products/${encodeURIComponent(productId)}/bundle`, {
+    method: "DELETE",
+  });
+  return ensureMutationResult(payload, "Paket çözülemedi.");
+}
+
+// Dahili stok: hedef on_hand'i mutlak olarak ayarlar (açılış stoğu + elle
+// düzeltme). Backend delta'yı hesaplar. Stok takibi ayardan kapalıyken UI bu
+// çağrıyı hiç göstermez. → { on_hand }
+export async function setProductStock(productId, onHand, note) {
+  const payload = await apiRequest(`/products/${encodeURIComponent(productId)}/stock`, {
+    method: "PUT",
+    body: JSON.stringify({ onHand, note: note ?? null }),
+  });
+  return ensureMutationResult(payload, "Stok güncellenemedi.");
+}
+
+// ─── Kanal eşleştirme (channel_listings) ─────────────────────────────────────
+// İç veri modeli; dış API çağrısı yok. marketplaceSyncEnabled ayarı kapalıyken
+// UI bu fonksiyonları hiç çağırmaz.
+
+export async function getProductChannels(productId) {
+  const payload = await apiGet(`/products/${encodeURIComponent(productId)}/channels`);
+  if (!Array.isArray(payload?.data)) throw new Error("Kanal listesi alınamadı.");
+  return payload.data;
+}
+
+export async function createProductChannel(productId, input) {
+  const payload = await apiRequest(`/products/${encodeURIComponent(productId)}/channels`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return ensureMutationResult(payload, "Kanal eşleştirmesi eklenemedi.");
+}
+
+export async function updateChannelListing(listingId, patch) {
+  const payload = await apiRequest(`/channels/${encodeURIComponent(listingId)}`, {
+    method: "PUT",
+    body: JSON.stringify(patch),
+  });
+  return ensureMutationResult(payload, "Kanal eşleştirmesi güncellenemedi.");
+}
+
+export async function deleteChannelListing(listingId) {
+  const payload = await apiRequest(`/channels/${encodeURIComponent(listingId)}`, {
+    method: "DELETE",
+  });
+  return ensureMutationResult(payload, "Kanal eşleştirmesi silinemedi.");
+}
+
+// ─── Trendyol sipariş önizleme (read-only) ───────────────────────────────────
+// Siparişleri GET ile çekip iç ürünlerle eşleştirilmiş önizleme döndürür. Hiçbir
+// kayıt yazmaz. marketplaceSyncEnabled kapalıyken UI bu çağrıyı göstermez.
+export async function previewTrendyolOrders(params = {}) {
+  const payload = await apiRequest("/trendyol/orders/preview", {
+    method: "POST",
+    body: JSON.stringify(params),
+  });
+  if (typeof payload?.data !== "object" || payload.data === null || Array.isArray(payload.data)) {
+    throw new Error("Sipariş önizlemesi alınamadı.");
+  }
+  return payload.data;
+}
+
+// Pazaryeri Siparişleri görünümü: TY siparişlerini TY fotoğrafı + iç ürün eşleşmesiyle
+// zenginleştirilmiş liste + sekme sayıları olarak getirir. SALT-OKUMA; stoğa dokunmaz
+// (order-sync defterinden bağımsız). marketplaceSyncEnabled kapalıysa 409, kimlik yoksa 503.
+// → { orders[], tabCounts, total }
+export async function getTrendyolOrdersList({ startDate, endDate, windowDays, force } = {}) {
+  const params = new URLSearchParams();
+  if (startDate) params.set("startDate", String(startDate));
+  if (endDate) params.set("endDate", String(endDate));
+  if (windowDays) params.set("windowDays", String(windowDays));
+  if (force) params.set("force", "1"); // "Yenile": anlık önbelleği baypas et, canlı çek
+  const qs = params.toString();
+  const payload = await apiGet(`/trendyol/orders/list${qs ? `?${qs}` : ""}`);
+  if (typeof payload?.data !== "object" || payload.data === null || Array.isArray(payload.data)) {
+    throw new Error("Sipariş listesi alınamadı.");
+  }
+  return payload.data;
+}
+
+// Faz 2: bir siparişin kargo etiketini (Trendyol Ortak Etiket) OLUŞTURUR + getirir.
+// CANLI TY yazması; marketplaceFulfillmentEnabled kapalıysa 409. format 'PDF'|'ZPL'.
+// → { contentType, base64?|text?|json?, format, cargoTrackingNumber }
+export async function getOrderLabel({ cargoTrackingNumber, format = "PDF" }) {
+  const payload = await apiRequest("/trendyol/orders/label", {
+    method: "POST",
+    body: JSON.stringify({ cargoTrackingNumber, format }),
+  });
+  return ensureMutationResult(payload, "Kargo etiketi alınamadı.");
+}
+
+// Faz 2: bir paketin kargo firmasını DEĞİŞTİRİR (CANLI TY yazması). cargoProvider =
+// TY firma KODU (orders.jsx CARGO_PROVIDERS whitelist'i). marketplaceFulfillmentEnabled
+// kapalıysa 409. TY: paket başına 5 dk'da yalnız 1 değişiklik. → { packageId, cargoProvider, name }
+export async function changeOrderCargoProvider({ packageId, cargoProvider }) {
+  const payload = await apiRequest("/trendyol/orders/cargo-provider", {
+    method: "POST",
+    body: JSON.stringify({ packageId, cargoProvider }),
+  });
+  return ensureMutationResult(payload, "Kargo firması değiştirilemedi.");
+}
+
+// ─── Ürün eşleştirme kokpiti (iç katalog ↔ Trendyol ↔ Hepsiburada) ───────────
+
+// Trendyol onaylı ürünlerini çekip yerel snapshot'a yazar (read-only). → { synced, pages, pruned }
+export async function syncTrendyolProducts() {
+  const payload = await apiRequest("/trendyol/products/sync", { method: "POST" });
+  return ensureMutationResult(payload, "Trendyol ürünleri senkronlanamadı.");
+}
+
+// Kokpit verisi: iç ürünler + TY/HB eşlemeleri + eşleşmeyen TY ürünleri.
+export async function getMappingOverview() {
+  const payload = await apiGet("/mapping");
+  if (typeof payload?.data !== "object" || payload.data === null || Array.isArray(payload.data)) {
+    throw new Error("Eşleştirme verisi alınamadı.");
+  }
+  return payload.data;
+}
+
+// Barkodu eşleşen iç ürünleri TY snapshot'ına toplu bağlar. → { matched, links }
+export async function autoMatchByBarcode() {
+  const payload = await apiRequest("/mapping/auto-match", { method: "POST" });
+  return ensureMutationResult(payload, "Otomatik eşleme yapılamadı.");
+}
+
+// Bir orphan TY ürününü iç kataloga benimse: mode 'link' (mevcut ürüne bağla) veya
+// 'create' (yeni iç ürün oluştur + bağla). → { productId, listingId, created }
+export async function adoptChannelProduct({ channelProductId, mode, productId, name, price }) {
+  const payload = await apiRequest("/mapping/adopt", {
+    method: "POST",
+    body: JSON.stringify({
+      channelProductId,
+      mode,
+      productId: productId ?? null,
+      name: name ?? null,
+      price: price ?? null,
+    }),
+  });
+  return ensureMutationResult(payload, "Eşleştirme yapılamadı.");
+}
+
+// ─── Trendyol sipariş → stok senkronu (Model C / Faz 1) ──────────────────────
+// Siparişleri çekip iç stoğu uzlaştırır (in-process poller'ın manuel ikizi).
+// Trendyol'a hiçbir yazma yapılmaz (pull-only). marketplaceOrdersEnabled kapalıyken
+// 409 döner. → sync özeti { counted, reversed, returnPending, unmatched, units… }
+export async function syncTrendyolOrders() {
+  const payload = await apiRequest("/trendyol/orders/sync", { method: "POST" });
+  return ensureMutationResult(payload, "Siparişler senkronlanamadı.");
+}
+
+// İadeleri (claims) çekip ilgili sayılmış sipariş satırlarını "iade bekliyor"a taşır
+// → inceleme kuyruğunu besler. Trendyol'a yazmaz, stok hareketi yazmaz (Model C:
+// operatör malı sağlamsa elle ekler). marketplaceOrdersEnabled kapalıyken 409.
+// → özet { returnsRegistered, alreadyPending, inactiveClaims, unlinkedClaims, … }
+export async function syncTrendyolClaims() {
+  const payload = await apiRequest("/trendyol/claims/sync", { method: "POST" });
+  return ensureMutationResult(payload, "İadeler senkronlanamadı.");
+}
+
+// Açık inceleme kuyruğu: iade bekleyenler (operatör elle ekler) + eşleşmeyen satışlar.
+export async function getOrderReviewQueue() {
+  const payload = await apiGet("/trendyol/orders/review");
+  if (typeof payload?.data !== "object" || payload.data === null || Array.isArray(payload.data)) {
+    throw new Error("İnceleme kuyruğu alınamadı.");
+  }
+  return payload.data;
+}
+
+// Bir kuyruk kalemini "çözüldü" işaretler (stoğa dokunmaz; yalnız kuyruktan çıkarır).
+export async function resolveOrderReviewItem(id) {
+  const payload = await apiRequest(`/trendyol/orders/review/${encodeURIComponent(id)}/resolve`, {
+    method: "POST",
+  });
+  return ensureMutationResult(payload, "Kuyruk kalemi güncellenemedi.");
+}
+
+// ─── Trendyol stok PUSH (Model C / Faz 2) ────────────────────────────────────
+// CANLI pazaryeri listelerine yazma. Çok katmanlı kilit arkasında (baseline +
+// dry-run + circuit-breaker + change-only + batch-doğrulama). UI bunları yalnız
+// stok push açıkken gösterir.
+
+// Her eşli ürünün iç açılış stoğunu o anki TY adedine hizalar + last_pushed işaretler
+// (push'un ön koşulu). Trendyol'a YAZMAZ. → { baselined, seeded, skipped… }
+export async function baselineStockPush(force = false) {
+  const payload = await apiRequest("/trendyol/stock/baseline", {
+    method: "POST",
+    body: JSON.stringify({ force: !!force }),
+  });
+  return ensureMutationResult(payload, "Baseline yapılamadı.");
+}
+
+// İç efektif stoğu TY'ye gönderir. opts:
+//   {}                        → toplu reconcile (dry-run flag'ine saygı)
+//   { force: true }           → devre kesiciyi aş
+//   { productId, live: true } → KASITLI tek-ürün CANLI yazma (dry-run'ı aşar)
+// → { mode, pushedCount, failedCount, changedCount, items, breaker, … }
+export async function runStockPush(opts = {}) {
+  const payload = await apiRequest("/trendyol/stock/push", {
+    method: "POST",
+    body: JSON.stringify({
+      force: opts.force === true,
+      productId: opts.productId ?? null,
+      live: opts.live === true,
+    }),
+  });
+  return ensureMutationResult(payload, "Stok gönderimi başarısız.");
+}
+
+// Baseline durumu + push önizlemesi (değişecek kalemler) + push hataları + flag'ler.
+export async function getStockPushStatus() {
+  const payload = await apiGet("/trendyol/stock/status");
+  if (typeof payload?.data !== "object" || payload.data === null || Array.isArray(payload.data)) {
+    throw new Error("Stok gönderim durumu alınamadı.");
+  }
+  return payload.data;
+}
+
 export async function archiveProduct(productId) {
   const payload = await apiRequest(`/products/${encodeURIComponent(productId)}/archive`, {
     method: "POST",

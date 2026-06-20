@@ -49,4 +49,23 @@ export const env = {
   vapidPrivateKey: process.env.VAPID_PRIVATE_KEY ?? "",
   vapidSubject: process.env.VAPID_SUBJECT ?? "mailto:froxefe@gmail.com",
   pushTestUsername: (process.env.PUSH_TEST_USERNAME ?? "").trim(),
+
+  // Trendyol Marketplace (yalnız sipariş OKUMA, read-only). Anahtarlar yoksa
+  // özellik kapalı kalır (preview ucu "yapılandırılmamış" hatası döner).
+  // Base URL PROD'a sabit DEĞİL; STAGE'e geçmek için env ile override edilir.
+  // Collection STAGE; biz PROD + read-only kullanıyoruz, demo token hardcode YOK.
+  trendyolApiBaseUrl: (process.env.TRENDYOL_API_BASE_URL ?? "https://apigw.trendyol.com").trim().replace(/\/+$/, ""),
+  trendyolSellerId: (process.env.TRENDYOL_SELLER_ID ?? "").trim(),
+  trendyolApiKey: (process.env.TRENDYOL_API_KEY ?? "").trim(),
+  trendyolApiSecret: (process.env.TRENDYOL_API_SECRET ?? "").trim(),
+
+  // Model C / Faz 1 sipariş poller'ı. 0 → poller hiç başlamaz (manuel uç yine
+  // çalışır). Pencere TY'nin ~2 haftalık sipariş aralığı kısıtına uyar (≤14 gün).
+  trendyolOrderPollMs: Math.max(0, Number.parseInt(process.env.TRENDYOL_ORDER_POLL_MS ?? "180000", 10) || 0),
+  trendyolOrderWindowDays: Math.min(14, Math.max(1, Number.parseInt(process.env.TRENDYOL_ORDER_WINDOW_DAYS ?? "14", 10) || 14)),
+
+  // İade (claims) penceresi: claimDate'e göre süzülür (orders'tan AYRI, 2 hafta
+  // sınırı YOK — PROD'da doğrulandı). İadeler siparişten haftalar sonra açılabildiği
+  // için orders penceresinden geniştir; her tick yeniden görülür (idempotent).
+  trendyolClaimWindowDays: Math.min(180, Math.max(1, Number.parseInt(process.env.TRENDYOL_CLAIM_WINDOW_DAYS ?? "60", 10) || 60)),
 } as const;

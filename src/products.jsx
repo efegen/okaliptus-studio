@@ -15,6 +15,15 @@ import {
   bulkSetProductCategory,
   bulkUpdateProductPrice,
   renameProductCategory,
+  getSettings,
+  setProductStock,
+  getProductChannels,
+  createProductChannel,
+  updateChannelListing,
+  deleteChannelListing,
+  getBundle,
+  setBundle,
+  clearBundle,
 } from './api';
 import { queryKeys } from './hooks/queryKeys';
 import { Icon } from './layout';
@@ -34,6 +43,22 @@ function fmtPrice(raw) {
 function fmtPriceRange(min, max) {
   if (min === max) return fmtPrice(min);
   return `${fmtPrice(min)}–${fmtPrice(max)}`;
+}
+
+// Stok rozeti — yalnız stok takibi açıkken render edilir. 0/negatif kırmızı
+// (kayıt eksik / tükendi sinyali), pozitif nötr.
+function StockBadge({ onHand }) {
+  const n = Number(onHand);
+  if (!Number.isFinite(n)) return null;
+  const low = n <= 0;
+  return (
+    <span
+      className={'prod-stock-badge' + (low ? ' is-low' : '')}
+      title={low ? 'Stok tükendi / kayıt eksik' : 'Eldeki stok'}
+    >
+      {n} adet
+    </span>
+  );
 }
 
 function fmtDate(iso) {
@@ -224,7 +249,7 @@ function CategoryCombobox({ value, onChange, knownCategories }) {
     <div className="cat-combo">
       {!customMode ? (
         <select
-          className="prod-modal-input"
+          className="uf-input"
           value={value}
           onChange={handleSelectChange}
         >
@@ -237,7 +262,7 @@ function CategoryCombobox({ value, onChange, knownCategories }) {
       ) : (
         <div style={{ display: 'flex', gap: 6 }}>
           <input
-            className="prod-modal-input"
+            className="uf-input"
             style={{ flex: 1 }}
             value={customValue}
             onChange={handleCustomChange}
@@ -343,9 +368,432 @@ function WebcamCaptureModal({ onCapture, onClose }) {
   );
 }
 
+// ─── ChannelsSection (ürün modalı içi) ──────────────────────────────────────
+//
+// İç veri modeli: ürünün Trendyol/Hepsiburada listing eşleştirmeleri. Dış API
+// çağrısı YOK. Yalnız marketplaceSyncEnabled açıkken render edilir.
+
+const CHANNEL_LABELS = { trendyol: 'Trendyol', hepsiburada: 'Hepsiburada' };
+
+function ChannelsSection({ productId, productBarcode, embedded }) {
+  const [rows, setRows] = React.useState(null); // null = yükleniyor
+  const [err, setErr] = React.useState(null);
+  const [busyId, setBusyId] = React.useState(null); // güncellenen/silenen listing id
+  const [adding, setAdding] = React.useState(false);
+  const [addForm, setAddForm] = React.useState(() => ({
+    channel: 'trendyol',
+    externalId: productBarcode || '',
+    channelPrice: '',
+    isListed: true,
+  }));
+
+  React.useEffect(() => {
+    let cancelled = false;
+    getProductChannels(productId)
+      .then(data => { if (!cancelled) setRows(data); })
+      .catch(e => { if (!cancelled) { setErr(e.message || 'Kanallar alınamadı.'); setRows([]); } });
+    return () => { cancelled = true; };
+  }, [productId]);
+
+  async function handleAdd() {
+    const externalId = addForm.externalId.trim();
+    if (!externalId) { setErr('Kanal kodu (external_id) zorunlu.'); return; }
+    setAdding(true);
+    setErr(null);
+    try {
+      const created = await createProductChannel(productId, {
+        channel: addForm.channel,
+        externalId,
+        channelPrice: addForm.channelPrice.trim() === '' ? null : Number(addForm.channelPrice),
+        isListed: addForm.isListed,
+      });
+      setRows(list => [...(list || []), created]);
+      setAddForm({ channel: 'trendyol', externalId: '', channelPrice: '', isListed: true });
+    } catch (e) {
+      setErr(e.message || 'Eklenemedi.');
+    } finally {
+      setAdding(false);
+    }
+  }
+
+  async function handleToggleListed(row) {
+    setBusyId(row.id);
+    setErr(null);
+    try {
+      const updated = await updateChannelListing(row.id, { isListed: !row.is_listed });
+      setRows(list => list.map(r => (r.id === row.id ? updated : r)));
+    } catch (e) {
+      setErr(e.message || 'Güncellenemedi.');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handlePriceBlur(row, raw) {
+    const next = raw.trim() === '' ? null : Number(raw);
+    const current = row.channel_price === null ? null : Number(row.channel_price);
+    if (next === current) return;
+    if (next !== null && !Number.isFinite(next)) { setErr('Fiyat geçersiz.'); return; }
+    setBusyId(row.id);
+    setErr(null);
+    try {
+      const updated = await updateChannelListing(row.id, { channelPrice: next });
+      setRows(list => list.map(r => (r.id === row.id ? updated : r)));
+    } catch (e) {
+      setErr(e.message || 'Fiyat güncellenemedi.');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleRemove(row) {
+    setBusyId(row.id);
+    setErr(null);
+    try {
+      await deleteChannelListing(row.id);
+      setRows(list => list.filter(r => r.id !== row.id));
+    } catch (e) {
+      setErr(e.message || 'Silinemedi.');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  return (
+    <div className={'prod-channels-section' + (embedded ? ' is-embedded' : '')}>
+      {!embedded && <div className="prod-channels-head">Kanal eşleştirme</div>}
+      <p className="prod-modal-hint">
+        Hangi pazaryeri listing'i bu ürüne karşılık geliyor. Kod = gelen siparişi
+        ürüne bağlayan anahtar (Trendyol: barkod, Hepsiburada: merchantSku).
+      </p>
+
+      {rows === null ? (
+        <div className="prod-modal-hint">Yükleniyor…</div>
+      ) : (
+        <table className="prod-channels-table">
+          <tbody>
+            {rows.length === 0 && (
+              <tr><td className="prod-channels-empty" colSpan={5}>Henüz kanal eşleştirmesi yok.</td></tr>
+            )}
+            {rows.map(row => (
+              <tr key={row.id}>
+                <td className="prod-ch-cell prod-ch-channel">{CHANNEL_LABELS[row.channel] || row.channel}</td>
+                <td className="prod-ch-cell prod-td-mono">{row.external_id}</td>
+                <td className="prod-ch-cell">
+                  <input
+                    className="prod-modal-input prod-ch-price"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    defaultValue={row.channel_price ?? ''}
+                    placeholder="—"
+                    disabled={busyId === row.id}
+                    onBlur={e => handlePriceBlur(row, e.target.value)}
+                  />
+                </td>
+                <td className="prod-ch-cell">
+                  <button
+                    type="button"
+                    className={'prod-ch-listed' + (row.is_listed ? ' is-on' : '')}
+                    onClick={() => handleToggleListed(row)}
+                    disabled={busyId === row.id}
+                    title="Listeli mi"
+                  >
+                    {row.is_listed ? 'Listeli' : 'Pasif'}
+                  </button>
+                </td>
+                <td className="prod-ch-cell prod-ch-actions">
+                  <button
+                    type="button"
+                    className="iconbtn"
+                    aria-label="Kanal eşleştirmesini sil"
+                    title="Sil"
+                    onClick={() => handleRemove(row)}
+                    disabled={busyId === row.id}
+                  >
+                    <Icon.Trash width="13" height="13" />
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      <div className="prod-channels-add">
+        <select
+          className="prod-modal-input prod-ch-select"
+          value={addForm.channel}
+          onChange={e => setAddForm(f => ({ ...f, channel: e.target.value }))}
+        >
+          <option value="trendyol">Trendyol</option>
+          <option value="hepsiburada">Hepsiburada</option>
+        </select>
+        <input
+          className="prod-modal-input"
+          value={addForm.externalId}
+          onChange={e => setAddForm(f => ({ ...f, externalId: e.target.value }))}
+          placeholder="Kanal kodu (barkod / merchantSku)"
+        />
+        <input
+          className="prod-modal-input prod-ch-price"
+          type="number"
+          step="0.01"
+          min="0"
+          value={addForm.channelPrice}
+          onChange={e => setAddForm(f => ({ ...f, channelPrice: e.target.value }))}
+          placeholder="Fiyat"
+        />
+        <label className="prod-ch-listed-check">
+          <input
+            type="checkbox"
+            checked={addForm.isListed}
+            onChange={e => setAddForm(f => ({ ...f, isListed: e.target.checked }))}
+          />
+          Listeli
+        </label>
+        <button type="button" className="btn btn-ghost btn-xs" onClick={handleAdd} disabled={adding}>
+          {adding ? 'Ekleniyor…' : 'Ekle'}
+        </button>
+      </div>
+
+      {err && <span className="prod-stock-msg is-err">{err}</span>}
+    </div>
+  );
+}
+
 // ─── ProductModal ───────────────────────────────────────────────────────────
 
-function ProductModal({ initial, knownCategories, onClose, onSaved }) {
+// ─── BundleSection (ürün modalı içi) — Faz 1.5 ──────────────────────────────
+//
+// Bir ürünü "paket" (set) yapar ve bileşenlerini yönetir. Paketin kendi stoğu
+// yoktur; satışta (POS + Trendyol) bileşenler düşer, stok bileşenlerden türetilir
+// (min(floor(bileşen_stok/adet))). İç içe paket yok (bileşen seçici paketleri eler).
+// Yalnız stok takibi açık + mevcut ürün düzenlenirken render edilir.
+
+function BundleSection({ productId, initialIsBundle, onBundleChange, embedded }) {
+  const [loading, setLoading] = React.useState(true);
+  const [isBundle, setIsBundle] = React.useState(!!initialIsBundle);
+  const [persisted, setPersisted] = React.useState(!!initialIsBundle);
+  const [components, setComponents] = React.useState([]); // {componentProductId,name,barcode,quantity,componentOnHand}
+  const [savedEffective, setSavedEffective] = React.useState(null);
+  const [saving, setSaving] = React.useState(false);
+  const [msg, setMsg] = React.useState(null);
+  const [picking, setPicking] = React.useState(false);
+  const [candidates, setCandidates] = React.useState(null); // null = yüklenmedi
+  const [pickQ, setPickQ] = React.useState('');
+
+  React.useEffect(() => {
+    let cancelled = false;
+    getBundle(productId)
+      .then(view => {
+        if (cancelled) return;
+        setIsBundle(view.isBundle);
+        setPersisted(view.isBundle);
+        setComponents(view.components.map(c => ({
+          componentProductId: c.componentProductId, name: c.name, barcode: c.barcode,
+          quantity: c.quantity, componentOnHand: c.componentOnHand,
+        })));
+        setSavedEffective(view.isBundle ? view.effectiveStock : null);
+        setLoading(false);
+      })
+      .catch(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [productId]);
+
+  async function ensureCandidates() {
+    if (candidates !== null) return;
+    try {
+      const all = await getProducts({});
+      setCandidates(all.filter(p => !p.is_bundle && String(p.id) !== String(productId)));
+    } catch { setCandidates([]); }
+  }
+
+  function toggle(v) { setIsBundle(v); setMsg(null); onBundleChange?.(v); }
+  function addComponent(p) {
+    setComponents(cs => cs.some(c => String(c.componentProductId) === String(p.id))
+      ? cs
+      : [...cs, { componentProductId: p.id, name: p.name, barcode: p.barcode, quantity: 1, componentOnHand: p.on_hand }]);
+    setPicking(false); setPickQ(''); setMsg(null);
+  }
+  function removeComponent(id) {
+    setComponents(cs => cs.filter(c => String(c.componentProductId) !== String(id))); setMsg(null);
+  }
+  function setQty(id, q) {
+    setComponents(cs => cs.map(c => String(c.componentProductId) === String(id) ? { ...c, quantity: q } : c)); setMsg(null);
+  }
+
+  // Canlı türev stok önizlemesi: min(floor(bileşen_stok/adet)).
+  const livePreview = React.useMemo(() => {
+    if (!isBundle || components.length === 0) return null;
+    let min = Infinity;
+    for (const c of components) {
+      const q = parseInt(c.quantity, 10);
+      if (!Number.isInteger(q) || q <= 0) return null;
+      min = Math.min(min, Math.floor(Number(c.componentOnHand ?? 0) / q));
+    }
+    return Number.isFinite(min) ? min : null;
+  }, [isBundle, components]);
+
+  async function handleSave() {
+    setSaving(true); setMsg(null);
+    try {
+      if (isBundle) {
+        for (const c of components) {
+          const q = parseInt(c.quantity, 10);
+          if (!Number.isInteger(q) || q <= 0) throw new Error('Bileşen adedi pozitif tam sayı olmalı.');
+        }
+        const view = await setBundle(productId, components.map(c => ({
+          productId: c.componentProductId, quantity: parseInt(c.quantity, 10),
+        })));
+        setComponents(view.components.map(c => ({
+          componentProductId: c.componentProductId, name: c.name, barcode: c.barcode,
+          quantity: c.quantity, componentOnHand: c.componentOnHand,
+        })));
+        setSavedEffective(view.effectiveStock);
+        setPersisted(true);
+        onBundleChange?.(true);
+        setMsg({ ok: true, msg: 'Paket kaydedildi.' });
+      } else {
+        await clearBundle(productId);
+        setComponents([]); setSavedEffective(null); setPersisted(false);
+        onBundleChange?.(false);
+        setMsg({ ok: true, msg: 'Paket çözüldü (basit ürün).' });
+      }
+    } catch (e) {
+      setMsg({ ok: false, msg: e.message || 'Kaydedilemedi.' });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loading) return null;
+
+  const nq = pickQ.trim().toLocaleLowerCase('tr-TR');
+  const filteredCandidates = (candidates || []).filter(p =>
+    !components.some(c => String(c.componentProductId) === String(p.id)) &&
+    (!nq || (p.name || '').toLocaleLowerCase('tr-TR').includes(nq) || (p.barcode || '').toLocaleLowerCase('tr-TR').includes(nq)));
+  const showAction = isBundle || persisted;
+
+  return (
+    <div className={'prod-channels-section prod-bundle-section' + (embedded ? ' is-embedded' : '')}>
+      <div className="prod-bundle-head">
+        <label className="prod-bundle-toggle">
+          <input type="checkbox" checked={isBundle} onChange={e => toggle(e.target.checked)} />
+          <span>Bu bir paket (set) ürünü</span>
+        </label>
+        {isBundle && (
+          <span className="prod-bundle-stock">
+            Türev stok: <strong>{livePreview ?? savedEffective ?? 0}</strong>
+            {components.length === 0 && <span className="map-chip is-warn" style={{ marginLeft: 8 }}>kurulum bekliyor</span>}
+          </span>
+        )}
+      </div>
+
+      {isBundle && (
+        <>
+          <p className="prod-modal-hint" style={{ marginTop: 2 }}>
+            Paketin kendi stoğu yoktur; satışta (elden + Trendyol) bileşenler düşer.
+          </p>
+          <div className="prod-bundle-components">
+            {components.length === 0 && <div className="prod-bundle-empty">Henüz bileşen yok.</div>}
+            {components.map(c => (
+              <div key={c.componentProductId} className="prod-bundle-row">
+                <span className="prod-bundle-cname">
+                  {c.name}
+                  <span className="prod-bundle-csub">{c.barcode || '—'} · stok {c.componentOnHand ?? '—'}</span>
+                </span>
+                <input
+                  className="prod-modal-input prod-bundle-qty"
+                  type="number" min="1" step="1" value={c.quantity}
+                  onChange={e => setQty(c.componentProductId, e.target.value)}
+                  aria-label="Adet"
+                />
+                <button type="button" className="iconbtn" title="Bileşeni çıkar" onClick={() => removeComponent(c.componentProductId)}>
+                  <Icon.Trash width="13" height="13" />
+                </button>
+              </div>
+            ))}
+          </div>
+
+          {picking ? (
+            <div className="prod-bundle-picker" onClick={e => e.stopPropagation()}>
+              <input
+                autoFocus className="prod-modal-input"
+                placeholder="Bileşen ara (ad/barkod)…"
+                value={pickQ} onChange={e => setPickQ(e.target.value)} onFocus={ensureCandidates}
+              />
+              <div className="prod-bundle-picklist">
+                {candidates === null && <div className="map-muted">Yükleniyor…</div>}
+                {candidates !== null && filteredCandidates.length === 0 && <div className="map-muted">Uygun ürün yok.</div>}
+                {filteredCandidates.slice(0, 30).map(p => (
+                  <button key={p.id} type="button" className="prod-bundle-pickitem" onClick={() => addComponent(p)}>
+                    <span>{p.name}</span>
+                    <span className="prod-bundle-csub">{p.barcode || '—'} · stok {p.on_hand ?? '—'}</span>
+                  </button>
+                ))}
+              </div>
+              <button type="button" className="btn btn-ghost btn-xs" onClick={() => { setPicking(false); setPickQ(''); }}>Kapat</button>
+            </div>
+          ) : (
+            <button type="button" className="btn btn-ghost btn-xs" onClick={() => { setPicking(true); ensureCandidates(); }}>
+              + Bileşen ekle
+            </button>
+          )}
+        </>
+      )}
+
+      {showAction && (
+        <div className="prod-bundle-actions">
+          <button type="button" className="btn btn-primary btn-xs" onClick={handleSave} disabled={saving}>
+            {saving ? 'Kaydediliyor…' : (isBundle ? 'Paketi kaydet' : 'Paketi çöz')}
+          </button>
+          {msg && <span className={'prod-stock-msg' + (msg.ok ? ' is-ok' : ' is-err')}>{msg.msg}</span>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Tasarım A form primitifleri (geniş modal · iki kolon · akordeon) ───────
+//
+// Etiket + opsiyonel zorunlu/opsiyonel rozeti + ipucu sarmalayıcı.
+function UFField({ label, req, opt, hint, children }) {
+  return (
+    <div className="uf-field">
+      {label && (
+        <label className="uf-label">
+          {label}
+          {req && <span className="uf-req">*</span>}
+          {opt && <span className="uf-opt">opsiyonel</span>}
+        </label>
+      )}
+      {children}
+      {hint && <span className="uf-hint">{hint}</span>}
+    </div>
+  );
+}
+
+// Katlanır "Gelişmiş" grubu. İçeriği yalnız açıkken render edilir (kanal/paket
+// bölümleri ağır — kapalıyken API çağrısı tetiklenmez).
+function UFAcc({ icon: Ic, title, sub, defaultOpen, children }) {
+  const [open, setOpen] = React.useState(!!defaultOpen);
+  return (
+    <div className={'uf-acc' + (open ? ' open' : '')}>
+      <button type="button" className="uf-acc-head" onClick={() => setOpen(o => !o)}>
+        <span className="uf-acc-ic">{Ic && <Ic width="15" height="15" />}</span>
+        <span className="uf-acc-tt">
+          <span className="uf-acc-t">{title}</span>
+          {sub && <span className="uf-acc-s">{sub}</span>}
+        </span>
+        <span className="uf-acc-chev"><Icon.ChevronDown width="16" height="16" /></span>
+      </button>
+      {open && <div className="uf-acc-body">{children}</div>}
+    </div>
+  );
+}
+
+function ProductModal({ initial, knownCategories, stockEnabled, marketplaceEnabled, onClose, onSaved, onStockSaved }) {
   const isNew = !initial;
   const [form, setForm] = React.useState(() => ({
     name: initial?.name ?? '',
@@ -362,6 +810,20 @@ function ProductModal({ initial, knownCategories, onClose, onSaved }) {
   const [saving, setSaving] = React.useState(false);
   const [err, setErr] = React.useState(null);
   const [confirmDelete, setConfirmDelete] = React.useState(false);
+
+  // Paket (bundle) durumu — BundleSection canlı günceller; paket iken elle stok
+  // düzenleme gizlenir (paket stoğu bileşenlerden türetilir, setStock backend'de yasak).
+  const [bundleIsBundle, setBundleIsBundle] = React.useState(!!initial?.is_bundle);
+
+  // Stok düzenleme — ana ürün formundan ayrı bir endpoint (PUT /:id/stock).
+  // Yalnız stok takibi açık + mevcut ürün düzenlenirken + paket DEĞİLken görünür.
+  const showStock = stockEnabled && !isNew && !bundleIsBundle;
+  const [stockValue, setStockValue] = React.useState(
+    initial && initial.on_hand != null ? String(initial.on_hand) : '',
+  );
+  const [stockBusy, setStockBusy] = React.useState(false);
+  const [stockMsg, setStockMsg] = React.useState(null); // { ok, msg }
+  const currentOnHand = initial && initial.on_hand != null ? Number(initial.on_hand) : 0;
 
   // Görsel staging: çekilen/seçilen foto kaydedilene kadar bekler. cleared =
   // mevcut görseli kaldırma niyeti (kaydet'te uygulanır). Mobildeki ProductEditor
@@ -467,6 +929,25 @@ function ProductModal({ initial, knownCategories, onClose, onSaved }) {
     }
   }
 
+  async function handleStockSave() {
+    if (!initial) return;
+    const n = parseInt(stockValue, 10);
+    if (!Number.isInteger(n)) { setStockMsg({ ok: false, msg: 'Stok adedi tam sayı olmalı.' }); return; }
+    setStockBusy(true);
+    setStockMsg(null);
+    try {
+      const res = await setProductStock(initial.id, n);
+      // res = { on_hand }. Liste rozetini tazelemek için parent'ı bilgilendir
+      // (modal kapanmaz).
+      onStockSaved?.();
+      setStockMsg({ ok: true, msg: `Stok güncellendi: ${res?.on_hand ?? n} adet.` });
+    } catch (e) {
+      setStockMsg({ ok: false, msg: e.message || 'Stok güncellenemedi.' });
+    } finally {
+      setStockBusy(false);
+    }
+  }
+
   async function handleArchive() {
     if (!initial) return;
     setSaving(true);
@@ -496,122 +977,141 @@ function ProductModal({ initial, knownCategories, onClose, onSaved }) {
     }
   }
 
+  // Düzenleme başlığı altı: ürünü kimliklendiren özet (ad · varyant · model).
+  const editSubtitle = !isNew
+    ? [initial.name, initial.variant_label, initial.parent_product_code].filter(Boolean).join(' · ')
+    : 'Katalog için yeni bir ürün oluştur';
+
   return (
     <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal prod-modal">
-        <div className="lt-modal-head">
-          <div className="lt-modal-mark" aria-hidden="true">
-            <Icon.Tag width="18" height="18" />
+      <div className="ua-modal" role="dialog" aria-modal="true" key={isNew ? 'new' : 'edit'}>
+        <div className="ua-head">
+          <span className="ua-head-mark" aria-hidden="true"><Icon.Tag width="16" height="16" /></span>
+          <div className="ua-head-tt">
+            <h3>{isNew ? 'Yeni ürün' : 'Ürünü düzenle'}</h3>
+            <p>{editSubtitle}</p>
           </div>
-          <h3>{isNew ? 'Yeni ürün' : 'Ürünü düzenle'}</h3>
+          <span className="ua-head-x">
+            <button type="button" className="iconbtn" onClick={onClose} aria-label="Kapat" title="Kapat">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <path d="M6 6l12 12M18 6L6 18" />
+              </svg>
+            </button>
+          </span>
         </div>
 
-        <form onSubmit={handleSubmit}>
-          <div className="prod-modal-grid">
-            <div className="prod-modal-imgcol">
-              <label className="prod-modal-label">Görsel</label>
-              <div className="prod-modal-imgbox">
-                {shownImage ? (
-                  <img src={shownImage} alt="" onError={e => e.currentTarget.style.display = 'none'} />
-                ) : (
-                  <span className="prod-modal-imgbox-fallback" aria-hidden="true">
-                    <Icon.Tag width="22" height="22" />
+        <form onSubmit={handleSubmit} className="ua-form">
+          <div className="ua-scroll">
+            <div className="ua-grid">
+              <div className="ua-imgcol">
+                <UFField label="Görsel">
+                  <div className="uf-img">
+                    {shownImage ? (
+                      <img src={shownImage} alt="" onError={e => e.currentTarget.style.display = 'none'} />
+                    ) : (
+                      <div className="uf-img-empty" aria-hidden="true">
+                        <Icon.Tag width="22" height="22" />
+                        <span className="uf-img-cap">ürün fotoğrafı<br />800×800</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handlePickFile}
+                    style={{ display: 'none' }}
+                  />
+                  <div className="uf-img-actions">
+                    <button
+                      type="button"
+                      className="uf-imgbtn"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={photoBusy || saving}
+                    >
+                      <Icon.Upload width="14" height="14" />
+                      {photoBusy ? 'İşleniyor…' : 'Yükle'}
+                    </button>
+                    <button
+                      type="button"
+                      className="uf-imgbtn"
+                      onClick={() => setWebcamOpen(true)}
+                      disabled={photoBusy || saving}
+                    >
+                      <Icon.Camera width="14" height="14" />
+                      Çek
+                    </button>
+                    {hasRemovable && (
+                      <button
+                        type="button"
+                        className="uf-imgbtn uf-imgbtn-full"
+                        onClick={handleRemovePhoto}
+                        disabled={photoBusy || saving}
+                      >
+                        Görseli kaldır
+                      </button>
+                    )}
+                  </div>
+
+                  <span className="uf-hint" style={{ marginTop: 8 }}>
+                    Kare kırpılır · WebP'e çevrilir. Çekilen/yüklenen foto önceliklidir.
                   </span>
-                )}
+
+                  <details className="prod-modal-url" style={{ marginTop: 8 }}>
+                    <summary className="prod-modal-hint">veya görsel URL'i yapıştır</summary>
+                    <input
+                      className="uf-input"
+                      style={{ marginTop: 6 }}
+                      value={form.image_url}
+                      onChange={e => { set('image_url', e.target.value); setCleared(false); }}
+                      placeholder="https://cdn.dsmcdn.com/…"
+                    />
+                    <p className="prod-modal-hint">
+                      Public URL (Trendyol CDN'i olduğu gibi çalışır).
+                    </p>
+                  </details>
+                </UFField>
               </div>
 
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handlePickFile}
-                style={{ display: 'none' }}
-              />
-              <div className="prod-modal-img-actions">
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-xs prod-modal-img-btn"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={photoBusy || saving}
-                >
-                  <Icon.Upload width="13" height="13" />
-                  {photoBusy ? 'İşleniyor…' : 'Bilgisayardan yükle'}
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-xs prod-modal-img-btn"
-                  onClick={() => setWebcamOpen(true)}
-                  disabled={photoBusy || saving}
-                >
-                  <Icon.Camera width="13" height="13" />
-                  Fotoğraf çek
-                </button>
-                {hasRemovable && (
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-xs prod-modal-img-btn"
-                    onClick={handleRemovePhoto}
-                    disabled={photoBusy || saving}
-                  >
-                    Görseli kaldır
-                  </button>
-                )}
-              </div>
-
-              <details className="prod-modal-url">
-                <summary className="prod-modal-hint">veya görsel URL'i yapıştır</summary>
-                <input
-                  className="prod-modal-input"
-                  style={{ marginTop: 6 }}
-                  value={form.image_url}
-                  onChange={e => { set('image_url', e.target.value); setCleared(false); }}
-                  placeholder="https://cdn.dsmcdn.com/…"
-                />
-                <p className="prod-modal-hint">
-                  Public URL (Trendyol CDN'i olduğu gibi çalışır). Çekilen/yüklenen foto önceliklidir.
-                </p>
-              </details>
-            </div>
-
-            <div className="prod-modal-fields">
-              <div className="form-row">
-                <label>Ad *</label>
-                <input
-                  autoFocus
-                  className="prod-modal-input"
-                  value={form.name}
-                  onChange={e => set('name', e.target.value)}
-                  placeholder="ör. Lotus Buhurdanlık | Mor Beyaz Çini Desenli"
-                />
-              </div>
-
-              <div className="form-row-2">
-                <div className="form-row" style={{ margin: 0 }}>
-                  <label>Fiyat (₺) *</label>
+              <div className="ua-fields">
+                <UFField label="Ürün adı" req>
                   <input
-                    className="prod-modal-input"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={form.price}
-                    onChange={e => set('price', e.target.value)}
-                    placeholder="0"
+                    autoFocus
+                    className="uf-input"
+                    value={form.name}
+                    onChange={e => set('name', e.target.value)}
+                    placeholder="ör. Lotus Buhurdanlık · Pirinç"
                   />
-                </div>
-                <div className="form-row" style={{ margin: 0 }}>
-                  <label>Barkod</label>
-                  <input
-                    className="prod-modal-input"
-                    value={form.barcode}
-                    onChange={e => set('barcode', e.target.value)}
-                    placeholder="869…"
-                  />
-                </div>
-              </div>
+                </UFField>
 
-              <div className="form-row-2">
-                <div className="form-row" style={{ margin: 0 }}>
-                  <label>Kategori</label>
+                <div className="uf-row2">
+                  <UFField label="Fiyat" req>
+                    <div className="uf-prefix">
+                      <span>₺</span>
+                      <input
+                        className="uf-input"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        inputMode="decimal"
+                        value={form.price}
+                        onChange={e => set('price', e.target.value)}
+                        placeholder="0"
+                      />
+                    </div>
+                  </UFField>
+                  <UFField label="Barkod" opt>
+                    <input
+                      className="uf-input"
+                      value={form.barcode}
+                      onChange={e => set('barcode', e.target.value)}
+                      placeholder="869…"
+                    />
+                  </UFField>
+                </div>
+
+                <UFField label="Kategori" opt>
                   {knownCategories.length > 0 ? (
                     <CategoryCombobox
                       value={form.category}
@@ -620,73 +1120,133 @@ function ProductModal({ initial, knownCategories, onClose, onSaved }) {
                     />
                   ) : (
                     <input
-                      className="prod-modal-input"
+                      className="uf-input"
                       value={form.category}
                       onChange={e => set('category', e.target.value)}
                       placeholder="ör. Tütsü ve Buhurdanlık"
                     />
                   )}
-                </div>
-                <div className="form-row" style={{ margin: 0 }}>
-                  <label>Model Kodu</label>
-                  <input
-                    className="prod-modal-input"
-                    value={form.parent_product_code}
-                    onChange={e => set('parent_product_code', e.target.value)}
-                    placeholder="ör. OKY-BUH"
-                  />
-                </div>
-              </div>
+                </UFField>
 
-              <div className="form-row">
-                <label>Varyant etiketi</label>
-                <input
-                  className="prod-modal-input"
-                  value={form.variant_label}
-                  onChange={e => set('variant_label', e.target.value)}
-                  placeholder="ör. Mavi · 80x28"
-                />
-                <span className="prod-modal-hint">
-                  Aynı Model Kodu'nu paylaşan ürünler bu etiket ile ayırt edilir.
-                </span>
-              </div>
-
-              <div className="form-row">
-                <label>Trendyol linki</label>
-                <input
-                  className="prod-modal-input"
-                  value={form.ty_listing_url}
-                  onChange={e => set('ty_listing_url', e.target.value)}
-                  placeholder="https://www.trendyol.com/…"
-                />
-              </div>
-
-              <div className="form-row">
-                <label>Hepsiburada linki</label>
-                <input
-                  className="prod-modal-input"
-                  value={form.hb_listing_url}
-                  onChange={e => set('hb_listing_url', e.target.value)}
-                  placeholder="https://www.hepsiburada.com/…"
-                />
-              </div>
-
-              <div className="form-row">
-                <label>Not</label>
-                <input
-                  className="prod-modal-input"
-                  value={form.notes}
-                  onChange={e => set('notes', e.target.value)}
-                  placeholder="İç açıklama"
-                />
+                {showStock && (
+                  <UFField
+                    label="Stok (eldeki adet)"
+                    hint={`Mevcut: ${currentOnHand} adet. Açılış stoğu veya elle düzeltme; satışta otomatik düşer.`}
+                  >
+                    <div className="uf-stock-edit">
+                      <div className="uf-stepper">
+                        <button
+                          type="button"
+                          onClick={() => { setStockValue(String((parseInt(stockValue, 10) || 0) - 1)); setStockMsg(null); }}
+                          aria-label="Azalt"
+                        >–</button>
+                        <input
+                          value={stockValue}
+                          onChange={e => { setStockValue(e.target.value.replace(/[^\d-]/g, '')); setStockMsg(null); }}
+                          inputMode="numeric"
+                          aria-label="Stok adedi"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => { setStockValue(String((parseInt(stockValue, 10) || 0) + 1)); setStockMsg(null); }}
+                          aria-label="Artır"
+                        >+</button>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-xs"
+                        onClick={handleStockSave}
+                        disabled={stockBusy || String(parseInt(stockValue, 10)) === String(currentOnHand)}
+                      >
+                        {stockBusy ? 'Kaydediliyor…' : 'Stoğu güncelle'}
+                      </button>
+                    </div>
+                    {stockMsg && (
+                      <span className={'prod-stock-msg' + (stockMsg.ok ? ' is-ok' : ' is-err')}>
+                        {stockMsg.msg}
+                      </span>
+                    )}
+                  </UFField>
+                )}
               </div>
             </div>
+
+            <div className="ua-adv">
+              <div className="ua-sectionlabel">Gelişmiş</div>
+              <div className="ua-acclist">
+                <UFAcc icon={Icon.Layers} title="Varyant & model" sub="Aynı modeli paylaşan ürünleri grupla">
+                  <div className="uf-row2">
+                    <UFField label="Model kodu" opt hint="Aynı kod = aynı ürün ailesi">
+                      <input
+                        className="uf-input"
+                        value={form.parent_product_code}
+                        onChange={e => set('parent_product_code', e.target.value)}
+                        placeholder="ör. OKY-BUH"
+                      />
+                    </UFField>
+                    <UFField label="Varyant etiketi" opt>
+                      <input
+                        className="uf-input"
+                        value={form.variant_label}
+                        onChange={e => set('variant_label', e.target.value)}
+                        placeholder="ör. Mavi · 80x28"
+                      />
+                    </UFField>
+                  </div>
+                </UFAcc>
+
+                <UFAcc icon={Icon.Bag} title="Pazaryeri linkleri" sub="Trendyol & Hepsiburada ilan adresleri">
+                  <UFField label="Trendyol linki" opt>
+                    <input
+                      className="uf-input"
+                      value={form.ty_listing_url}
+                      onChange={e => set('ty_listing_url', e.target.value)}
+                      placeholder="https://www.trendyol.com/…"
+                    />
+                  </UFField>
+                  <UFField label="Hepsiburada linki" opt>
+                    <input
+                      className="uf-input"
+                      value={form.hb_listing_url}
+                      onChange={e => set('hb_listing_url', e.target.value)}
+                      placeholder="https://www.hepsiburada.com/…"
+                    />
+                  </UFField>
+                </UFAcc>
+
+                {marketplaceEnabled && !isNew && (
+                  <UFAcc icon={Icon.Link} title="Kanal eşleştirme" sub="Gelen siparişi bu ürüne bağlayan kodlar">
+                    <ChannelsSection productId={initial.id} productBarcode={initial.barcode} embedded />
+                  </UFAcc>
+                )}
+
+                {stockEnabled && !isNew && (
+                  <UFAcc icon={Icon.Box} title="Paket (set)" sub="Bileşenlerden türeyen stok">
+                    <BundleSection
+                      productId={initial.id}
+                      initialIsBundle={!!initial.is_bundle}
+                      onBundleChange={setBundleIsBundle}
+                      embedded
+                    />
+                  </UFAcc>
+                )}
+
+                <UFAcc icon={Icon.Edit} title="Not" sub="Yalnız sana görünür iç açıklama">
+                  <textarea
+                    className="uf-input"
+                    value={form.notes}
+                    onChange={e => set('notes', e.target.value)}
+                    placeholder="İç açıklama…"
+                  />
+                </UFAcc>
+              </div>
+            </div>
+
+            {err && <div className="stg-feedback stg-feedback-err" style={{ marginTop: 16 }}>{err}</div>}
           </div>
 
-          {err && <div className="stg-feedback stg-feedback-err" style={{ marginTop: 12 }}>{err}</div>}
-
-          <div className="modal-actions modal-actions-spread">
-            {!isNew ? (
+          <div className="ua-foot">
+            {!isNew && (
               <div className="prod-modal-left-actions">
                 <button
                   type="button"
@@ -720,13 +1280,14 @@ function ProductModal({ initial, knownCategories, onClose, onSaved }) {
                   )
                 )}
               </div>
-            ) : <span />}
-            <div style={{ display: 'flex', gap: 8 }}>
+            )}
+            <div className="ua-foot-r">
               <button type="button" className="btn btn-ghost" onClick={onClose} disabled={saving}>
                 İptal
               </button>
               <button type="submit" className="btn btn-primary" disabled={saving}>
-                {saving ? 'Kaydediliyor…' : 'Kaydet'}
+                <Icon.Check width="15" height="15" />
+                {saving ? 'Kaydediliyor…' : (isNew ? 'Ürünü oluştur' : 'Kaydet')}
               </button>
             </div>
           </div>
@@ -1296,7 +1857,7 @@ function SelectCheckbox({ state, onChange, label }) {
   );
 }
 
-function VariantRow({ variant, isSelected, onToggleSelect, onOpen }) {
+function VariantRow({ variant, isSelected, onToggleSelect, onOpen, stockEnabled }) {
   return (
     <tr className={'prod-tr prod-tr-variant' + (isSelected ? ' is-selected' : '')} onClick={() => onOpen(variant)}>
       <td className="prod-td prod-td-checkbox" onClick={e => e.stopPropagation()}>
@@ -1308,11 +1869,13 @@ function VariantRow({ variant, isSelected, onToggleSelect, onOpen }) {
       </td>
       <td className="prod-td">
         <div className="prod-name-cell prod-name-cell-variant">
+          {/* stockEnabled prop'u VariantRow imzasından gelir */}
           <span className="prod-variant-arrow" aria-hidden="true">↳</span>
           <ProductImage product={variant} size={36} />
           <div className="prod-name-block">
             <span className="prod-name prod-name-variant">
               {variant.variant_label || variant.name}
+              {stockEnabled && <StockBadge onHand={variant.on_hand} />}
             </span>
             {variant.barcode && (
               <span className="prod-name-sub prod-td-mono">{variant.barcode}</span>
@@ -1414,7 +1977,7 @@ function GroupRow({ group, expanded, selectionState, onToggleSelect, onToggle, o
   );
 }
 
-function SingleRow({ entry, isSelected, onToggleSelect, onOpen }) {
+function SingleRow({ entry, isSelected, onToggleSelect, onOpen, stockEnabled }) {
   const product = entry.variants[0];
   return (
     <tr className={'prod-tr' + (isSelected ? ' is-selected' : '')} onClick={() => onOpen(product)}>
@@ -1429,7 +1992,11 @@ function SingleRow({ entry, isSelected, onToggleSelect, onOpen }) {
         <div className="prod-name-cell">
           <ProductImage product={product} />
           <div className="prod-name-block">
-            <span className="prod-name">{product.name}</span>
+            <span className="prod-name">
+              {product.name}
+              {product.is_bundle && <span className="prod-bundle-tag" title="Paket (set) ürünü">paket</span>}
+              {stockEnabled && <StockBadge onHand={product.on_hand} />}
+            </span>
             {(product.variant_label || product.notes) && (
               <span className="prod-name-sub">
                 {product.variant_label || product.notes}
@@ -1473,7 +2040,7 @@ function SingleRow({ entry, isSelected, onToggleSelect, onOpen }) {
 
 // ─── Main page ─────────────────────────────────────────────────────────────
 
-export function ProductsPage() {
+export function ProductsPage({ onNavigate }) {
   const queryClient = useQueryClient();
   const [filter, setFilter] = React.useState('active');
   const [query, setQuery] = React.useState('');
@@ -1496,6 +2063,16 @@ export function ProductsPage() {
     queryFn: getProductCategories,
     staleTime: 60 * 1000,
   });
+
+  // Stok takibi flag'i — kapalıyken stok kolonu/alanları hiç render edilmez
+  // (dark ship). Hata olsa bile katalog çalışmaya devam etsin diye sessiz.
+  const settingsQuery = useQuery({
+    queryKey: queryKeys.settings(),
+    queryFn: getSettings,
+    staleTime: 5 * 60 * 1000,
+  });
+  const stockEnabled = settingsQuery.data?.stockTrackingEnabled === true;
+  const marketplaceEnabled = settingsQuery.data?.marketplaceSyncEnabled === true;
 
   const allProducts = productsQuery.data ?? [];
   const categories = categoriesQuery.data ?? [];
@@ -1628,6 +2205,12 @@ export function ProductsPage() {
           </div>
         </div>
         <div className="head-actions">
+          {marketplaceEnabled && (
+            <button className="btn btn-ghost" onClick={() => onNavigate?.('mapping')}>
+              <Icon.Link width="14" height="14" />
+              Eşleştirme
+            </button>
+          )}
           <button className="btn btn-primary" onClick={() => setModal('new')}>
             <Icon.Plus width="14" height="14" />
             Yeni ürün
@@ -1811,6 +2394,7 @@ export function ProductsPage() {
                           isSelected={selected.has(v.id)}
                           onToggleSelect={toggleSelectId}
                           onOpen={setModal}
+                          stockEnabled={stockEnabled}
                         />
                       ))}
                     </React.Fragment>
@@ -1824,6 +2408,7 @@ export function ProductsPage() {
                     isSelected={selected.has(single.id)}
                     onToggleSelect={toggleSelectId}
                     onOpen={setModal}
+                    stockEnabled={stockEnabled}
                   />
                 );
               })}
@@ -1836,6 +2421,9 @@ export function ProductsPage() {
         <ProductModal
           initial={modal === 'new' ? null : modal}
           knownCategories={mergedCategories}
+          stockEnabled={stockEnabled}
+          marketplaceEnabled={marketplaceEnabled}
+          onStockSaved={() => queryClient.invalidateQueries({ queryKey: ['products'] })}
           onClose={() => setModal(null)}
           onSaved={(saved) => {
             // Kullanıcı yeni kategori adı yazıp ürünü kaydettiyse, o kategori
