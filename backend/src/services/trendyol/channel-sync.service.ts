@@ -46,7 +46,15 @@ function flatten(response: TrendyolProductsResponse): FlatVariant[] {
         title: product.title ?? null,
         quantity: typeof v.stock?.quantity === "number" ? v.stock.quantity : null,
         listPrice: typeof v.price?.listPrice === "number" ? v.price.listPrice : null,
-        salePrice: typeof v.price?.salePrice === "number" ? v.price.salePrice : null,
+        // salePrice bazı ilanlarda boş gelir; Trendyol o durumda fiyatı
+        // priceSeenByCustomer altında döndürür. Adopt (yeni iç ürün) bu fiyatı
+        // şart koştuğu için fallback'i burada da yakala.
+        salePrice:
+          typeof v.price?.salePrice === "number"
+            ? v.price.salePrice
+            : typeof v.price?.priceSeenByCustomer === "number"
+              ? v.price.priceSeenByCustomer
+              : null,
         onSale: typeof v.onSale === "boolean" ? v.onSale : null,
         archived: typeof v.archived === "boolean" ? v.archived : null,
         productUrl: v.productUrl ?? null,

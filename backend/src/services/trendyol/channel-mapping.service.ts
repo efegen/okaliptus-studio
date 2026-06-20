@@ -30,6 +30,21 @@ async function assertEnabled(): Promise<void> {
   if (!settings.marketplaceSyncEnabled) throw new MarketplaceSyncDisabledError();
 }
 
+// Snapshot'ın raw variant JSON'ından kullanılabilir bir pozitif fiyat çıkarır.
+// Eski senkronlarda sale_price/list_price kolonları boş kalmış olabilir ama
+// ham veri priceSeenByCustomer'ı taşır → adopt yeniden senkron beklemeden çalışsın.
+function rawPriceFallback(raw: unknown): number | null {
+  if (!raw || typeof raw !== "object") return null;
+  const price = (raw as { price?: unknown }).price;
+  if (!price || typeof price !== "object") return null;
+  const p = price as Record<string, unknown>;
+  for (const key of ["salePrice", "priceSeenByCustomer", "listPrice"] as const) {
+    const v = p[key];
+    if (typeof v === "number" && Number.isFinite(v) && v > 0) return v;
+  }
+  return null;
+}
+
 type ChannelSnapshot = {
   title: string | null;
   quantity: number | null;
@@ -52,6 +67,7 @@ export type MappingProductRow = {
   name: string;
   barcode: string | null;
   price: string;
+  imageUrl: string | null;
   archivedAt: string | null;
   trendyol: MappingChannelCell | null;
   hepsiburada: MappingChannelCell | null;
@@ -89,9 +105,9 @@ export async function getMappingOverview(): Promise<MappingOverview> {
 
   // 1) İç ürünler (aktif). Arşivliyi gizliyoruz; eşleştirme aktif katalog üzerine.
   const productsRes = await pool.query<{
-    id: string; name: string; barcode: string | null; price: string; archived_at: string | null;
+    id: string; name: string; barcode: string | null; price: string; image_url: string | null; archived_at: string | null;
   }>(
-    `SELECT id, name, barcode, price, archived_at
+    `SELECT id, name, barcode, price, image_url, archived_at
        FROM products
       WHERE archived_at IS NULL
       ORDER BY name ASC, id ASC`,
@@ -102,6 +118,7 @@ export async function getMappingOverview(): Promise<MappingOverview> {
     name: p.name,
     barcode: p.barcode,
     price: p.price,
+    imageUrl: p.image_url,
     archivedAt: p.archived_at,
     trendyol: null,
     hepsiburada: null,
@@ -269,6 +286,11 @@ export type AdoptInput = {
   channelProductId: EntityId;
   mode: "link" | "create";
   productId?: EntityId | null; // mode='link' için zorunlu
+  // mode='create' için opsiyonel kullanıcı override'ları. name verilmezse snapshot
+  // başlığı kullanılır; price verilmezse snapshot fiyatına (sale/list/raw) düşülür.
+  // İlanın hiçbir fiyatı yoksa price ZORUNLU olur (products.price > 0 CHECK).
+  name?: string | null;
+  price?: number | string | null;
   actorUserId?: number | string | null;
 };
 
@@ -291,9 +313,9 @@ export async function adoptChannelProduct(input: AdoptInput): Promise<AdoptResul
     const cpRes = await client.query<{
       id: string; external_id: string; title: string | null; sale_price: string | null;
       list_price: string | null; archived: boolean | null; image_url: string | null;
-      quantity: number | null;
+      quantity: number | null; raw: unknown;
     }>(
-      `SELECT id, external_id, title, sale_price, list_price, archived, image_url, quantity
+      `SELECT id, external_id, title, sale_price, list_price, archived, image_url, quantity, raw
          FROM channel_products
         WHERE id = $1 AND channel = 'trendyol'
         FOR UPDATE`,
@@ -323,14 +345,24 @@ export async function adoptChannelProduct(input: AdoptInput): Promise<AdoptResul
       if (!prod.rows[0]) throw new ProductNotFoundError();
       productId = prod.rows[0].id;
     } else {
-      // create: snapshot'tan yeni iç ürün. Fiyat sale_price → list_price; ikisi de
-      // yoksa hata (products.price > 0 CHECK).
-      const priceStr = cp.sale_price ?? cp.list_price;
-      const priceCents = priceStr ? moneyToCents(priceStr, "salePrice") : 0n;
+      // create: snapshot'tan yeni iç ürün. Fiyat önceliği: kullanıcı override →
+      // sale_price → list_price → ham veriden priceSeenByCustomer. Hiçbiri yoksa
+      // (override de yoksa) hata; artık kullanıcı fiyat girerek bunu aşabilir.
+      const userPrice =
+        input.price === undefined || input.price === null || input.price === ""
+          ? null
+          : input.price;
+      const priceSource = userPrice ?? cp.sale_price ?? cp.list_price ?? rawPriceFallback(cp.raw);
+      const priceCents = priceSource != null ? moneyToCents(priceSource, "price") : 0n;
       if (priceCents <= 0n) {
-        throw new ValidationError("Kanal ürününde geçerli fiyat yok; önce mevcut bir iç ürüne bağla.");
+        throw new ValidationError("Bu ilanın fiyatı yok; lütfen bir fiyat gir.");
       }
-      const name = normalizeRequiredText(cp.title ?? cp.external_id, "title");
+      // İsim: kullanıcı override'ı → snapshot başlığı → barkod.
+      const nameSource =
+        typeof input.name === "string" && input.name.trim() !== ""
+          ? input.name
+          : cp.title ?? cp.external_id;
+      const name = normalizeRequiredText(nameSource, "name");
 
       // Barkod çakışması: aynı barkodlu iç ürün varsa create değil link gerekir.
       const barcodeClash = await client.query<{ id: string }>(

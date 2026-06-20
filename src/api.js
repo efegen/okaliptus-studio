@@ -737,10 +737,16 @@ export async function autoMatchByBarcode() {
 
 // Bir orphan TY ürününü iç kataloga benimse: mode 'link' (mevcut ürüne bağla) veya
 // 'create' (yeni iç ürün oluştur + bağla). → { productId, listingId, created }
-export async function adoptChannelProduct({ channelProductId, mode, productId }) {
+export async function adoptChannelProduct({ channelProductId, mode, productId, name, price }) {
   const payload = await apiRequest("/mapping/adopt", {
     method: "POST",
-    body: JSON.stringify({ channelProductId, mode, productId: productId ?? null }),
+    body: JSON.stringify({
+      channelProductId,
+      mode,
+      productId: productId ?? null,
+      name: name ?? null,
+      price: price ?? null,
+    }),
   });
   return ensureMutationResult(payload, "Eşleştirme yapılamadı.");
 }

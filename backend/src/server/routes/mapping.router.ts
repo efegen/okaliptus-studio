@@ -35,7 +35,7 @@ mappingRouter.post("/auto-match", async (req, res) => {
 });
 
 // POST /mapping/adopt — orphan TY ürününü iç kataloga benimse.
-// body: { channelProductId, mode: 'link'|'create', productId? }
+// body: { channelProductId, mode: 'link'|'create', productId?, name?, price? }
 mappingRouter.post("/adopt", async (req, res) => {
   try {
     const body = (req.body ?? {}) as Record<string, unknown>;
@@ -46,6 +46,10 @@ mappingRouter.post("/adopt", async (req, res) => {
       productId: body.productId === undefined || body.productId === null || body.productId === ""
         ? null
         : String(body.productId),
+      name: typeof body.name === "string" ? body.name : null,
+      price: body.price === undefined || body.price === null || body.price === ""
+        ? null
+        : (body.price as number | string),
       actorUserId: req.currentUser.id,
     });
     res.status(201).json({ data });
