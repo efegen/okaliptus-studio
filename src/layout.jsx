@@ -41,10 +41,14 @@ export const Icon = {
   Camera: (p) => (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinejoin="round" {...p}><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>),
   Trash: (p) => (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" {...p}><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6M10 11v6M14 11v6"/></svg>),
   More: (p) => (<svg viewBox="0 0 24 24" fill="currentColor" stroke="none" {...p}><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg>),
+  Bag: (p) => (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinejoin="round" {...p}><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>),
+  Box: (p) => (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinejoin="round" {...p}><path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg>),
+  Truck: (p) => (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinejoin="round" {...p}><path d="M1 4h13v11H1zM14 8h4l3 3v4h-7"/><circle cx="6" cy="18" r="1.6"/><circle cx="17.5" cy="18" r="1.6"/></svg>),
 };
 
 export function Sidebar({ page, setPage }) {
-  // Eşleştirme sekmesi yalnız pazaryeri senkronu açıkken görünür (dark ship).
+  // Siparişler sekmesi yalnız pazaryeri senkronu açıkken görünür (dark ship).
+  // Eşleştirme artık sol barda değil — Ürünler sayfasından açılır.
   const settingsQuery = useQuery({
     queryKey: queryKeys.settings(),
     queryFn: getSettings,
@@ -56,8 +60,10 @@ export function Sidebar({ page, setPage }) {
     { id: "home",     label: "Ana Sayfa",            icon: Icon.Home },
     { id: "students", label: "Öğrenciler",           icon: Icon.Users },
     { id: "catalog",  label: "Dersler ve Eğitmenler", icon: Icon.Layers },
+    ...(marketplaceEnabled ? [
+      { id: "orders",  label: "Siparişler", icon: Icon.Bag },
+    ] : []),
     { id: "products", label: "Ürünler",                icon: Icon.Tag },
-    ...(marketplaceEnabled ? [{ id: "mapping", label: "Eşleştirme", icon: Icon.Link }] : []),
     { id: "movements",label: "Hareketler",             icon: Icon.Repeat },
   ];
   return (
@@ -99,6 +105,7 @@ export const PAGE_LABELS = {
   catalog: "Dersler ve Eğitmenler",
   products: "Ürünler",
   mapping: "Eşleştirme",
+  orders: "Pazaryeri Siparişleri",
   movements: "Hareketler",
   settings: "Ayarlar",
 };

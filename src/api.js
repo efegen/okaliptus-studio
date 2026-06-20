@@ -712,6 +712,46 @@ export async function previewTrendyolOrders(params = {}) {
   return payload.data;
 }
 
+// Pazaryeri Siparişleri görünümü: TY siparişlerini TY fotoğrafı + iç ürün eşleşmesiyle
+// zenginleştirilmiş liste + sekme sayıları olarak getirir. SALT-OKUMA; stoğa dokunmaz
+// (order-sync defterinden bağımsız). marketplaceSyncEnabled kapalıysa 409, kimlik yoksa 503.
+// → { orders[], tabCounts, total }
+export async function getTrendyolOrdersList({ startDate, endDate, windowDays, force } = {}) {
+  const params = new URLSearchParams();
+  if (startDate) params.set("startDate", String(startDate));
+  if (endDate) params.set("endDate", String(endDate));
+  if (windowDays) params.set("windowDays", String(windowDays));
+  if (force) params.set("force", "1"); // "Yenile": anlık önbelleği baypas et, canlı çek
+  const qs = params.toString();
+  const payload = await apiGet(`/trendyol/orders/list${qs ? `?${qs}` : ""}`);
+  if (typeof payload?.data !== "object" || payload.data === null || Array.isArray(payload.data)) {
+    throw new Error("Sipariş listesi alınamadı.");
+  }
+  return payload.data;
+}
+
+// Faz 2: bir siparişin kargo etiketini (Trendyol Ortak Etiket) OLUŞTURUR + getirir.
+// CANLI TY yazması; marketplaceFulfillmentEnabled kapalıysa 409. format 'PDF'|'ZPL'.
+// → { contentType, base64?|text?|json?, format, cargoTrackingNumber }
+export async function getOrderLabel({ cargoTrackingNumber, format = "PDF" }) {
+  const payload = await apiRequest("/trendyol/orders/label", {
+    method: "POST",
+    body: JSON.stringify({ cargoTrackingNumber, format }),
+  });
+  return ensureMutationResult(payload, "Kargo etiketi alınamadı.");
+}
+
+// Faz 2: bir paketin kargo firmasını DEĞİŞTİRİR (CANLI TY yazması). cargoProvider =
+// TY firma KODU (orders.jsx CARGO_PROVIDERS whitelist'i). marketplaceFulfillmentEnabled
+// kapalıysa 409. TY: paket başına 5 dk'da yalnız 1 değişiklik. → { packageId, cargoProvider, name }
+export async function changeOrderCargoProvider({ packageId, cargoProvider }) {
+  const payload = await apiRequest("/trendyol/orders/cargo-provider", {
+    method: "POST",
+    body: JSON.stringify({ packageId, cargoProvider }),
+  });
+  return ensureMutationResult(payload, "Kargo firması değiştirilemedi.");
+}
+
 // ─── Ürün eşleştirme kokpiti (iç katalog ↔ Trendyol ↔ Hepsiburada) ───────────
 
 // Trendyol onaylı ürünlerini çekip yerel snapshot'a yazar (read-only). → { synced, pages, pruned }
