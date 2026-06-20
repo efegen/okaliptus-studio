@@ -70,8 +70,8 @@ function isUrgent(targetMs) {
 // ─── İkonlar (tasarımın inline SVG'leriyle aynı) ─────────────────────────────
 const I = {
   back: (s = 20) => (<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 6-6 6 6 6" /></svg>),
-  bell: (s = 19) => (<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10 21a2 2 0 0 0 4 0" /></svg>),
   search: (s = 17) => (<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>),
+  filter: (s = 18) => (<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.85" strokeLinecap="round" strokeLinejoin="round"><path d="M3 5h18M6 12h12M10 19h4" /></svg>),
   refresh: (s = 18) => (<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.85" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36M21 4v4h-4" /></svg>),
   copy: (s = 12) => (<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V5a2 2 0 0 1 2-2h10" /></svg>),
   check: (s = 12) => (<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12l5 5 9-11" /></svg>),
@@ -91,6 +91,13 @@ const TABS = [
   { key: 'teslim', label: 'Teslim Edilen' },
   { key: 'yeniden', label: 'Yeniden Gönderim' },
   { key: 'aski', label: 'Askıdaki' },
+];
+
+// Kanal filtre seçenekleri (arama kutusunun sağındaki filtre butonu menüsü).
+const CHANNELS = [
+  { key: 'all', label: 'Tümü', dot: null },
+  { key: 'ty', label: 'Trendyol', dot: 'ty' },
+  { key: 'hb', label: 'Hepsiburada', dot: 'hb', title: 'Hepsiburada entegrasyonu yakında' },
 ];
 
 const EMPTY_LABELS = {
@@ -178,14 +185,14 @@ function OrderCard({ order, copied, onCopy, onOpenDetail }) {
             {copied ? I.check(12) : I.copy(12)}
           </button>
         </div>
-        {dateStr && <span className="mo-chead-date">{I.clock(12)}{dateStr}</span>}
+        {dateStr && <span className="mo-chead-date"><span className="mo-chead-date-l">Sipariş Tarihi:</span> {dateStr}</span>}
       </div>
-      {/* satır 2: kanal rozeti (sol) · alıcı (sağ) */}
+      {/* satır 2: alıcı (sol, belirgin) · kanal rozeti (sağ, ikincil) */}
       <div className="mo-subhead">
-        <span className={'mo-chan ' + chanCls}><span className="mo-chan-dot" />{chanLabel}</span>
         {order.buyerName && (
           <span className="mo-cust">{order.buyerName}{loc && <span className="mo-cust-loc"> · {loc}</span>}</span>
         )}
+        <span className={'mo-chan ' + chanCls}><span className="mo-chan-dot" />{chanLabel}</span>
       </div>
 
       {band && (
@@ -195,53 +202,38 @@ function OrderCard({ order, copied, onCopy, onOpenDetail }) {
         </div>
       )}
 
-      <div className="mo-items">
-        {lines.map((l, i) => {
-          // "Stok Kodu" yalnız bilgilendiriciyse gösterilir: TY çoğu satırda
-          // merchantSku'yu boş bırakıp "merchantSku" sabitini ya da barkodun
-          // aynısını döndürüyor → bunları gürültü sayıp gizle.
-          const sku = l.merchantSku
-            && l.merchantSku !== l.barcode
-            && l.merchantSku.trim().toLocaleLowerCase('tr-TR') !== 'merchantsku'
-            ? l.merchantSku : null;
-          return (
-            <div className="mo-item" key={l.lineId || i}>
-              <PhotoSlot qty={l.quantity} src={l.imageUrl} alt={l.productName} />
-              <div className="mo-item-body">
-                <div className="mo-item-name">{l.productName || l.channelTitle || l.barcode || '—'}</div>
-                <div className="mo-attrs">
-                  {l.unitPrice != null && <div className="mo-attr mo-attr-price">Birim Fiyatı: <b>{fmtTL(l.unitPrice)}</b></div>}
-                  {l.barcode && <div className="mo-attr">Barkod: <span className="mo-mono">{l.barcode}</span></div>}
-                  {sku && <div className="mo-attr">Stok Kodu: <span className="mo-mono">{sku}</span></div>}
-                  {l.color && <div className="mo-attr">Renk: <b>{l.color}</b></div>}
-                  {l.size && <div className="mo-attr">Beden: <b>{l.size}</b></div>}
+      <div
+        className="mo-items-row"
+        role={onOpenDetail ? 'button' : undefined}
+        tabIndex={onOpenDetail ? 0 : undefined}
+        onClick={onOpenDetail ? () => onOpenDetail(order) : undefined}
+        onKeyDown={onOpenDetail ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpenDetail(order); } } : undefined}
+      >
+        <div className="mo-items">
+          {lines.map((l, i) => {
+            const sku = l.merchantSku
+              && l.merchantSku !== l.barcode
+              && l.merchantSku.trim().toLocaleLowerCase('tr-TR') !== 'merchantsku'
+              ? l.merchantSku : null;
+            return (
+              <div className="mo-item" key={l.lineId || i}>
+                <PhotoSlot qty={l.quantity} src={l.imageUrl} alt={l.productName} />
+                <div className="mo-item-body">
+                  <div className="mo-item-name">{l.productName || l.channelTitle || l.barcode || '—'}</div>
+                  <div className="mo-attrs">
+                    {l.unitPrice != null && <div className="mo-attr mo-attr-price">Birim Fiyatı: <b>{fmtTL(l.unitPrice)}</b></div>}
+                    {l.barcode && <div className="mo-attr">Barkod: <b>{l.barcode}</b></div>}
+                    {sku && <div className="mo-attr">Stok Kodu: <b>{sku}</b></div>}
+                    {l.color && <div className="mo-attr">Renk: <b>{l.color}</b></div>}
+                    {l.size && <div className="mo-attr">Beden: <b>{l.size}</b></div>}
+                  </div>
                 </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {(order.saleAmount != null || order.billable != null) && (
-        <div className="mo-card-foot">
-          <div className="mo-invoice">
-            {order.saleAmount != null && (
-              <div className="mo-inv-row"><span>Satış Tutarı</span><span className={'mo-inv-val' + (hasDiscount ? ' mo-strike' : '')}>{fmtTL(order.saleAmount)}</span></div>
-            )}
-            {hasDiscount && (
-              <div className="mo-inv-row"><span className="mo-inv-label-ic">Satıcı İndirim Tutarı {I.info(12)}</span><span className="mo-inv-val">−{fmtTL(order.discount)}</span></div>
-            )}
-            {order.billable != null && (
-              <div className="mo-inv-total"><span className="mo-inv-total-l">Faturalanacak Tutar</span><span className="mo-inv-total-v">{fmtTL(order.billable)}</span></div>
-            )}
-          </div>
+            );
+          })}
         </div>
-      )}
-
-      {/* Sipariş detayını görüntüle → tam ekran detay (MobileOrderDetail, chat26). */}
-      <button type="button" className="mo-detaylink" onClick={() => onOpenDetail && onOpenDetail(order)}>
-        Sipariş detayını görüntüle {I.chevR(15)}
-      </button>
+        {onOpenDetail && <span className="mo-items-chev" aria-hidden="true">{I.chevR(18)}</span>}
+      </div>
     </article>
   );
 }
@@ -251,6 +243,7 @@ export function MobileOrders({ onBack, onOpenDetail }) {
   const [channel, setChannel] = React.useState('all');
   const [search, setSearch] = React.useState('');
   const [copiedId, setCopiedId] = React.useState(null);
+  const [filterOpen, setFilterOpen] = React.useState(false);
 
   // Web orders ekranıyla AYNI sorgu anahtarı → önbellek paylaşılır (viewport
   // değişince yeniden çekmez), salt-okunur 90 günlük pencere.
@@ -310,7 +303,6 @@ export function MobileOrders({ onBack, onOpenDetail }) {
           <h1>Pazaryeri Siparişleri</h1>
           <p>Trendyol · Hepsiburada</p>
         </div>
-        <span className="mo-top-bell" aria-hidden="true">{I.bell(19)}<span className="mo-nd" /></span>
       </header>
 
       {/* ── Durum sekmeleri (sabit) ── */}
@@ -332,7 +324,7 @@ export function MobileOrders({ onBack, onOpenDetail }) {
 
       {/* ── Kayan gövde ── */}
       <div className="mo-scroll">
-        {/* arama + yenile */}
+        {/* arama + kanal filtresi + yenile */}
         <div className="mo-tools">
           <label className="mo-search">
             {I.search(17)}
@@ -343,6 +335,41 @@ export function MobileOrders({ onBack, onOpenDetail }) {
               aria-label="Müşteri adı ile ara"
             />
           </label>
+          <div className="mo-filter-wrap">
+            <button
+              type="button"
+              className={'mo-toolbtn mo-filter-btn' + (channel !== 'all' ? ' on' : '')}
+              aria-label="Kanal filtresi"
+              aria-haspopup="menu"
+              aria-expanded={filterOpen}
+              onClick={() => setFilterOpen(o => !o)}
+            >
+              {I.filter(18)}
+              {channel !== 'all' && <span className={'mo-filter-dot ' + channel} />}
+            </button>
+            {filterOpen && (
+              <>
+                <div className="mo-filter-backdrop" onClick={() => setFilterOpen(false)} />
+                <div className="mo-filter-menu" role="menu" aria-label="Kanal filtresi">
+                  {CHANNELS.map(c => (
+                    <button
+                      key={c.key}
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={channel === c.key}
+                      className={'mo-filter-item' + (channel === c.key ? ' on' : '')}
+                      title={c.title}
+                      onClick={() => { setChannel(c.key); setFilterOpen(false); }}
+                    >
+                      {c.dot ? <span className={'mo-fdot ' + c.dot} /> : <span className="mo-fdot mo-fdot-all" />}
+                      <span className="mo-filter-item-l">{c.label}</span>
+                      {channel === c.key && <span className="mo-filter-check">{I.check(13)}</span>}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
           <button
             type="button"
             className={'mo-toolbtn' + (ordersQuery.isFetching ? ' is-busy' : '')}
@@ -352,15 +379,6 @@ export function MobileOrders({ onBack, onOpenDetail }) {
           >
             {I.refresh(18)}
           </button>
-        </div>
-
-        {/* kanal segmenti */}
-        <div className="mo-subrow">
-          <div className="mo-seg" role="tablist" aria-label="Kanal filtresi">
-            <button type="button" className={'mo-seg-btn' + (channel === 'all' ? ' on' : '')} onClick={() => setChannel('all')}>Tümü</button>
-            <button type="button" className={'mo-seg-btn' + (channel === 'ty' ? ' on' : '')} onClick={() => setChannel('ty')}><span className="mo-seg-dot ty" />Trendyol</button>
-            <button type="button" className={'mo-seg-btn' + (channel === 'hb' ? ' on' : '')} onClick={() => setChannel('hb')} title="Hepsiburada entegrasyonu yakında"><span className="mo-seg-dot hb" />Hepsiburada</button>
-          </div>
         </div>
 
         {/* meta */}
