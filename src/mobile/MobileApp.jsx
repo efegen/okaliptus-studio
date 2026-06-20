@@ -9,11 +9,14 @@ import { MobileQuickAddSheet } from './MobileQuickAddSheet';
 import { MobileQuickPaymentSheet } from './MobileQuickPaymentSheet';
 import { MobileQuickLessonSheet } from './MobileQuickLessonSheet';
 import { MobileStudentProfilePage } from './MobileStudentProfilePage';
+import { MobileCollectPaymentPage } from './MobileCollectPaymentPage';
 import { MobileToast } from './MobileToast';
 import { MobileMenu } from './MobileMenu';
 import { MobileMovements } from './MobileMovements';
 import { MobileFinance } from './MobileFinance';
 import { MobileOccupancy } from './MobileOccupancy';
+import { MobileOrders } from './MobileOrders';
+import { MobileOrderDetail } from './MobileOrderDetail';
 import { MobileProductCatalogPage } from './MobileProductCatalogPage';
 import { MobileProductSalePage } from './MobileProductSalePage';
 import { MobileProductSaleCheckoutPage } from './MobileProductSaleCheckoutPage';
@@ -56,6 +59,9 @@ export function MobileApp({
     page === 'menu' ||
     page === 'finance' ||
     page === 'occupancy' ||
+    page === 'orders' ||
+    page === 'order-detail' ||
+    page === 'collect-payment' ||
     onProductSale;
 
   // QuickAdd state — `quickAdd` is the entry sheet, `quickFlow` is the chosen
@@ -70,6 +76,12 @@ export function MobileApp({
   // Finans ekranı menüden de ana sayfa hero kartından da açılabiliyor; geri
   // tuşu nereden gelindiyse oraya dönsün diye kaynağı tutuyoruz.
   const [financeFrom, setFinanceFrom] = React.useState('menu');
+  // Pazaryeri sipariş detayında gösterilen sipariş (liste ekranının çektiği
+  // nesne; ayrı istek yok). 'order-detail' sayfası bunu okur, geri → 'orders'.
+  const [orderDetail, setOrderDetail] = React.useState(null);
+  // "Ödeme al" tam sayfası nereden açıldıysa (profil / hareketler) geri/onay
+  // sonrası oraya dönsün diye kaynağı tutuyoruz.
+  const [paymentReturnPage, setPaymentReturnPage] = React.useState('students');
 
   function openFinance(from) {
     setFinanceFrom(from);
@@ -116,8 +128,23 @@ export function MobileApp({
   }
 
   function handleProfilePayment(student) {
+    // Profil/hareketler → sağdan tam-sayfa "Ödeme al" (Tasarım A). FAB akışı
+    // (öğrenci seçtirmeli) hâlâ alttan sheet kullanır.
     setProfileActionStudent(student);
-    setQuickFlow('payment');
+    setPaymentReturnPage(page);
+    setPage('collect-payment');
+  }
+
+  function handleCollectPaymentBack() {
+    setProfileActionStudent(null);
+    setPage(paymentReturnPage);
+  }
+
+  function handleCollectPaymentCompleted(message) {
+    setProfileActionStudent(null);
+    invalidateAfterMutation('payment');
+    setPage(paymentReturnPage);
+    if (message) setToast(message);
   }
 
   function handleProfileSale(student) {
@@ -212,6 +239,7 @@ export function MobileApp({
         onLogout={onLogout}
         onOpenFinance={() => openFinance('home')}
         onOpenOccupancy={() => { setStudentDetailId(null); setPage('occupancy'); }}
+        onOpenOrders={() => { setStudentDetailId(null); setPage('orders'); }}
       />
     );
   } else if (page === 'finance') {
@@ -224,6 +252,18 @@ export function MobileApp({
   } else if (page === 'occupancy') {
     // Doluluk yalnız ana sayfadaki "Haftalık doluluk" kartından açılır; geri → ana sayfa.
     body = <MobileOccupancy onBack={() => setPage('home')} />;
+  } else if (page === 'orders') {
+    // Pazaryeri Siparişleri yalnız ana sayfadaki "Siparişler" (V3·B) butonundan
+    // açılır; geri → ana sayfa.
+    body = (
+      <MobileOrders
+        onBack={() => setPage('home')}
+        onOpenDetail={(order) => { setOrderDetail(order); setPage('order-detail'); }}
+      />
+    );
+  } else if (page === 'order-detail') {
+    // Sipariş detayı (tam ekran takeover, alt sekme çubuğu gizli); geri → liste.
+    body = <MobileOrderDetail order={orderDetail} onBack={() => setPage('orders')} />;
   } else if (page === 'students') {
     body = studentDetailId ? (
       <MobileStudentProfilePage
@@ -234,6 +274,16 @@ export function MobileApp({
       />
     ) : (
       <MobileStudents onOpenStudent={setStudentDetailId} />
+    );
+  } else if (page === 'collect-payment') {
+    // "Ödeme al" tam-sayfa tahsilat ekranı (profil/hareketlerden push); alt sekme
+    // çubuğu + üst başlık gizli, kendi başlık/footer'ı var.
+    body = (
+      <MobileCollectPaymentPage
+        student={profileActionStudent}
+        onBack={handleCollectPaymentBack}
+        onCompleted={handleCollectPaymentCompleted}
+      />
     );
   } else if (page === 'calendar') {
     body = <MobileCalendar />;
@@ -299,11 +349,13 @@ export function MobileApp({
       <main className="mobile-main" data-screen-label={page}>
         {body}
       </main>
-      <BottomTabBar
-        page={page}
-        onNavigate={handleNavigate}
-        onQuickAdd={handleQuickAdd}
-      />
+      {page !== 'order-detail' && page !== 'collect-payment' && (
+        <BottomTabBar
+          page={page}
+          onNavigate={handleNavigate}
+          onQuickAdd={handleQuickAdd}
+        />
+      )}
 
       <MobileQuickAddSheet
         open={quickAddOpen}
@@ -314,7 +366,7 @@ export function MobileApp({
         open={quickFlow === 'payment'}
         onClose={handleQuickFlowClose}
         onCompleted={(msg) => handleQuickCompleted('payment', msg)}
-        preselectedStudent={profileActionStudent}
+        preselectedStudent={null}
       />
       <MobileQuickLessonSheet
         open={quickFlow === 'lesson'}

@@ -63,11 +63,12 @@ function ProfileMenu({ user, onLogout }) {
  * Bugünün dersleri ayrı bir bileşendir (MobileAgenda). Veri MobileHome'dan gelir.
  */
 export function MobileHomeView({
-  dateLabel, headline, user, onLogout, onOpenFinance, onOpenOccupancy,
+  dateLabel, headline, user, onLogout, onOpenFinance, onOpenOccupancy, onOpenOrders,
   collected = 0, revenue = 0, collectionRate = 0,
   receivable = 0, debtorCount = 0,
   occupancy = 0, plannedLessons = 0, capacity = null,
   kpiLoading = false,
+  ordersPending = 0, ordersUrgent = 0,
 }) {
   const barWidth = Math.max(0, Math.min(100, collectionRate));
   const occupancyTag = capacity != null
@@ -156,6 +157,35 @@ export function MobileHomeView({
             </div>
           );
         })()}
+      </div>
+
+      {/* Siparişler modülü — tasarım "V3·B · Aciliyet" (Trendyol pazaryeri).
+          KPI pill'lerinin hemen altı, ders akışının üstü. İkonda bildirim
+          noktası + sağda turuncu "bugün kargo" çipi aksiyon gerektiren işi
+          öne çıkarır. Dokununca Pazaryeri Siparişleri ekranını açar. Sayılar
+          şimdilik statik; gerçek sipariş verisine bağlanınca prop'a taşınacak. */}
+      <div className="mod-wrap">
+        <button type="button" className="mod-row mod-rowu" onClick={onOpenOrders}>
+          <span className="mod-row-icon">
+            <Icon.Box width="19" height="19" aria-hidden="true" />
+            {ordersPending > 0 && <span className="mod-rowu-dot" />}
+          </span>
+          <span className="mod-row-body">
+            <span className="mod-row-title">Siparişler</span>
+            <span className="mod-row-sub">
+              {ordersPending > 0
+                ? `${ordersPending} bekleyen sipariş · Trendyol`
+                : 'Bekleyen sipariş yok · Trendyol'}
+            </span>
+          </span>
+          {ordersUrgent > 0 && (
+            <span className="mod-rowu-chip">
+              <Icon.Truck width="13" height="13" aria-hidden="true" />
+              {ordersUrgent} bugün
+            </span>
+          )}
+          <span className="mod-row-chev" aria-hidden="true">›</span>
+        </button>
       </div>
     </div>
   );

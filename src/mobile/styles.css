@@ -490,6 +490,47 @@
   }
   .mh-pill.warn .mh-pill-tag { background: var(--warn-2); color: var(--warn-ink); }
 
+  /* ---------- Siparişler modülü — "V3·B · Aciliyet" (Trendyol) ----------
+     KPI pill'lerinin hemen altı, agenda'nın üstü. Sade tek satır; ikonda
+     bildirim noktası + sağda turuncu "bugün kargo" çipi aksiyonu öne çıkarır.
+     Trendyol tonları (--ty*) global değil — web sipariş ekranıyla (.oo-page)
+     aynı değerlerle yalnız modüle scope'lanır. */
+  .mod-wrap {
+    --ty: oklch(0.62 0.16 47);
+    --ty-2: oklch(0.95 0.045 60);
+    --ty-ink: oklch(0.47 0.15 45);
+    margin: 8px 0 4px;
+  }
+  .mod-row {
+    width: 100%; display: flex; align-items: center; gap: 13px;
+    cursor: pointer; font: inherit; text-align: left;
+    padding: 12px 14px; background: var(--surface);
+    border: 1px solid var(--line-2); border-radius: 14px;
+    -webkit-appearance: none; appearance: none; min-height: 60px;
+    transition: transform 120ms ease;
+  }
+  .mod-row:active { transform: scale(0.98); }
+  .mod-row-icon {
+    flex-shrink: 0; width: 38px; height: 38px; border-radius: 11px;
+    background: var(--bg-2); color: var(--ink-2); display: grid; place-items: center;
+  }
+  .mod-row-body { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; }
+  .mod-row-title { font-size: 15px; font-weight: 600; color: var(--ink); }
+  .mod-row-sub { font-size: 12px; color: var(--ink-3); }
+  .mod-row-chev { font-size: 22px; line-height: 1; color: var(--ink-4); font-weight: 300; }
+
+  /* V3·B vurgusu: ikonda bildirim noktası + turuncu "bugün" çipi */
+  .mod-rowu .mod-row-icon { position: relative; overflow: visible; }
+  .mod-rowu-dot {
+    position: absolute; top: -3px; right: -3px; width: 11px; height: 11px;
+    border-radius: 50%; background: var(--ty); border: 2px solid var(--surface);
+  }
+  .mod-rowu-chip {
+    flex-shrink: 0; display: inline-flex; align-items: center; gap: 4px;
+    font-size: 11px; font-weight: 600; padding: 5px 9px; border-radius: 999px;
+    background: var(--ty-2); color: var(--ty-ink); font-variant-numeric: tabular-nums;
+  }
+
   /* ---------- Agenda (home) ---------- */
 
   .mobile-agenda {
@@ -2845,6 +2886,375 @@
     transform: none;
   }
 
+  /* ---------- Mobil Pazaryeri Siparişleri (mo-*) ----------
+     Web orders ekranının (oo-*) mobil karşılığı. Tasarım: Claude Design
+     "Mobil Pazaryeri Siparişleri". Sabit koyu başlık + sabit durum sekmeleri
+     + yalnız gövde kayar (mobile-msp kalıbı). Kanal/amber tonları + 18px kart
+     yarıçapı yalnız .mo-page'e scope'lu (global --radius-lg 12px; kirletmez).
+     Tüm sınıflar mo-* — global .card/.item/.search/.seg/.tabs ile çakışmaz. */
+  .mo-page {
+    --ty: oklch(0.62 0.16 47); --ty-2: oklch(0.95 0.045 60); --ty-ink: oklch(0.47 0.15 45);
+    --hb: oklch(0.52 0.13 285); --hb-2: oklch(0.95 0.035 290); --hb-ink: oklch(0.45 0.13 288);
+    --amber: oklch(0.66 0.13 68); --amber-2: oklch(0.95 0.05 78); --amber-ink: oklch(0.47 0.1 60);
+    --ok: oklch(0.5 0.1 150); --ok-2: oklch(0.93 0.04 150); --ok-ink: oklch(0.37 0.09 150);
+    --info: oklch(0.55 0.12 245); --info-2: oklch(0.95 0.035 245);
+    --radius-lg: 18px;
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column;
+    background: var(--bg);
+    overflow: hidden;
+  }
+
+  /* ── Koyu üst başlık (sabit) ── */
+  .mo-top {
+    flex: 0 0 auto;
+    display: flex; align-items: center; gap: 12px;
+    background: var(--ink); color: var(--surface);
+    padding: calc(env(safe-area-inset-top) + 12px) 14px 14px;
+    position: relative; z-index: 5;
+  }
+  .mo-top-back, .mo-top-bell {
+    flex-shrink: 0; width: 38px; height: 38px; border-radius: 12px; border: 0; padding: 0;
+    background: color-mix(in oklch, var(--surface) 9%, transparent); color: var(--surface);
+    display: grid; place-items: center; cursor: pointer;
+  }
+  .mo-top-back:active { background: color-mix(in oklch, var(--surface) 18%, transparent); }
+  .mo-top-title { flex: 1; min-width: 0; }
+  .mo-top-title h1 { font-size: 18px; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
+  .mo-top-title p { font-size: 11.5px; color: color-mix(in oklch, var(--surface) 60%, transparent); margin: 2px 0 0; }
+  .mo-top-bell { position: relative; }
+  .mo-nd { position: absolute; top: 8px; right: 9px; width: 7px; height: 7px; border-radius: 50%; background: var(--ty); border: 1.5px solid var(--ink); }
+
+  /* ── Durum sekmeleri (sabit, yatay kayar) ── */
+  .mo-tabs {
+    flex: 0 0 auto;
+    display: flex; gap: 4px;
+    padding: 6px 12px 0;
+    overflow-x: auto; scrollbar-width: none;
+    background: var(--surface);
+    border-bottom: 1px solid var(--line);
+  }
+  .mo-tabs::-webkit-scrollbar { display: none; }
+  .mo-tab {
+    flex: 0 0 auto; position: relative; border: 0; background: none; cursor: pointer;
+    padding: 8px 12px 12px; display: flex; flex-direction: column; align-items: center; gap: 3px;
+    font-family: var(--f-sans);
+  }
+  .mo-tab-l { font-size: 13.5px; font-weight: 600; color: var(--ink-3); white-space: nowrap; letter-spacing: -0.01em; }
+  .mo-tab-c { font-size: 11px; font-weight: 500; color: var(--ink-4); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .mo-tab.active .mo-tab-l { color: var(--ink); }
+  .mo-tab.active .mo-tab-c { color: var(--accent-ink); font-weight: 600; }
+  .mo-tab.active::after { content: ""; position: absolute; left: 10px; right: 10px; bottom: 0; height: 2.5px; border-radius: 3px 3px 0 0; background: var(--accent); }
+
+  /* ── Kayan gövde (alt sekme çubuğunu da temizler) ── */
+  .mo-scroll {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    background: var(--bg);
+    padding-bottom: calc(64px + env(safe-area-inset-bottom) + 20px);
+  }
+  .mo-scroll::-webkit-scrollbar { width: 0; }
+
+  /* ── Arama + yenile ── */
+  .mo-tools { display: flex; gap: 9px; padding: 12px 16px 4px; }
+  .mo-search { flex: 1; display: flex; align-items: center; gap: 9px; padding: 0 13px; height: 46px; background: var(--surface); border: 1px solid var(--line-2); border-radius: 13px; }
+  .mo-search svg { color: var(--ink-4); flex-shrink: 0; }
+  .mo-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; font: inherit; font-size: 14px; color: var(--ink); }
+  .mo-search input::placeholder { color: var(--ink-4); }
+  .mo-toolbtn { flex-shrink: 0; width: 46px; height: 46px; border-radius: 13px; border: 0; background: var(--ink); color: var(--surface); display: grid; place-items: center; cursor: pointer; }
+  .mo-toolbtn:active { background: color-mix(in oklch, var(--ink) 80%, transparent); }
+  .mo-toolbtn:disabled { cursor: default; }
+  .mo-toolbtn.is-busy svg { animation: mo-spin 0.8s linear infinite; }
+  @keyframes mo-spin { to { transform: rotate(360deg); } }
+
+  /* ── Kanal segmenti ── */
+  .mo-subrow { display: flex; align-items: center; padding: 10px 16px 2px; }
+  .mo-seg { display: inline-flex; background: var(--surface-2); border: 1px solid var(--line); border-radius: 11px; padding: 3px; gap: 2px; }
+  .mo-seg-btn { display: inline-flex; align-items: center; gap: 6px; border: 0; background: none; cursor: pointer; font: inherit; font-size: 12.5px; font-weight: 600; color: var(--ink-3); padding: 7px 12px; border-radius: 8px; }
+  .mo-seg-dot { width: 7px; height: 7px; border-radius: 50%; }
+  .mo-seg-dot.ty { background: var(--ty); }
+  .mo-seg-dot.hb { background: var(--hb); }
+  .mo-seg-btn.on { background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px oklch(0.3 0.03 80 / 0.1); }
+
+  /* ── Meta ── */
+  .mo-meta { padding: 8px 18px 2px; }
+  .mo-meta-main { font-size: 12.5px; color: var(--ink-3); }
+  .mo-meta-main b { color: var(--ink); font-weight: 600; }
+  .mo-meta-sub { font-size: 11px; color: var(--ink-4); margin-top: 1px; }
+
+  /* ── Sipariş listesi ── */
+  .mo-list { display: flex; flex-direction: column; gap: 10px; padding: 10px 16px 24px; }
+  .mo-card {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius-lg); overflow: hidden;
+    box-shadow: 0 1px 2px oklch(0.3 0.03 80 / 0.05), 0 10px 26px -22px oklch(0.3 0.04 80 / 0.5);
+  }
+
+  /* kart başlığı — 2 satır, kompakt. Satır 1: sipariş no + kopyala (sol) · tarih (sağ) */
+  .mo-chead { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 15px 0; }
+  .mo-chead-id { display: flex; align-items: center; gap: 7px; min-width: 0; }
+  .mo-ordno { font-size: 15px; font-weight: 700; color: var(--ink); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; }
+  .mo-copy { flex-shrink: 0; width: 22px; height: 22px; border-radius: 6px; border: 0; padding: 0; background: var(--surface-2); color: var(--ink-4); display: grid; place-items: center; cursor: pointer; }
+  .mo-copy:active { background: var(--line); }
+  .mo-chead-date { display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; font-size: 11.5px; font-weight: 500; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+  .mo-chead-date svg { color: var(--ink-4); flex-shrink: 0; }
+
+  /* satır 2: kanal rozeti (sol) · alıcı + konum (sağ, sığmazsa kısalır) */
+  .mo-subhead { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 5px 15px 11px; }
+  .mo-chan { display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; padding: 3px 9px 3px 7px; border-radius: 999px; font-size: 10.5px; font-weight: 600; }
+  .mo-chan-dot { width: 6px; height: 6px; border-radius: 50%; }
+  .mo-chan-ty { background: var(--ty-2); color: var(--ty-ink); }
+  .mo-chan-ty .mo-chan-dot { background: var(--ty); }
+  .mo-chan-hb { background: var(--hb-2); color: var(--hb-ink); }
+  .mo-chan-hb .mo-chan-dot { background: var(--hb); }
+  .mo-cust { min-width: 0; flex: 1; text-align: right; font-size: 12.5px; font-weight: 600; color: var(--ink-2); text-transform: capitalize; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mo-cust-loc { font-weight: 500; color: var(--ink-4); }
+
+  /* durum şeridi (teslim → yeşil · kargoda → mavi · kalan süre → amber/kırmızı · askıda → nötr) */
+  .mo-band { display: flex; align-items: center; gap: 9px; padding: 9px 14px; font-size: 13px; font-weight: 500; }
+  .mo-band svg { flex-shrink: 0; }
+  .mo-band-txt b { font-weight: 700; font-variant-numeric: tabular-nums; }
+  .mo-band-ok { background: var(--ok-2); color: var(--ok-ink); }
+  .mo-band-ok svg { color: var(--ok); }
+  .mo-band-info { background: var(--info-2); color: var(--info); }
+  .mo-band-amber { background: var(--amber-2); color: var(--amber-ink); }
+  .mo-band-amber svg { color: var(--amber); }
+  .mo-band-warn { background: var(--warn-2); color: var(--warn-ink); }
+  .mo-band-warn svg { color: var(--warn); }
+  .mo-band-neutral { background: var(--bg-2); color: var(--ink-3); }
+
+  /* ürün kalemleri — foto dikeyde ortalı + dikey özellikler */
+  .mo-items { border-top: 1px solid var(--line); }
+  .mo-item { display: flex; align-items: center; gap: 12px; padding: 12px 15px; }
+  .mo-item + .mo-item { border-top: 1px dashed var(--line); }
+  .mo-item-photo { position: relative; flex-shrink: 0; width: 64px; height: 64px; }
+  .mo-qty { position: absolute; top: -7px; right: -7px; z-index: 2; min-width: 21px; height: 21px; padding: 0 6px; border-radius: 999px; background: var(--accent); color: var(--surface); font-size: 11.5px; font-weight: 700; display: grid; place-items: center; border: 2px solid var(--surface); font-variant-numeric: tabular-nums; }
+  .mo-slot { position: relative; width: 64px; height: 64px; border-radius: 12px; border: 1px solid var(--line); overflow: hidden; display: grid; place-items: center; background: var(--bg-2); }
+  .mo-slot img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+  .mo-slot-ph { color: var(--ink-4); display: grid; place-items: center; }
+  .mo-item-body { flex: 1; min-width: 0; }
+  .mo-item-name { font-size: 13.5px; font-weight: 600; color: var(--ink); line-height: 1.3; letter-spacing: -0.01em; }
+  .mo-attrs { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; }
+  .mo-attr { font-size: 12px; color: var(--ink-3); line-height: 1.3; overflow-wrap: anywhere; }
+  .mo-attr b { color: var(--ink-2); font-weight: 600; }
+  .mo-attr-price b { color: var(--ink); font-weight: 700; font-variant-numeric: tabular-nums; }
+  .mo-mono { font-family: var(--f-mono); font-size: 11.5px; color: var(--ink-2); }
+
+  .mo-card-foot { border-top: 1px solid var(--line); background: var(--surface-2); }
+  .mo-invoice { padding: 9px 15px 11px; }
+  .mo-inv-row { display: flex; align-items: center; justify-content: space-between; font-size: 12.5px; color: var(--ink-3); padding: 2px 0; }
+  .mo-inv-label-ic { display: inline-flex; align-items: center; gap: 4px; }
+  .mo-inv-label-ic svg { color: var(--ink-4); }
+  .mo-inv-val { font-variant-numeric: tabular-nums; color: var(--ink-2); font-weight: 500; }
+  .mo-inv-val.mo-strike { text-decoration: line-through; color: var(--ink-4); }
+  .mo-inv-total { display: flex; align-items: center; justify-content: space-between; margin-top: 7px; padding-top: 8px; border-top: 1px dashed var(--line); }
+  .mo-inv-total-l { font-size: 12.5px; font-weight: 600; color: var(--ink-2); }
+  .mo-inv-total-v { font-size: 16px; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+
+  /* sipariş detayı butonu (kart altı) */
+  .mo-detaylink { display: flex; align-items: center; justify-content: center; gap: 5px; width: 100%; border: 0; border-top: 1px solid var(--line); background: var(--surface); cursor: pointer; font: inherit; font-size: 13px; font-weight: 600; color: var(--accent-ink); padding: 12px; -webkit-appearance: none; appearance: none; }
+  .mo-detaylink svg { color: var(--accent-ink); }
+  .mo-detaylink:active { background: var(--bg-2); }
+
+  /* ── Boş / yükleniyor / hata ── */
+  .mo-empty { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 56px 40px; }
+  .mo-empty-med { width: 62px; height: 62px; border-radius: 18px; background: var(--surface); border: 1px solid var(--line); display: grid; place-items: center; color: var(--ink-4); box-shadow: 0 1px 2px oklch(0.3 0.03 80 / 0.05); }
+  .mo-empty-t { font-size: 15px; font-weight: 600; color: var(--ink-2); margin: 16px 0 5px; }
+  .mo-empty-d { font-size: 12.5px; line-height: 1.5; color: var(--ink-3); }
+
+  /* ---------- Mobil Pazaryeri Sipariş Detayı (od-*) ----------
+     Liste ekranındaki (mo-*) bir karttan açılan tam ekran detay. Tasarım:
+     Claude Design "Mobil Pazaryeri Sipariş Detayı". Sabit koyu başlık + kayan
+     gövde (beyaz bloklar, aralarında kalın bg şeridi) + alt sabit aksiyon
+     çubuğu (bu sayfada alt sekme çubuğu gizli). Yerel renk tonları .od-page'e
+     scope'lu; tüm sınıflar od-* (global stilleri kirletmez). */
+  .od-page {
+    --ty: oklch(0.62 0.16 47);
+    --info: oklch(0.55 0.12 245); --info-2: oklch(0.95 0.035 245);
+    --amber: oklch(0.66 0.13 68); --amber-2: oklch(0.95 0.05 78); --amber-ink: oklch(0.47 0.1 60);
+    --ok: oklch(0.5 0.1 150); --ok-2: oklch(0.93 0.04 150); --ok-ink: oklch(0.37 0.09 150);
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column;
+    background: var(--bg-2);
+    overflow: hidden;
+  }
+
+  /* ── Koyu üst başlık (sabit) ── */
+  .od-top {
+    flex: 0 0 auto;
+    display: flex; align-items: center; gap: 12px;
+    background: var(--ink); color: var(--surface);
+    padding: calc(env(safe-area-inset-top) + 12px) 14px 14px;
+    position: relative; z-index: 5;
+  }
+  .od-top-back {
+    flex-shrink: 0; width: 38px; height: 38px; border-radius: 12px; border: 0; padding: 0;
+    background: color-mix(in oklch, var(--surface) 9%, transparent); color: var(--surface);
+    display: grid; place-items: center; cursor: pointer;
+  }
+  .od-top-back:active { background: color-mix(in oklch, var(--surface) 18%, transparent); }
+  .od-top-title { flex: 1; min-width: 0; text-align: center; }
+  .od-top-title h1 { font-size: 18px; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
+  .od-top-spacer { flex-shrink: 0; width: 38px; height: 38px; }
+
+  /* ── Kayan gövde ── */
+  .od-scroll { flex: 1 1 auto; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; background: var(--bg-2); }
+  .od-scroll::-webkit-scrollbar { width: 0; }
+
+  /* ── Bölüm (beyaz blok) ── */
+  .od-sect { background: var(--surface); padding: 17px 18px; }
+  .od-sect + .od-sect { border-top: 7px solid var(--bg-2); }
+  .od-sect-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
+  .od-sect-title { font-size: 17px; font-weight: 700; color: var(--ink); letter-spacing: -0.02em; }
+  .od-sect-count { font-size: 13px; font-weight: 500; color: var(--ink-4); font-variant-numeric: tabular-nums; }
+
+  /* durum rozeti */
+  .od-pill { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .od-pill-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+  .od-pill-info { background: var(--info-2); color: var(--info); }
+  .od-pill-amber { background: var(--amber-2); color: var(--amber-ink); }
+  .od-pill-ok { background: var(--ok-2); color: var(--ok-ink); }
+  .od-pill-warn { background: var(--warn-2); color: var(--warn-ink); }
+  .od-pill-neutral { background: var(--bg-2); color: var(--ink-3); }
+
+  /* durum / kalan süre şeridi */
+  .od-band { display: flex; align-items: center; gap: 9px; padding: 11px 13px; border-radius: 12px; margin-bottom: 16px; font-size: 13px; }
+  .od-band svg { flex-shrink: 0; }
+  .od-band-txt b { font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: 0.01em; }
+  .od-band-info { background: var(--info-2); color: var(--info); border: 1px solid color-mix(in oklch, var(--info) 22%, transparent); }
+  .od-band-ok { background: var(--ok-2); color: var(--ok-ink); border: 1px solid color-mix(in oklch, var(--ok) 22%, transparent); }
+  .od-band-warn { background: var(--warn-2); color: var(--warn-ink); border: 1px solid color-mix(in oklch, var(--warn) 22%, transparent); }
+
+  /* bilgi satırları */
+  .od-info-rows { display: flex; flex-direction: column; gap: 13px; }
+  .od-info-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+  .od-info-k { font-size: 14px; color: var(--ink-3); flex-shrink: 0; padding-top: 1px; }
+  .od-info-v { font-size: 14px; font-weight: 600; color: var(--ink); text-align: right; font-variant-numeric: tabular-nums; display: flex; align-items: center; gap: 7px; min-width: 0; overflow-wrap: anywhere; }
+  .od-info-v.od-mono { font-family: var(--f-mono); font-size: 13px; }
+  .od-copy-ic { flex-shrink: 0; width: 24px; height: 24px; border-radius: 7px; border: 0; padding: 0; background: var(--surface-2); color: var(--ink-4); display: grid; place-items: center; cursor: pointer; }
+  .od-copy-ic:active { background: var(--line); }
+  .od-buyer-v { flex-direction: column; align-items: flex-end; gap: 3px; }
+  .od-buyer-name { text-transform: capitalize; }
+  .od-buyer-tag { font-size: 11.5px; font-weight: 500; color: var(--ink-4); }
+
+  /* ── Ürün kalemleri ── */
+  .od-items { display: flex; flex-direction: column; }
+  .od-item { display: flex; gap: 13px; padding: 14px 0; }
+  .od-item:first-child { padding-top: 2px; }
+  .od-item + .od-item { border-top: 1px dashed var(--line); }
+  .od-photo { position: relative; flex-shrink: 0; width: 66px; height: 66px; }
+  .od-qty { position: absolute; top: -7px; left: -7px; z-index: 2; min-width: 23px; height: 23px; padding: 0 6px; border-radius: 999px; background: var(--accent); color: var(--surface); font-size: 12px; font-weight: 700; display: grid; place-items: center; border: 2px solid var(--surface); font-variant-numeric: tabular-nums; }
+  .od-slot { position: relative; width: 66px; height: 66px; border-radius: 11px; border: 1px solid var(--line); overflow: hidden; display: grid; place-items: center; background: var(--bg-2); }
+  .od-slot img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+  .od-slot-ph { color: var(--ink-4); display: grid; place-items: center; }
+  .od-item-body { flex: 1; min-width: 0; }
+  .od-item-name { font-size: 14px; font-weight: 600; color: var(--ink); line-height: 1.32; letter-spacing: -0.01em; }
+  .od-attrs { display: flex; flex-direction: column; gap: 3px; margin-top: 8px; }
+  .od-attr { font-size: 12.5px; color: var(--ink-3); line-height: 1.3; overflow-wrap: anywhere; }
+  .od-attr b { color: var(--ink-2); font-weight: 600; }
+  .od-mono { font-family: var(--f-mono); font-size: 12px; color: var(--ink-2); }
+  .od-price { font-size: 12.5px; color: var(--ink-3); margin-top: 6px; }
+  .od-price b { font-size: 14px; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
+  .od-item-copy { flex-shrink: 0; width: 26px; height: 26px; border-radius: 7px; border: 0; padding: 0; background: var(--surface-2); color: var(--ink-4); display: grid; place-items: center; cursor: pointer; align-self: flex-start; }
+  .od-item-copy:active { background: var(--line); }
+
+  /* ── Kargo bilgileri ── */
+  .od-cargo-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+  .od-cargo-row + .od-cargo-row { margin-top: 14px; }
+  .od-cargo-logo { display: inline-flex; align-items: center; gap: 8px; }
+  .od-cargo-mark { width: 34px; height: 34px; border-radius: 9px; background: linear-gradient(150deg, var(--info) 0%, color-mix(in oklch, var(--info) 60%, var(--accent)) 100%); color: var(--surface); display: grid; place-items: center; }
+  .od-cargo-mark-code { font-size: 12px; font-weight: 800; letter-spacing: 0.02em; }
+  .od-cargo-logo-img { height: 32px; width: auto; max-width: 140px; object-fit: contain; display: block; }
+  .od-cargo-brand { font-size: 17px; font-weight: 700; color: var(--ink); letter-spacing: 0.01em; }
+  .od-cargo-code { text-align: right; }
+  .od-cargo-code-v { display: block; font-family: var(--f-mono); font-size: 14px; font-weight: 600; color: var(--ink); letter-spacing: -0.01em; }
+  .od-cargo-code-s { font-size: 11.5px; color: var(--ink-4); margin-top: 2px; }
+
+  /* ── Fatura bilgileri ── */
+  .od-inv-status { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .od-inv-status svg { flex-shrink: 0; }
+  .od-inv-pending { background: var(--warn-2); color: var(--warn-ink); }
+  .od-inv-done { background: var(--ok-2); color: var(--ok-ink); }
+  .od-inv-rows { display: flex; flex-direction: column; gap: 11px; }
+  .od-inv-row { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; font-size: 14px; }
+  .od-inv-k { color: var(--ink-3); }
+  .od-inv-v { font-weight: 600; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+  .od-inv-v.od-strike { text-decoration: line-through; color: var(--ink-4); }
+  .od-inv-total { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; margin-top: 14px; padding-top: 14px; border-top: 1px dashed var(--line); }
+  .od-inv-total-k { font-size: 16px; font-weight: 700; color: var(--ink); letter-spacing: -0.01em; }
+  .od-inv-total-v { font-size: 19px; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+
+  /* ── Alt sabit aksiyon çubuğu ── */
+  .od-actionbar {
+    flex: 0 0 auto;
+    background: var(--surface);
+    border-top: 1px solid var(--line);
+    box-shadow: 0 -8px 24px -18px oklch(0.3 0.04 80 / 0.5);
+    padding: 13px 16px calc(env(safe-area-inset-bottom) + 11px);
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .od-ab-print { width: 100%; height: 52px; border-radius: 14px; border: 1.5px solid var(--line-2); background: var(--surface); color: var(--ink); font: inherit; font-size: 15px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 9px; }
+  .od-ab-print svg { color: var(--ink-3); }
+  .od-ab-pair { display: flex; gap: 10px; }
+  .od-ab-ghost { flex: 1; height: 52px; border-radius: 14px; border: 1.5px solid var(--line-2); background: var(--surface); color: var(--ink); font: inherit; font-size: 15px; font-weight: 600; cursor: pointer; }
+  .od-ab-primary { flex: 1.3; height: 52px; border-radius: 14px; border: 0; background: var(--ink); color: var(--surface); font: inherit; font-size: 15px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+  .od-ab-primary svg { opacity: 0.85; }
+  .od-actionbar button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* ── Boş durum (sipariş yoksa) ── */
+  .od-empty { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 56px 40px; }
+  .od-empty-med { width: 62px; height: 62px; border-radius: 18px; background: var(--surface); border: 1px solid var(--line); display: grid; place-items: center; color: var(--ink-4); }
+  .od-empty-t { font-size: 15px; font-weight: 600; color: var(--ink-2); margin: 16px 0 5px; }
+  .od-empty-d { font-size: 12.5px; line-height: 1.5; color: var(--ink-3); }
+
+  /* ── Kargo barkodu modalı (od-barcode-*) ──
+     "Kargo Etiketini Yazdır" → cargoTrackingNumber'dan istemci tarafı Code128
+     barkod (web BarcodeModal'ın mobil eşi). Alttan açılan sayfa + Yazdır/PNG indir.
+     Barkod kartı ZORUNLU beyaz/siyah — okunabilirlik için tema rengi uygulanmaz. */
+  .od-barcode-backdrop {
+    position: fixed; inset: 0; z-index: 70;
+    background: oklch(0 0 0 / 0.5);
+    display: flex; align-items: flex-end; justify-content: center;
+    animation: od-bc-fade 0.18s ease;
+  }
+  @keyframes od-bc-fade { from { opacity: 0; } to { opacity: 1; } }
+  .od-barcode-modal {
+    width: 100%;
+    background: var(--surface);
+    border-top-left-radius: 20px; border-top-right-radius: 20px;
+    padding-bottom: calc(env(safe-area-inset-bottom) + 14px);
+    box-shadow: 0 -10px 40px -16px oklch(0 0 0 / 0.4);
+    animation: od-bc-rise 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  @keyframes od-bc-rise { from { transform: translateY(100%); } to { transform: translateY(0); } }
+  .od-barcode-head {
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+    padding: 18px 18px 14px; border-bottom: 1px solid var(--line);
+  }
+  .od-barcode-title { margin: 0; font-size: 16px; font-weight: 700; color: var(--ink); letter-spacing: -0.02em; }
+  .od-barcode-sub { margin-top: 3px; font-size: 12.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+  .od-barcode-close {
+    flex-shrink: 0; width: 34px; height: 34px; border-radius: 10px; padding: 0;
+    border: 1px solid var(--line-2); background: var(--surface); color: var(--ink-3);
+    display: grid; place-items: center; cursor: pointer;
+  }
+  .od-barcode-close:active { background: var(--bg-2); color: var(--ink); }
+  .od-barcode-body { padding: 22px 18px; display: grid; place-items: center; }
+  .od-barcode-card { background: #ffffff; border: 1px solid var(--line); border-radius: 12px; padding: 16px; display: grid; place-items: center; max-width: 100%; }
+  .od-barcode-canvas { display: block; max-width: 100%; height: auto; }
+  .od-barcode-error { font-size: 13px; color: var(--warn-ink); text-align: center; line-height: 1.5; overflow-wrap: anywhere; }
+  .od-barcode-actions { display: flex; gap: 10px; padding: 4px 16px 0; }
+  .od-barcode-btn {
+    flex: 1; height: 50px; border-radius: 13px; font: inherit; font-size: 15px; font-weight: 600;
+    cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .od-barcode-btn-ghost { border: 1.5px solid var(--line-2); background: var(--surface); color: var(--ink); }
+  .od-barcode-btn-ghost svg { color: var(--ink-3); }
+  .od-barcode-btn-primary { border: 0; background: var(--ink); color: var(--surface); }
+  .od-barcode-btn-primary svg { opacity: 0.85; }
+  .od-barcode-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
   /* ---------- Mobile student profile page (mobile-msp-*) ----------
      "design_handoff_ogrenci_profili" v16: durum renkli sabit başlık +
      sayfa içi sekme barı + kayan sekme içeriği. Sayfa .mobile-main'i
@@ -4144,6 +4554,34 @@
     flex: none;
     width: 100%;
     gap: 10px;
+  }
+
+  /* Toggle (flag) rows: the default stack puts the small switch to the LEFT of a
+   * long wrapping info paragraph → switch floats in the middle of the text. Instead
+   * lay the label + switch on ONE line (switch pushed right), with the info text on
+   * its own full-width line below (standard mobile settings pattern). Scoped to rows
+   * that actually contain a switch so number/select/slider rows keep their stack. */
+  .mobile-main .stg-row:has(.stg-toggle) {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    column-gap: 12px;
+    row-gap: 8px;
+  }
+  .mobile-main .stg-row:has(.stg-toggle) .stg-row-label {
+    flex: 1 1 auto;       /* grow → pushes the switch to the right edge */
+    order: 0;
+  }
+  .mobile-main .stg-row:has(.stg-toggle) .stg-row-control {
+    display: contents;    /* flatten so switch + info become row children */
+  }
+  .mobile-main .stg-row:has(.stg-toggle) .stg-toggle {
+    order: 1;             /* sits on line 1, right after the (growing) label */
+  }
+  .mobile-main .stg-row:has(.stg-toggle) .stg-row-info {
+    order: 2;
+    flex: 1 1 100%;       /* full-width line below the label/switch */
+    margin: 0;
   }
 
   /* Native inputs: roomier targets (font-size already locked to 16px globally) */
@@ -6103,4 +6541,150 @@
 .dd2-key.is-ok { background: var(--accent-2); box-shadow: inset 0 0 0 1px var(--accent); }
 .dd2-key.is-miss { background: oklch(0.95 0.025 30); box-shadow: inset 0 0 0 1px var(--warn); }
 .dd2-key.is-plan { background: var(--pl-bg); box-shadow: inset 0 0 0 1.5px var(--pl-rail); }
+
+/* ════════════════════════════════════════════════════════════════════════════
+   Ödeme al — öğrenci profilinden sağdan açılan tam-sayfa tahsilat ekranı.
+   Tasarım: "Mobil Ödeme Al - 2 Tasarım" · A · Sabit Tutar Başlığı.
+   Tutar + yöntem üstte SABİT panoda; kalemler aşağıda kayar — kalem sayısı
+   ne olursa olsun Tutar alanı asla ekran dışına taşmaz. `pay-*` / `payA-*`
+   ad alanı; renkler mevcut :root token'larından (palette swatch'a uyumlu).
+   ════════════════════════════════════════════════════════════════════════════ */
+.pay-page {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column;
+  background: var(--bg); color: var(--ink);
+  font-family: var(--f-sans); -webkit-font-smoothing: antialiased;
+}
+.pay-top {
+  flex: 0 0 auto;
+  display: grid; grid-template-columns: 44px 1fr 44px; align-items: center;
+  padding: calc(env(safe-area-inset-top) + 6px) 8px 10px;
+}
+.pay-back {
+  width: 44px; height: 44px; border: 0; border-radius: 999px; background: transparent;
+  color: var(--ink); display: inline-flex; align-items: center; justify-content: center;
+}
+.pay-back:active { background: var(--surface-2); }
+.pay-back:disabled { opacity: 0.4; }
+.pay-top-title { text-align: center; font-size: 16px; font-weight: 600; color: var(--ink); }
+
+.pay-foot {
+  flex: 0 0 auto;
+  padding: 12px 16px calc(env(safe-area-inset-bottom) + 12px + var(--mobile-kb-h, 0px));
+  background: var(--bg); border-top: 1px solid var(--line);
+}
+.pay-cta {
+  width: 100%; min-height: 52px; border: 0; border-radius: 14px;
+  background: var(--accent); color: #fff; font-size: 16px; font-weight: 600;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  box-shadow: 0 1px 0 color-mix(in oklch, var(--accent) 78%, black);
+  transition: transform 60ms ease, background 120ms ease;
+}
+.pay-cta:active { transform: translateY(1px); background: var(--accent-hover); }
+.pay-cta:disabled { opacity: 0.4; box-shadow: none; transform: none; cursor: not-allowed; }
+.pay-cta-amt { font-family: var(--f-mono); font-weight: 600; }
+
+.pay-av {
+  flex: 0 0 auto; width: 46px; height: 46px; border-radius: 999px;
+  background: color-mix(in oklch, var(--accent) 14%, var(--surface));
+  color: var(--accent-ink); display: inline-flex; align-items: center; justify-content: center;
+  font-size: 16px; font-weight: 700; letter-spacing: 0.02em;
+}
+
+/* Yöntem segmenti */
+.pay-seg { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.pay-seg-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 46px;
+  border: 1px solid var(--line-2); border-radius: 12px; background: var(--surface); color: var(--ink-2);
+  font-size: 14px; font-weight: 600; transition: background 90ms ease, border-color 90ms ease, color 90ms ease;
+}
+.pay-seg-btn.on { background: var(--accent-2); border-color: var(--accent); color: var(--accent-ink); }
+.pay-seg-btn:disabled { opacity: 0.55; }
+
+/* Kalem satırı (salt-okunur dağıtım önizlemesi) */
+.pay-items-h { display: flex; align-items: baseline; gap: 8px; padding: 0 2px 2px; }
+.pay-items-t { font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-3); font-weight: 600; }
+.pay-items-hint { font-size: 11px; color: var(--ink-4); }
+.pay-items { display: flex; flex-direction: column; }
+.pay-item {
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  padding: 11px 4px; border-bottom: 1px solid var(--line);
+}
+.pay-item:last-child { border-bottom: 0; }
+.pay-item-dot {
+  flex: 0 0 auto; width: 30px; height: 30px; border-radius: 9px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: color-mix(in oklch, var(--accent) 10%, var(--surface)); color: var(--accent-ink);
+}
+.pay-item-dot.sale { background: color-mix(in oklch, var(--warn) 9%, var(--surface)); color: var(--warn-ink); }
+.pay-item-dot.muted { background: var(--surface-2); color: var(--ink-4); }
+.pay-item-tx { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.pay-item-t { font-size: 14.5px; font-weight: 600; color: var(--ink); }
+.pay-item-s { font-size: 12px; color: var(--ink-3); }
+.pay-item-amt { flex: 0 0 auto; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.pay-item-portion { font-family: var(--f-mono); font-size: 14px; font-weight: 600; color: var(--accent-ink); }
+.pay-item-portion.zero { color: var(--ink-4); }
+.pay-item-rem { font-family: var(--f-mono); font-size: 11px; color: var(--ink-4); }
+.pay-item-partial { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--warn-ink); }
+
+/* A · Sabit Tutar Başlığı — üstte sabit pano (kim + Tutar + yöntem). */
+.payA-pin {
+  flex: 0 0 auto; background: var(--surface); border-bottom: 1px solid var(--line-2);
+  padding: 6px 16px 16px; display: flex; flex-direction: column; gap: 14px;
+  box-shadow: 0 6px 16px -12px rgba(0, 0, 0, 0.25);
+}
+.payA-who { display: flex; align-items: center; gap: 12px; }
+.payA-who-tx { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.payA-who-name { font-size: 16px; font-weight: 600; color: var(--ink); }
+.payA-who-debt { font-size: 12.5px; color: var(--ink-3); }
+.payA-who-debt strong { font-family: var(--f-mono); color: var(--warn-ink); font-weight: 600; }
+
+.payA-amount {
+  position: relative; display: flex; align-items: center; gap: 6px;
+  border: 1.5px solid var(--line-2); border-radius: 16px; background: var(--bg);
+  padding: 10px 16px; transition: border-color 140ms ease, background 140ms ease;
+}
+.payA-amount:focus-within { border-color: var(--accent); background: var(--surface); }
+.payA-amount-cur { font-family: var(--f-mono); font-size: 30px; font-weight: 500; color: var(--ink-3); }
+.payA-amount-in {
+  flex: 1 1 auto; min-width: 0; border: 0; background: transparent; outline: none;
+  font-family: var(--f-mono); font-size: 38px !important; font-weight: 600; color: var(--ink);
+  letter-spacing: -0.02em; padding: 0;
+}
+.payA-amount-in::placeholder { color: var(--ink-4); font-weight: 500; }
+.payA-amount-max {
+  flex: 0 0 auto; border: 1px solid var(--line-2); border-radius: 999px; background: var(--surface);
+  color: var(--accent-ink); font-size: 12px; font-weight: 600; padding: 6px 11px; white-space: nowrap;
+}
+.payA-amount-max:active { background: var(--accent-2); }
+.payA-amount-max:disabled { opacity: 0.5; }
+
+.payA-body {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  display: flex; flex-direction: column; gap: 18px; padding: 16px 16px 22px;
+}
+.payA-body::-webkit-scrollbar { width: 0; }
+.payA-sec { display: flex; flex-direction: column; gap: 8px; }
+.payA-note {
+  width: 100%; min-height: 46px; padding: 12px 14px; font-size: 16px; line-height: 1.4;
+  border: 1px solid var(--line-2); border-radius: 12px; background: var(--surface); color: var(--ink);
+  outline: none; resize: none;
+}
+.payA-note::placeholder { color: var(--ink-4); }
+.payA-note:focus { border-color: var(--accent); }
+.payA-over { font-size: 12.5px; color: var(--warn-ink); font-weight: 500; padding: 2px; }
+
+/* Boş / yükleniyor / hata durumları */
+.payA-empty {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+  padding: 40px 16px; color: var(--ink-3); font-size: 14px; text-align: center;
+}
+.payA-empty-ic {
+  width: 44px; height: 44px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center;
+  background: var(--accent-2); color: var(--accent-ink); font-size: 22px; font-weight: 700;
+}
+.pay-error {
+  margin: 0; padding: 10px 12px; border-radius: 10px;
+  background: var(--warn-2); color: var(--warn-ink); font-size: 13px; font-weight: 500;
+}
 

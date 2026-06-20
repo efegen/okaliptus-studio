@@ -4,8 +4,16 @@ import { MobileHomeView } from './home/MobileHomeView';
 import { MobileAgenda } from './home/MobileAgenda';
 import { useWeeklyKpi, parseNumericValue } from './shared/useWeeklyKpi';
 import { useWeekLessons } from './shared/useWeekLessons';
-import { getSettings } from '../api';
+import { getSettings, getTrendyolOrdersList } from '../api';
 import { queryKeys } from '../hooks/queryKeys';
+
+const ORDERS_WINDOW_DAYS = 90;
+
+function isUrgent(ms) {
+  if (!ms) return false;
+  const diff = ms - Date.now();
+  return diff > 0 && diff < 24 * 60 * 60 * 1000;
+}
 
 function getIstanbulToday() {
   const fmt = new Intl.DateTimeFormat('en-CA', {
@@ -35,13 +43,28 @@ function formatDateLabel(date) {
   return `${wd}, ${rest}`;
 }
 
-export function MobileHome({ user, onLogout, onOpenFinance, onOpenOccupancy }) {
+export function MobileHome({ user, onLogout, onOpenFinance, onOpenOccupancy, onOpenOrders }) {
   const { data: kpi, isLoading: kpiLoading } = useWeeklyKpi();
   const { data: studioSettings } = useQuery({
     queryKey: queryKeys.settings(),
     queryFn: getSettings,
     staleTime: 5 * 60 * 1000,
   });
+
+  // Sipariş sorgusu — MobileOrders ile aynı query key → önbellek paylaşılır.
+  const { data: ordersData } = useQuery({
+    queryKey: ['trendyolOrders', null, null, ORDERS_WINDOW_DAYS],
+    queryFn: () => getTrendyolOrdersList({ windowDays: ORDERS_WINDOW_DAYS }),
+    staleTime: 30 * 1000,
+  });
+  const tabCounts = ordersData?.tabCounts ?? {};
+  const ordersPending = (tabCounts.yeni ?? 0) + (tabCounts.isleme ?? 0);
+  const ordersUrgent = React.useMemo(() => {
+    if (!ordersData?.orders) return 0;
+    return ordersData.orders.filter(
+      o => (o.tab === 'yeni' || o.tab === 'isleme') && isUrgent(o.agreedDeliveryDate),
+    ).length;
+  }, [ordersData]);
 
   const today = React.useMemo(getIstanbulToday, []);
   const thisMonday = React.useMemo(() => getWeekStart(today), [today]);
@@ -79,6 +102,7 @@ export function MobileHome({ user, onLogout, onOpenFinance, onOpenOccupancy }) {
         onLogout={onLogout}
         onOpenFinance={onOpenFinance}
         onOpenOccupancy={onOpenOccupancy}
+        onOpenOrders={onOpenOrders}
         collected={collected}
         revenue={revenue}
         collectionRate={collectionRate}
@@ -88,6 +112,8 @@ export function MobileHome({ user, onLogout, onOpenFinance, onOpenOccupancy }) {
         plannedLessons={plannedLessons}
         capacity={capacity}
         kpiLoading={kpiLoading}
+        ordersPending={ordersPending}
+        ordersUrgent={ordersUrgent}
       />
       <MobileAgenda />
     </>
