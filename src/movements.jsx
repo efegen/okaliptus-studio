@@ -8,7 +8,7 @@ import React from 'react';
 import { useInfiniteQuery, useQueryClient, useQuery } from '@tanstack/react-query';
 import { fmtTL } from './data';
 import { Icon, Avatar } from './layout';
-import { getMovements, getStudentLessons, getStudentProductSales, getProductSale } from './api';
+import { getMovements, getStudentLessons, getStudentProductSales, getProductSale, deletePayment } from './api';
 import { ReceivePaymentModal } from './students';
 import { queryKeys } from './hooks/queryKeys';
 
@@ -313,6 +313,16 @@ export function MovementsPage({ onOpenStudent }) {
     qc.invalidateQueries({ queryKey: ['student'] });
   }
 
+  // Tahsilat silindi → borç yeniden açılır; ilgili tüm görünümleri tazele.
+  function handlePaymentDeleted() {
+    closeDetail();
+    qc.invalidateQueries({ queryKey: ['movements'] });
+    qc.invalidateQueries({ queryKey: queryKeys.weeklyKpi() });
+    qc.invalidateQueries({ queryKey: queryKeys.debtors() });
+    qc.invalidateQueries({ queryKey: queryKeys.studentsKpi() });
+    qc.invalidateQueries({ queryKey: ['student'] });
+  }
+
   return (
     <div className="mv-page">
       <div className="mv-head">
@@ -442,6 +452,7 @@ export function MovementsPage({ onOpenStudent }) {
           onClose={closeDetail}
           onOpenStudent={goToStudent}
           onCollect={() => startCollect(detailRow)}
+          onDeleted={handlePaymentDeleted}
         />
       )}
 
@@ -508,7 +519,7 @@ function MovementRow({ row, onSelect }) {
   );
 }
 
-function MovementDetailModal({ row, collecting, collectError, onClose, onOpenStudent, onCollect }) {
+function MovementDetailModal({ row, collecting, collectError, onClose, onOpenStudent, onCollect, onDeleted }) {
   React.useEffect(() => {
     function onKey(e) { if (e.key === 'Escape') onClose(); }
     document.addEventListener('keydown', onKey);
@@ -523,6 +534,31 @@ function MovementDetailModal({ row, collecting, collectError, onClose, onOpenStu
   const isDebtKind = row.kind === 'product_sale' || row.kind === 'lesson_completed';
   const canCollect = isDebtKind && !prepaid && remaining > 0.01;
   const fields = detailFields(row);
+
+  // Tahsilat silme: yalnız ödeme satırlarında ve pakete bağlı olmayanlarda.
+  // Row id "pay-<id>" formatında (movements.service.ts). Pakete bağlı ödemeler
+  // backend'de korumalı (409) — burada da gizleriz.
+  const canDeletePayment =
+    row.kind === 'payment' &&
+    d.target !== 'package' &&
+    typeof row.id === 'string' &&
+    row.id.startsWith('pay-');
+  const paymentId = canDeletePayment ? row.id.slice(4) : null;
+  const [confirmDelete, setConfirmDelete] = React.useState(false);
+  const [deleting, setDeleting] = React.useState(false);
+  const [deleteError, setDeleteError] = React.useState(null);
+
+  async function handleDelete() {
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await deletePayment(paymentId);
+      onDeleted();
+    } catch (e) {
+      setDeleteError(e?.message || 'Ödeme silinemedi.');
+      setDeleting(false);
+    }
+  }
 
   // Ürün satışıysa kalemleri (hangi ürünler satıldı) ayrı çek.
   const saleId = row.kind === 'product_sale'
@@ -644,13 +680,51 @@ function MovementDetailModal({ row, collecting, collectError, onClose, onOpenStu
           )}
         </div>
 
-        {(canCollect || collectError) && (
+        {(canCollect || collectError || canDeletePayment) && (
           <div className="mvd-actions">
             {collectError && <div className="mvd-error">{collectError}</div>}
             {canCollect && (
               <button type="button" className="btn btn-accent btn-block" onClick={onCollect} disabled={collecting}>
                 {collecting ? 'Yükleniyor…' : `Tahsilat al · ${fmtTL(remaining)}`}
               </button>
+            )}
+
+            {canDeletePayment && !confirmDelete && (
+              <button
+                type="button"
+                className="btn btn-ghost lm-btn-danger btn-block"
+                onClick={() => setConfirmDelete(true)}
+              >
+                Bu tahsilatı sil
+              </button>
+            )}
+
+            {canDeletePayment && confirmDelete && (
+              <div className="mvd-del-confirm">
+                <p className="mvd-del-warn">
+                  Bu tahsilat kaydı geri alınacak. Öğrencinin borcu bu tutar kadar yeniden açılır.
+                  Nakit iadesi gerekiyorsa elden yapılması gerekir. Sonra doğru tutarı yeni bir tahsilat olarak girebilirsiniz.
+                </p>
+                {deleteError && <div className="mvd-error">{deleteError}</div>}
+                <div className="mvd-del-actions">
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    onClick={() => { setConfirmDelete(false); setDeleteError(null); }}
+                    disabled={deleting}
+                  >
+                    Vazgeç
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary lm-btn-danger"
+                    onClick={handleDelete}
+                    disabled={deleting}
+                  >
+                    {deleting ? 'Siliniyor…' : 'Evet, sil'}
+                  </button>
+                </div>
+              </div>
             )}
           </div>
         )}

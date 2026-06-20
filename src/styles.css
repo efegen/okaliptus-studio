@@ -7378,6 +7378,16 @@ main.main[data-screen-label="mapping"] { flex: 1; min-height: 0; padding: 0; max
 .mvd-actions { flex-shrink: 0; padding: 16px 22px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 10px; }
 .mvd-error { font-size: 13px; color: var(--warn); }
 
+/* Tahsilat silme onayı (ödeme detayı) */
+.mvd-del-confirm {
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 12px; border: 1px solid var(--warn-2); border-radius: var(--radius);
+  background: var(--warn-2);
+}
+.mvd-del-warn { margin: 0; font-size: 13px; line-height: 1.5; color: var(--ink-2); }
+.mvd-del-actions { display: flex; gap: 8px; }
+.mvd-del-actions .btn { flex: 1; justify-content: center; }
+
 /* Satılan ürünler (ürün satışı detayında) */
 .mvd-section-label {
   display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;

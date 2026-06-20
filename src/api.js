@@ -362,6 +362,15 @@ export async function createCashPayment({ targetType, targetId, amount, source, 
   return ensureMutationResult(payload, "Nakit/Havale odemesi kaydedilemedi.");
 }
 
+// Yanlış girilen bir tahsilatı geri alır (soft-delete; kayıt audit'te kalır).
+// Borç bu tutar kadar yeniden açılır. Pakete bağlı ödemeler silinemez (backend 409).
+export async function deletePayment(paymentId) {
+  const payload = await apiRequest(`/payments/${encodeURIComponent(paymentId)}`, {
+    method: "DELETE",
+  });
+  return ensureMutationResult(payload, "Ödeme silinemedi.");
+}
+
 export async function createLesson({
   studentId,
   startsAt,
