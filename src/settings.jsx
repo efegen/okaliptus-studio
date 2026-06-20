@@ -1,5 +1,7 @@
 import React from 'react';
-import { getSettings, updateSettings, getPushConfig, previewTrendyolOrders } from './api';
+import { useQueryClient } from '@tanstack/react-query';
+import { getSettings, updateSettings, getPushConfig } from './api';
+import { queryKeys } from './hooks/queryKeys';
 import { ActivityPanel } from './settings-activity';
 import { enablePush, disablePush, sendTest, getCurrentSubscription } from './push';
 
@@ -234,87 +236,9 @@ function PushTestCard() {
   );
 }
 
-// Trendyol sipariş önizleme — yalnız pazaryeri senkronu KAYITLI olarak açıkken
-// gösterilir. Manuel buton; otomatik çekme yok. Hiçbir şey yazmaz, yalnız
-// siparişleri çekip iç ürünlerle eşleştirme önizlemesi gösterir.
-function TrendyolOrderPreview() {
-  const [busy, setBusy] = React.useState(false);
-  const [error, setError] = React.useState(null);
-  const [preview, setPreview] = React.useState(null);
-
-  async function handleFetch() {
-    setBusy(true);
-    setError(null);
-    try {
-      const data = await previewTrendyolOrders({});
-      setPreview(data);
-    } catch (err) {
-      setError(err.message || 'Siparişler alınamadı.');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const s = preview?.summary;
-
-  return (
-    <div className="ty-preview">
-      <button type="button" className="btn btn-primary btn-sm" onClick={handleFetch} disabled={busy}>
-        {busy ? 'Çekiliyor…' : 'Trendyol siparişlerini çek (önizleme)'}
-      </button>
-      <p className="stg-row-info" style={{ marginTop: 6 }}>
-        Siparişleri salt-okunur çeker ve barkodla iç ürünlere eşleştirir. Hiçbir
-        kayıt oluşturmaz, stok/satış değiştirmez.
-      </p>
-
-      {error && <div className="stg-feedback stg-feedback-err" style={{ marginTop: 8 }}>{error}</div>}
-
-      {s && (
-        <div className="ty-preview-result">
-          <div className="ty-preview-summary">
-            {s.totalOrders} sipariş · {s.matchedLines}/{s.totalLines} satır eşleşti
-            {s.unmatchedLines > 0 && (
-              <span className="ty-preview-warn"> · {s.unmatchedLines} eşleşmeyen</span>
-            )}
-          </div>
-
-          {preview.orders.length === 0 ? (
-            <div className="stg-row-info">Bu kriterlerde sipariş bulunamadı.</div>
-          ) : (
-            <table className="ty-preview-table">
-              <thead>
-                <tr>
-                  <th>Sipariş</th>
-                  <th>Barkod</th>
-                  <th>Adet</th>
-                  <th>Eşleşme</th>
-                </tr>
-              </thead>
-              <tbody>
-                {preview.orders.flatMap(order =>
-                  order.lines.map((line, i) => (
-                    <tr key={`${order.orderNumber}-${i}`}>
-                      <td className="prod-td-mono">{i === 0 ? (order.orderNumber || '—') : ''}</td>
-                      <td className="prod-td-mono">{line.barcode || '—'}</td>
-                      <td>{line.quantity}</td>
-                      <td>
-                        {line.matched ? (
-                          <span className="ty-match is-ok">{line.internalName}</span>
-                        ) : (
-                          <span className="ty-match is-no">Eşleşmedi</span>
-                        )}
-                      </td>
-                    </tr>
-                  )),
-                )}
-              </tbody>
-            </table>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
+// (TrendyolOrderPreview kaldırıldı 2026-06-20 — tam "Pazaryeri Siparişleri" ekranı
+//  (orders.jsx) gerçek veriyle bunun işini görüyor; ayarlardaki önizleme butonu gereksizdi.
+//  api.js previewTrendyolOrders export'u + backend /trendyol/orders/preview ucu uykuda kaldı.)
 
 export function SettingsPage() {
   const [tab, setTab] = React.useState('general');
@@ -325,6 +249,7 @@ export function SettingsPage() {
   const [saving, setSaving] = React.useState(false);
   const [feedback, setFeedback] = React.useState(null); // { ok: bool, msg: string }
   const savedSatRef = React.useRef(1);
+  const queryClient = useQueryClient();
 
   React.useEffect(() => {
     let cancelled = false;
@@ -366,7 +291,8 @@ export function SettingsPage() {
       form.marketplaceSyncEnabled !== saved.marketplaceSyncEnabled ||
       form.marketplaceOrdersEnabled !== saved.marketplaceOrdersEnabled ||
       form.marketplaceStockPushEnabled !== saved.marketplaceStockPushEnabled ||
-      form.marketplaceStockPushDryRun !== saved.marketplaceStockPushDryRun
+      form.marketplaceStockPushDryRun !== saved.marketplaceStockPushDryRun ||
+      form.marketplaceFulfillmentEnabled !== saved.marketplaceFulfillmentEnabled
     );
   }, [saved, form]);
 
@@ -396,10 +322,15 @@ export function SettingsPage() {
         marketplaceOrdersEnabled: !!form.marketplaceOrdersEnabled,
         marketplaceStockPushEnabled: !!form.marketplaceStockPushEnabled,
         marketplaceStockPushDryRun: !!form.marketplaceStockPushDryRun,
+        marketplaceFulfillmentEnabled: !!form.marketplaceFulfillmentEnabled,
       });
       savedSatRef.current = updated.lessonColorSaturation ?? 1;
       setSaved(updated);
       setForm(updated);
+      // Sidebar (pazaryeri nav) ve Siparişler ekranı (kargo etiketi flag'i) ortak
+      // 'settings' query'sini okur → kaydedince tazele ki flag değişiklikleri anında
+      // yansısın (yoksa staleTime dolana kadar eski flag görünür).
+      queryClient.invalidateQueries({ queryKey: queryKeys.settings() });
       setFeedback({ ok: true, msg: 'Ayarlar kaydedildi.' });
     } catch (err) {
       setFeedback({ ok: false, msg: err.message || 'Ayarlar kaydedilemedi.' });
@@ -492,89 +423,63 @@ export function SettingsPage() {
           </SettingRow>
         </Section>
 
-        <Section title="Stok">
-          <SettingRow
-            label="Stok takibi"
-            info="Açıkken ürün elden satılınca stok düşer; katalogda kalan adet görünür ve ürün düzenlemede açılış stoğu / düzeltme yapılır. Marketplace stoklarını etkilemez."
-          >
-            <Toggle
-              checked={!!form.stockTrackingEnabled}
-              onChange={v => {
-                set('stockTrackingEnabled', v);
-                // Stok takibi kapanırsa sipariş senkronu + stok push da anlamsız → birlikte kapat.
-                if (!v) { set('marketplaceOrdersEnabled', false); set('marketplaceStockPushEnabled', false); }
-              }}
-              label="Stok takibini aç/kapat"
-            />
-          </SettingRow>
-        </Section>
+        {/* "Stok" bölümü (Stok takibi toggle'ı) UI'dan GİZLENDİ (2026-06-20, kullanıcı kararı:
+            stok fazı ilk yayında devre dışı). Backend + flag DOKUNULMADI —
+            stock_tracking_enabled (DEFAULT false) kapalı kalır → elden satış stok düşmeden
+            çalışır (product-sales recordSaleStockMovements'ı atlar). handleSave/isDirty hâlâ
+            stockTrackingEnabled + marketplaceOrdersEnabled değerlerini round-trip eder.
+            GERİ EKLEME: stok fazı başlayınca bu Section + aşağıdaki "Sipariş senkronu"
+            SettingRow geri konacak (eski hâli git geçmişinde). */}
 
         <Section title="Pazaryeri">
+          {/* Pazaryeri ANA ŞALTERİ (marketplaceSyncEnabled): açıkken "Siparişler" +
+              "Eşleştirme" nav'ları, mobil sipariş ekranı, kargo barkodu ve ürün
+              düzenlemedeki kanal eşleştirme alanları görünür. Salt-okunur: stoğa da
+              Trendyol'a da YAZMAZ. Kapatmak hepsini tek tıkta gizler (kill-switch). */}
           <SettingRow
-            label="Kanal eşleştirme"
-            info="Açıkken ürün düzenlemede Trendyol/Hepsiburada listing eşleştirmesi (kanal, kod, fiyat, listeli mi) yapılır. Bu sürümde yalnız eşleştirme verisi tutulur; otomatik senkron/sipariş çekme yoktur."
+            label="Trendyol entegrasyonu"
+            info="Açıkken Trendyol sipariş listesi, ürün eşleştirme ve kargo barkodu ekranlarını açar (sol menüde 'Siparişler' + 'Eşleştirme' sekmeleri). Salt-okunur — stoğa ve Trendyol'a hiçbir şey yazmaz. Kapatınca tüm pazaryeri ekranları gizlenir."
           >
             <Toggle
               checked={!!form.marketplaceSyncEnabled}
               onChange={v => {
                 set('marketplaceSyncEnabled', v);
-                // Kanal eşleştirme kapanırsa stok push'un dayanağı (baseline/eşleme) gider → kapat.
-                if (!v) set('marketplaceStockPushEnabled', false);
+                // Kapanınca uykudaki yazma flag'lerini de defansif kapat.
+                if (!v) { set('marketplaceStockPushEnabled', false); set('marketplaceFulfillmentEnabled', false); }
               }}
-              label="Kanal eşleştirmeyi aç/kapat"
+              label="Trendyol entegrasyonunu aç/kapat"
             />
           </SettingRow>
+          {/* "Sipariş senkronu" toggle'ı GİZLENDİ (2026-06-20) — stok fazının parçası
+              (marketplaceOrdersEnabled iç stoğa yazar, stok takibi kapalıyken anlamsız).
+              Flag DOKUNULMADI (DEFAULT false); poller kapalıyken sessizce atlar. Stok fazı
+              geri gelince "Stok" Section'ıyla birlikte eklenecek. */}
+          {/* "Stok gönderimi (TY'ye yaz)" + "Deneme modu (dry-run)" toggle'ları UI'dan
+              GİZLENDİ (2026-06-20, kullanıcı kararı). Backend + flag'ler sağlam:
+              marketplaceStockPushEnabled (DEFAULT false) ve marketplaceStockPushDryRun
+              (DEFAULT true) kapalı/prova varsayılanlarında kaldıkları için poller TY'ye
+              ASLA canlı yazmaz. handleSave/isDirty hâlâ iki değeri de round-trip eder →
+              gizlemek veriyi bozmaz. GERİ EKLEME ŞARTI: stok push'u gerçek TY hesabında
+              baseline + tek-ürün deneme yazmasıyla doğruladıktan sonra bu iki SettingRow
+              (eski hâli git geçmişinde) geri konacak. */}
+          {/* "Pazaryeri sipariş işleme" (marketplaceFulfillmentEnabled): Siparişler
+              ekranındaki "Kargo Firması Değiştir" gibi CANLI TY yazmalarını açar. KAPALI
+              varsayılan + her işlemde ayrıca onay diyalogu (kazara yazmaya karşı kademeli
+              kilit). Kargo barkodu (Code128) bundan BAĞIMSIZ — hep istemci tarafı basılır.
+              Not (2026-06-20): bu toggle eskiden yalnız bloklu Ortak Etiket'i (Common Label,
+              COMMON_LABEL_NOT_ALLOWED) kapsadığı için gizlenmişti; artık TY'nin İZİN VERDİĞİ
+              kargo-firması-değiştirmeyi de kapsadığı için geri eklendi. */}
           <SettingRow
-            label="Sipariş senkronu"
-            info={
-              form.stockTrackingEnabled
-                ? "Açıkken Trendyol siparişleri ~3 dakikada bir otomatik çekilir; satılan kalemlerin iç stoğu düşer, iptaller geri eklenir. İadeler ve eşleşmeyen satışlar Eşleştirme'deki inceleme kuyruğuna düşer (otomatik değil). Trendyol'a hiçbir şey yazılmaz — stok push'u yok."
-                : "Önce 'Stok takibi'ni açın: sipariş senkronu iç stoğa yazar, stok takibi kapalıyken anlamı yoktur."
-            }
+            label="Pazaryeri sipariş işleme"
+            info="Açıkken Siparişler ekranındaki 'Kargo Firması Değiştir' işlemi Trendyol'a CANLI yazar (gerçek müşteri paketinin kargo firmasını değiştirir). Her işlemde ayrıca onay istenir. Kapalıyken işlem engellenir. Kargo barkodu basımı bu ayardan bağımsızdır."
           >
             <Toggle
-              checked={!!form.marketplaceOrdersEnabled}
-              onChange={v => set('marketplaceOrdersEnabled', v)}
-              label="Sipariş senkronunu aç/kapat"
-              disabled={!form.stockTrackingEnabled}
+              checked={!!form.marketplaceFulfillmentEnabled}
+              disabled={!form.marketplaceSyncEnabled}
+              onChange={v => set('marketplaceFulfillmentEnabled', v)}
+              label="Pazaryeri sipariş işlemeyi aç/kapat"
             />
           </SettingRow>
-          <SettingRow
-            label="Stok gönderimi (TY'ye yaz)"
-            info={
-              (form.stockTrackingEnabled && form.marketplaceSyncEnabled)
-                ? "CANLI Trendyol listelerine STOK yazar (fiyata dokunmaz). Açmadan önce Eşleştirme'den 'Baseline' alın (iç stoğu TY adediyle hizalar), yoksa push reddedilir. Açılınca varsayılan DENEME modudur — gerçek yazma için aşağıdaki 'Deneme modu'nu kapatın. Kütlesel sıfırlama devre kesiciyle durdurulur."
-                : "Önce 'Stok takibi' ve 'Kanal eşleştirme' açık olmalı: stok push iç efektif stoğu okuyup eşli TY listesine yazar."
-            }
-          >
-            <Toggle
-              checked={!!form.marketplaceStockPushEnabled}
-              onChange={v => set('marketplaceStockPushEnabled', v)}
-              label="Stok gönderimini aç/kapat"
-              disabled={!form.stockTrackingEnabled || !form.marketplaceSyncEnabled}
-            />
-          </SettingRow>
-          {form.marketplaceStockPushEnabled && (
-            <SettingRow
-              label="Deneme modu (dry-run)"
-              info={
-                form.marketplaceStockPushDryRun
-                  ? "AÇIK: Trendyol'a hiçbir şey yazılmaz; yalnız 'ne yazılacaktı' Eşleştirme'de önizlenir ve loglanır. Önce baseline sonrası önizlemenin ~0 değişiklik gösterdiğini doğrulayın."
-                  : "KAPALI: otomatik reconcile artık CANLI Trendyol'a yazar. Yalnız baseline + tek-ürün deneme yazmasını doğruladıktan sonra kapatın."
-              }
-            >
-              <Toggle
-                checked={!!form.marketplaceStockPushDryRun}
-                onChange={v => set('marketplaceStockPushDryRun', v)}
-                label="Deneme modunu aç/kapat"
-              />
-            </SettingRow>
-          )}
-          {saved?.marketplaceSyncEnabled && (
-            <SettingRow label="Trendyol siparişleri" top>
-              <TrendyolOrderPreview />
-            </SettingRow>
-          )}
         </Section>
 
         <Section title="Görünüm">
