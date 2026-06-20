@@ -14,6 +14,7 @@ export type StudioSettings = {
   marketplaceOrdersEnabled: boolean;
   marketplaceStockPushEnabled: boolean;
   marketplaceStockPushDryRun: boolean;
+  marketplaceFulfillmentEnabled: boolean;
 };
 
 function rowToSettings(row: Record<string, unknown>): StudioSettings {
@@ -29,6 +30,7 @@ function rowToSettings(row: Record<string, unknown>): StudioSettings {
     marketplaceOrdersEnabled: row.marketplace_orders_enabled === true,
     marketplaceStockPushEnabled: row.marketplace_stock_push_enabled === true,
     marketplaceStockPushDryRun: row.marketplace_stock_push_dry_run === true,
+    marketplaceFulfillmentEnabled: row.marketplace_fulfillment_enabled === true,
   };
 }
 
@@ -43,7 +45,8 @@ export async function getSettings(): Promise<StudioSettings> {
       marketplace_sync_enabled,
       marketplace_orders_enabled,
       marketplace_stock_push_enabled,
-      marketplace_stock_push_dry_run
+      marketplace_stock_push_dry_run,
+      marketplace_fulfillment_enabled
     FROM studio_settings WHERE id = 1
   `);
 
@@ -64,6 +67,7 @@ type SettingsPatch = {
   marketplaceOrdersEnabled?: boolean;
   marketplaceStockPushEnabled?: boolean;
   marketplaceStockPushDryRun?: boolean;
+  marketplaceFulfillmentEnabled?: boolean;
 };
 
 export async function updateSettings(patch: SettingsPatch, actorUserId?: number | string | null): Promise<StudioSettings> {
@@ -151,6 +155,10 @@ export async function updateSettings(patch: SettingsPatch, actorUserId?: number 
   if (patch.marketplaceStockPushDryRun !== undefined) {
     sets.push(`marketplace_stock_push_dry_run = $${i++}`);
     values.push(patch.marketplaceStockPushDryRun);
+  }
+  if (patch.marketplaceFulfillmentEnabled !== undefined) {
+    sets.push(`marketplace_fulfillment_enabled = $${i++}`);
+    values.push(patch.marketplaceFulfillmentEnabled);
   }
 
   if (sets.length === 0) {

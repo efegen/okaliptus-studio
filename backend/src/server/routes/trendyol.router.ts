@@ -8,7 +8,7 @@
 
 import { Router } from "express";
 
-import { previewTrendyolOrders } from "../../services/trendyol/orders.service.js";
+import { previewTrendyolOrders, listTrendyolOrders } from "../../services/trendyol/orders.service.js";
 import { syncTrendyolProducts } from "../../services/trendyol/channel-sync.service.js";
 import {
   syncTrendyolOrders,
@@ -16,6 +16,8 @@ import {
   resolveOrderReviewItem,
 } from "../../services/trendyol/order-sync.service.js";
 import { syncTrendyolClaims } from "../../services/trendyol/claims-sync.service.js";
+import { getOrderCargoLabel } from "../../services/trendyol/order-label.service.js";
+import { changeOrderCargoProvider } from "../../services/trendyol/order-cargo.service.js";
 import {
   baselineChannelListings,
   runStockPush,
@@ -52,6 +54,62 @@ trendyolRouter.post("/orders/preview", async (req, res) => {
       endDate: toNum(body.endDate),
       page: toNum(body.page),
       size: toNum(body.size),
+    });
+    res.json({ data });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+// GET /trendyol/orders/list — Pazaryeri Siparişleri ekranı için zenginleştirilmiş
+// (TY fotoğrafı + iç ürün eşleşmesi) sipariş listesi + sekme sayıları. SALT-OKUMA;
+// stoğa DOKUNMAZ (order-sync defterinden bağımsız). marketplace_sync kapalıysa 409.
+// query (opsiyonel): startDate, endDate (ms epoch), windowDays.
+trendyolRouter.get("/orders/list", async (req, res) => {
+  try {
+    const toNum = (v: unknown): number | undefined => {
+      const raw = Array.isArray(v) ? v[0] : v;
+      if (raw === undefined || raw === null || raw === "") return undefined;
+      const n = Number(raw);
+      return Number.isFinite(n) ? n : undefined;
+    };
+    const force = req.query.force === "1" || req.query.force === "true";
+    const data = await listTrendyolOrders({
+      startDate: toNum(req.query.startDate),
+      endDate: toNum(req.query.endDate),
+      windowDays: toNum(req.query.windowDays),
+      force,
+    });
+    res.json({ data });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+// POST /trendyol/orders/label — Faz 2: kargo etiketi (Ortak Etiket) OLUŞTUR + getir.
+// CANLI TY YAZMASI; marketplace_fulfillment kapalıysa 409. body: { cargoTrackingNumber,
+// format?: "ZPL" | "PDF" (default ZPL) }. → { contentType, base64|text|json, format, … }
+trendyolRouter.post("/orders/label", async (req, res) => {
+  try {
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const ctn = body.cargoTrackingNumber ? String(body.cargoTrackingNumber) : "";
+    const format = body.format === "PDF" ? "PDF" : "ZPL";
+    const data = await getOrderCargoLabel(ctn, format);
+    res.json({ data });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+// POST /trendyol/orders/cargo-provider — Faz 2: paketin kargo firmasını DEĞİŞTİR.
+// CANLI TY YAZMASI; marketplace_fulfillment kapalıysa 409. body: { packageId,
+// cargoProvider } (cargoProvider = TY firma KODU, whitelist). → { packageId, cargoProvider, name }
+trendyolRouter.post("/orders/cargo-provider", async (req, res) => {
+  try {
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const data = await changeOrderCargoProvider({
+      packageId: body.packageId ? String(body.packageId) : "",
+      cargoProvider: body.cargoProvider ? String(body.cargoProvider) : "",
     });
     res.json({ data });
   } catch (err) {

@@ -19,6 +19,7 @@ import { isTrendyolConfigured } from "./client.js";
 import { syncTrendyolOrders } from "./order-sync.service.js";
 import { syncTrendyolClaims } from "./claims-sync.service.js";
 import { runStockPush } from "./stock-push.service.js";
+import { warmOrdersSnapshot } from "./orders.service.js";
 
 let timer: ReturnType<typeof setInterval> | null = null;
 let running = false; // süreç-içi üst üste binme koruması
@@ -75,12 +76,28 @@ async function syncStockPushTick(): Promise<void> {
   }
 }
 
+// Pazaryeri Siparişleri ekranı (marketplace_sync_enabled umbrella flag) için sipariş
+// listesi snapshot'ını arka planda tazeler → kullanıcı ekranı açınca canlı beklemeden
+// ANINDA görür. Salt-okunur; DB'ye/stoğa yazmaz. Hata sızmaz (içeride yutulur).
+async function warmOrdersTick(): Promise<void> {
+  try {
+    await warmOrdersSnapshot();
+  } catch (err) {
+    console.error("[trendyol-poll] sipariş listesi ısıtma hatası:", err instanceof Error ? err.message : err);
+  }
+}
+
 async function tick(): Promise<void> {
   if (running) return; // önceki tick hâlâ sürüyor
   running = true;
   try {
     if (!isTrendyolConfigured()) return;
     const settings = await getSettings();
+    // Sipariş listesi görünümü (umbrella flag). Stok flag'lerinden BAĞIMSIZ: kullanıcı
+    // stoğu kapalı tutsa da Pazaryeri Siparişleri ekranı akar → snapshot'ı sıcak tut.
+    if (settings.marketplaceSyncEnabled) {
+      await warmOrdersTick();
+    }
     // Sipariş + iade senkronu (marketplace_orders_enabled). Önce siparişler (yeni
     // satırları say), sonra iadeler (sayılmış satırları kuyruğa taşı) → aynı tick'te
     // yakınsar. İkisi de AYNI advisory lock'u alır (tek-yazar); seri çalışırlar.

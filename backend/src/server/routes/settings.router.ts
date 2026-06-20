@@ -82,6 +82,13 @@ settingsRouter.patch("/", async (req, res) => {
       patch.marketplaceStockPushDryRun = body.marketplaceStockPushDryRun;
     }
 
+    if ("marketplaceFulfillmentEnabled" in body) {
+      if (typeof body.marketplaceFulfillmentEnabled !== "boolean") {
+        throw new ValidationError("marketplaceFulfillmentEnabled boolean olmalı.");
+      }
+      patch.marketplaceFulfillmentEnabled = body.marketplaceFulfillmentEnabled;
+    }
+
     const data = await updateSettings(patch, req.currentUser.id);
     res.json({ data });
   } catch (err) {
