@@ -40,3 +40,6 @@ coverage/
 
 # Claude Code (local, machine-specific settings & locks)
 .claude/
+
+# Mock seed (geçici demo verisi durumu — yerel makineye özel)
+backend/scripts/.mock-seed-manifest.json
