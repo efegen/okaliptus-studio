@@ -13,6 +13,9 @@
 
 import React from 'react';
 import JsBarcode from 'jsbarcode';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { getSettings, changeOrderCargoProvider } from '../api';
+import { queryKeys } from '../hooks/queryKeys';
 
 // ─── Biçimlendiriciler (liste ekranıyla aynı davranış) ───────────────────────
 function fmtTL(raw) {
@@ -59,14 +62,42 @@ function isUrgent(targetMs) {
   return diff > 0 && diff < 24 * 60 * 60 * 1000;
 }
 
+// Trendyol pazaryeri kargo firma KODLARI ("Kargo Firması Değiştir" seçenekleri).
+// Web ekranıyla (src/orders.jsx CARGO_PROVIDERS) ve backend whitelist'iyle
+// (order-cargo.service.ts TRENDYOL_CARGO_PROVIDERS) SENKRON tutulmalı — backend
+// güvenlik sınırıdır, tanımsız kodu 422 ile reddeder.
+const CARGO_PROVIDERS = [
+  { code: 'YKMP', name: 'Yurtiçi Kargo' },
+  { code: 'ARASMP', name: 'Aras Kargo' },
+  { code: 'SURATMP', name: 'Sürat Kargo' },
+  { code: 'HOROZMP', name: 'Horoz Kargo' },
+  { code: 'MNGMP', name: 'MNG Kargo' },
+  { code: 'PTTMP', name: 'PTT Kargo' },
+  { code: 'CEVAMP', name: 'CEVA Kargo' },
+  { code: 'TEXMP', name: 'Trendyol Express' },
+  { code: 'DHLECOMMP', name: 'DHL eCommerce' },
+  { code: 'SENDEOMP', name: 'Sendeo' },
+];
+
+// TY'den gelen firma adından ("PTT Kargo Marketplace") whitelist kodunu tahmin
+// eder (yalnız "mevcut firma"yı işaretlemek için; eşleşmezse null).
+function guessProviderCode(providerName) {
+  if (!providerName) return null;
+  const lower = providerName.toLocaleLowerCase('tr-TR');
+  const hit = CARGO_PROVIDERS.find(p =>
+    lower.includes(p.name.toLocaleLowerCase('tr-TR').split(' ')[0]),
+  );
+  return hit ? hit.code : null;
+}
+
 // ─── İkonlar (tasarımın inline SVG'leriyle aynı) ─────────────────────────────
 const I = {
   back: (s = 20) => (<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 6-6 6 6 6" /></svg>),
-  copy: (s = 13) => (<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V5a2 2 0 0 1 2-2h10" /></svg>),
   check: (s = 13) => (<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12l5 5 9-11" /></svg>),
   clock: (s = 16) => (<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.85" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>),
   truck: (s = 16) => (<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.85" strokeLinecap="round" strokeLinejoin="round"><path d="M3 13h13V6H3zM16 9h3.5L22 12v4h-6z" /><circle cx="7" cy="18" r="1.7" /><circle cx="18" cy="18" r="1.7" /></svg>),
   warn: (s = 14) => (<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.85"><circle cx="12" cy="12" r="9" /><path d="M12 8v5M12 16h.01" strokeLinecap="round" /></svg>),
+  info: (s = 14) => (<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.85"><circle cx="12" cy="12" r="9" /><path d="M12 16v-4M12 8h.01" strokeLinecap="round" /></svg>),
   printer: (s = 19) => (<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2" /><rect x="6" y="14" width="12" height="7" rx="1" /></svg>),
   download: (s = 16) => (<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" /></svg>),
   close: (s = 18) => (<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.85" strokeLinecap="round"><path d="M5 5l14 14M19 5 5 19" /></svg>),
@@ -141,7 +172,7 @@ function PhotoSlot({ qty, src, alt }) {
       <div className="od-slot">
         {src && !broken
           ? <img src={src} alt={alt || ''} loading="lazy" onError={() => setBroken(true)} />
-          : <span className="od-slot-ph" aria-hidden="true">{I.photo(24)}</span>}
+          : <span className="od-slot-ph" aria-hidden="true">{I.photo(30)}</span>}
       </div>
     </div>
   );
@@ -265,9 +296,160 @@ function BarcodeModal({ order, onClose }) {
   );
 }
 
+// ─── İşlemler alt sayfası (bottom sheet) ─────────────────────────────────────
+// Web'deki ActionsMenu'nün mobil karşılığı. "Kargo Firması Değiştir" işlevsel;
+// "İşleme Al" hâlâ pasif (TY'ye yazma = Faz 2).
+function ActionsSheet({ onClose, onChangeCargo }) {
+  React.useEffect(() => {
+    function onKey(e) { if (e.key === 'Escape') onClose(); }
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  return (
+    <div className="od-sheet-backdrop" onClick={onClose}>
+      <div className="od-sheet" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="İşlemler">
+        <div className="od-sheet-grip" aria-hidden="true" />
+        <div className="od-sheet-title">İşlemler</div>
+        <button type="button" className="od-sheet-item" onClick={onChangeCargo}>
+          <span className="od-sheet-ic">{I.truck(18)}</span>
+          <span className="od-sheet-item-txt">Kargo Firması Değiştir</span>
+        </button>
+        <button type="button" className="od-sheet-item" disabled title="Yakında (Faz 2)">
+          <span className="od-sheet-ic">{I.check(18)}</span>
+          <span className="od-sheet-item-txt">İşleme Al</span>
+          <span className="od-sheet-soon">Yakında</span>
+        </button>
+        <button type="button" className="od-sheet-cancel" onClick={onClose}>Vazgeç</button>
+      </div>
+    </div>
+  );
+}
+
+// ─── "Kargo Firması Değiştir" modalı — CANLI TY yazması ──────────────────────
+// Web'deki CargoProviderModal'ın (src/orders.jsx) mobil eşi. Operatör yeni
+// firmayı seçer → onaylar → POST /trendyol/orders/cargo-provider. TY paket başına
+// 5 dk'da yalnız 1 değişikliğe izin verir. marketplaceFulfillmentEnabled kapalıysa
+// gönderim engellenir + Ayarlar'a yönlendirir.
+function CargoProviderModal({ order, fulfillmentEnabled, onClose, onChanged }) {
+  const currentCode = guessProviderCode(order ? order.cargoProvider : null);
+  const [selected, setSelected] = React.useState(null);
+  const [submitting, setSubmitting] = React.useState(false);
+  const [error, setError] = React.useState(null);
+  const [done, setDone] = React.useState(false);
+
+  React.useEffect(() => {
+    function onKey(e) { if (e.key === 'Escape' && !submitting) onClose(); }
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose, submitting]);
+
+  if (!order) return null;
+
+  const hasPackage = !!order.packageId;
+  const canSubmit =
+    fulfillmentEnabled && hasPackage && !!selected && selected !== currentCode && !submitting && !done;
+
+  async function handleSubmit() {
+    if (!canSubmit) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await changeOrderCargoProvider({ packageId: order.packageId, cargoProvider: selected });
+      setDone(true);
+      // Kısa "başarılı" gösterimi → kapan + listeyi tazele (TY değişikliği async uygular).
+      setTimeout(() => { if (onChanged) onChanged(); }, 1100);
+    } catch (err) {
+      setError(err && err.message ? err.message : 'Kargo firması değiştirilemedi.');
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="od-cargo-backdrop" onClick={() => { if (!submitting) onClose(); }}>
+      <div className="od-cargo-modal" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="od-cargo-title">
+        <header className="od-cargo-head">
+          <div className="od-cargo-head-txt">
+            <h3 id="od-cargo-title" className="od-cargo-title">Kargo Firması Değiştir</h3>
+            <div className="od-cargo-sub">
+              #{order.orderNumber}
+              {order.cargoProvider ? <> · Mevcut: <b>{order.cargoProvider}</b></> : null}
+            </div>
+          </div>
+          <button type="button" className="od-cargo-close" onClick={onClose} aria-label="Kapat" disabled={submitting}>{I.close(18)}</button>
+        </header>
+
+        <div className="od-cargo-body">
+          {!fulfillmentEnabled && (
+            <div className="od-cargo-note od-cargo-note-warn">
+              {I.warn(15)}
+              <span>Pazaryeri sipariş işleme <b>kapalı</b>. Bu özelliği kullanmak için <b>Ayarlar › Pazaryeri › "Pazaryeri sipariş işleme"</b> seçeneğini açın.</span>
+            </div>
+          )}
+          {fulfillmentEnabled && !hasPackage && (
+            <div className="od-cargo-note od-cargo-note-warn">
+              {I.warn(15)}
+              <span>Bu sipariş için paket numarası bulunamadı; kargo firması değiştirilemez.</span>
+            </div>
+          )}
+          {fulfillmentEnabled && hasPackage && (
+            <div className="od-cargo-note">
+              {I.info(15)}
+              <span>Trendyol her paket için <b>5 dakikada yalnız 1</b> firma değişikliğine izin verir. Değişiklik birkaç dakikada yansıyabilir.</span>
+            </div>
+          )}
+
+          <div className="od-cargo-list" role="radiogroup" aria-label="Kargo firması seç">
+            {CARGO_PROVIDERS.map(p => {
+              const isCurrent = p.code === currentCode;
+              const isSel = p.code === selected;
+              return (
+                <button
+                  key={p.code}
+                  type="button"
+                  role="radio"
+                  aria-checked={isSel}
+                  className={'od-cargo-opt' + (isSel ? ' is-sel' : '') + (isCurrent ? ' is-current' : '')}
+                  disabled={!fulfillmentEnabled || !hasPackage || isCurrent || submitting || done}
+                  onClick={() => { setSelected(p.code); setError(null); }}
+                >
+                  <span className="od-cargo-opt-radio" aria-hidden="true" />
+                  <span className="od-cargo-opt-name">{p.name}</span>
+                  {isCurrent && <span className="od-cargo-opt-cur">Mevcut</span>}
+                </button>
+              );
+            })}
+          </div>
+
+          {error && <div className="od-cargo-err">{I.warn(14)} {error}</div>}
+        </div>
+
+        <footer className="od-cargo-actions">
+          {done ? (
+            <span className="od-cargo-success">{I.check(15)} Kargo firması güncellendi</span>
+          ) : (
+            <>
+              <button type="button" className="od-cargo-btn od-cargo-btn-ghost" onClick={onClose} disabled={submitting}>Vazgeç</button>
+              <button type="button" className="od-cargo-btn od-cargo-btn-primary" onClick={handleSubmit} disabled={!canSubmit}>
+                {submitting ? 'Değiştiriliyor…' : 'Değiştir'}
+              </button>
+            </>
+          )}
+        </footer>
+      </div>
+    </div>
+  );
+}
+
 export function MobileOrderDetail({ order, onBack }) {
-  const [copied, setCopied] = React.useState(null);
+  const queryClient = useQueryClient();
   const [barcodeOpen, setBarcodeOpen] = React.useState(false);
+  const [actionsOpen, setActionsOpen] = React.useState(false);
+  const [cargoOpen, setCargoOpen] = React.useState(false);
+  // TY yazması olduğu için marketplaceFulfillmentEnabled flag'ine bakar (web ile
+  // aynı; kapalıysa modal Ayarlar'a yönlendirir).
+  const settingsQuery = useQuery({ queryKey: queryKeys.settings(), queryFn: getSettings, staleTime: 60 * 1000 });
+  const fulfillmentEnabled = settingsQuery.data?.marketplaceFulfillmentEnabled === true;
   // Geri sayım saniye saniye işlesin diye tik state'i (yalnız kalan süre varsa).
   const [now, setNow] = React.useState(() => Date.now());
 
@@ -279,16 +461,6 @@ export function MobileOrderDetail({ order, onBack }) {
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, [showCountdown]);
-
-  function copy(key, text) {
-    if (!text || !navigator.clipboard?.writeText) return;
-    navigator.clipboard.writeText(String(text))
-      .then(() => {
-        setCopied(key);
-        setTimeout(() => setCopied(c => (c === key ? null : c)), 1400);
-      })
-      .catch(() => {});
-  }
 
   if (!order) {
     return (
@@ -323,7 +495,7 @@ export function MobileOrderDetail({ order, onBack }) {
   } else if (order.tab === 'teslim') {
     band = { kind: 'ok', icon: 'check', label: 'Teslim Edildi', value: fmtDateLong(order.lastModifiedDate) };
   } else if (order.tab === 'tasima') {
-    band = { kind: 'info', icon: 'truck', label: 'Kargoda', value: order.cargoProvider || null };
+    band = { kind: 'amber', icon: 'truck', label: 'Kargoda', value: order.cargoProvider || null };
   }
   const bandIcon = band
     ? (band.icon === 'check' ? I.check(16) : band.icon === 'truck' ? I.truck(16) : I.clock(16))
@@ -340,6 +512,7 @@ export function MobileOrderDetail({ order, onBack }) {
 
       {/* ── Kayan gövde ── */}
       <div className="od-scroll">
+       <div className="od-zoom">
 
         {/* ── Sipariş Bilgileri ── */}
         <section className="od-sect">
@@ -358,12 +531,7 @@ export function MobileOrderDetail({ order, onBack }) {
           <div className="od-info-rows">
             <div className="od-info-row">
               <span className="od-info-k">Sipariş Numarası</span>
-              <span className="od-info-v">
-                <button type="button" className="od-copy-ic" aria-label="Sipariş no kopyala" onClick={() => copy('ord', order.orderNumber)}>
-                  {copied === 'ord' ? I.check(13) : I.copy(13)}
-                </button>
-                #{order.orderNumber}
-              </span>
+              <span className="od-info-v">#{order.orderNumber}</span>
             </div>
             {fmtDateTime(order.orderDate) && (
               <div className="od-info-row">
@@ -403,20 +571,20 @@ export function MobileOrderDetail({ order, onBack }) {
                 <div className="od-item" key={l.lineId || i}>
                   <PhotoSlot qty={l.quantity} src={l.imageUrl} alt={l.productName} />
                   <div className="od-item-body">
-                    <div className="od-item-name">{l.productName || l.channelTitle || l.barcode || '—'}</div>
+                    {(() => {
+                      const name = l.productName || l.channelTitle || l.barcode || '—';
+                      return l.productUrl
+                        ? <a className="od-item-name od-item-link" href={l.productUrl} target="_blank" rel="noopener noreferrer">{name}</a>
+                        : <div className="od-item-name">{name}</div>;
+                    })()}
                     <div className="od-attrs">
-                      {sku && <div className="od-attr">Stok Kodu: <span className="od-mono">{sku}</span></div>}
+                      {l.unitPrice != null && <div className="od-attr">Birim Fiyatı: <b>{fmtTL(l.unitPrice)}</b></div>}
+                      {l.barcode && <div className="od-attr">Barkod: <b>{l.barcode}</b></div>}
+                      {sku && <div className="od-attr">Stok Kodu: <b>{sku}</b></div>}
                       {l.color && <div className="od-attr">Renk: <b>{l.color}</b></div>}
-                      {l.barcode && <div className="od-attr">Barkod: <span className="od-mono">{l.barcode}</span></div>}
                       {l.size && <div className="od-attr">Beden: <b>{l.size}</b></div>}
                     </div>
-                    {l.unitPrice != null && <div className="od-price">Birim Fiyatı: <b>{fmtTL(l.unitPrice)}</b></div>}
                   </div>
-                  {l.barcode && (
-                    <button type="button" className="od-item-copy" aria-label="Barkod kopyala" onClick={() => copy('bc-' + (l.lineId || i), l.barcode)}>
-                      {copied === 'bc-' + (l.lineId || i) ? I.check(13) : I.copy(13)}
-                    </button>
-                  )}
                 </div>
               );
             })}
@@ -474,12 +642,13 @@ export function MobileOrderDetail({ order, onBack }) {
             )}
           </section>
         )}
+       </div>
       </div>
 
       {/* ── Alt sabit aksiyon çubuğu ──
           "Kargo Etiketini Yazdır" istemci tarafı barkod modalını açar (web ile
-          aynı, Trendyol'a yazma yok). İşlemler / İşleme Al hâlâ pasif (TY'ye
-          yazma = Faz 2). */}
+          aynı, Trendyol'a yazma yok). "İşlemler" → alt sayfa: "Kargo Firması
+          Değiştir" CANLI TY yazması (web ile aynı), "İşleme Al" hâlâ pasif. */}
       <div className="od-actionbar">
         <button
           type="button"
@@ -491,7 +660,7 @@ export function MobileOrderDetail({ order, onBack }) {
           {I.printer(19)} Kargo Etiketini Yazdır
         </button>
         <div className="od-ab-pair">
-          <button type="button" className="od-ab-ghost" disabled title="Yakında (Faz 2)">İşlemler</button>
+          <button type="button" className="od-ab-ghost" onClick={() => setActionsOpen(true)}>İşlemler</button>
           <button type="button" className="od-ab-primary" disabled title="Yakında (Faz 2)">
             {I.check(17)} İşleme Al
           </button>
@@ -499,6 +668,25 @@ export function MobileOrderDetail({ order, onBack }) {
       </div>
 
       {barcodeOpen && <BarcodeModal order={order} onClose={() => setBarcodeOpen(false)} />}
+      {actionsOpen && (
+        <ActionsSheet
+          onClose={() => setActionsOpen(false)}
+          onChangeCargo={() => { setActionsOpen(false); setCargoOpen(true); }}
+        />
+      )}
+      {cargoOpen && (
+        <CargoProviderModal
+          order={order}
+          fulfillmentEnabled={fulfillmentEnabled}
+          onClose={() => setCargoOpen(false)}
+          onChanged={() => {
+            setCargoOpen(false);
+            // TY değişikliğini async uygular; liste önbelleğini tazele ki geri
+            // dönünce güncel firma görünsün.
+            queryClient.invalidateQueries({ queryKey: ['trendyolOrders'] });
+          }}
+        />
+      )}
     </div>
   );
 }

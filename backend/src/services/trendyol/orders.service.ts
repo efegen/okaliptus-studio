@@ -211,6 +211,7 @@ export type DisplayLine = {
   internalName: string | null;
   imageUrl: string | null;     // channel_products.image_url (TY fotoğrafı)
   channelTitle: string | null; // channel_products.title
+  productUrl: string | null;   // channel_products.product_url (TY ürün sayfası)
 };
 
 export type DisplayOrder = {
@@ -244,7 +245,7 @@ export type OrdersListResult = {
 
 // barcode → eşleşen iç ürün / kanal snapshot'ı.
 export type DisplayMatchMap = Map<string, { productId: string; internalName: string }>;
-export type ChannelInfoMap = Map<string, { imageUrl: string | null; title: string | null }>;
+export type ChannelInfoMap = Map<string, { imageUrl: string | null; title: string | null; productUrl: string | null }>;
 
 // Saf çekirdek: TY siparişleri + eşleme + kanal-snapshot → görünüm. DB/ağ yok.
 export function buildOrdersList(
@@ -295,6 +296,7 @@ export function buildOrdersList(
         internalName: m?.internalName ?? null,
         imageUrl: ch?.imageUrl ?? null,
         channelTitle: ch?.title ?? null,
+        productUrl: ch?.productUrl ?? null,
       };
     });
 
@@ -346,14 +348,14 @@ async function loadMatchAndChannel(
         WHERE cl.channel = 'trendyol' AND cl.external_id = ANY($1::text[])`,
       [barcodes],
     ),
-    pool.query<{ external_id: string; image_url: string | null; title: string | null }>(
-      `SELECT external_id, image_url, title FROM channel_products
+    pool.query<{ external_id: string; image_url: string | null; title: string | null; product_url: string | null }>(
+      `SELECT external_id, image_url, title, product_url FROM channel_products
         WHERE channel = 'trendyol' AND external_id = ANY($1::text[])`,
       [barcodes],
     ),
   ]);
   for (const r of matchRes.rows) matchMap.set(r.external_id, { productId: r.product_id, internalName: r.name });
-  for (const r of chRes.rows) channelMap.set(r.external_id, { imageUrl: r.image_url, title: r.title });
+  for (const r of chRes.rows) channelMap.set(r.external_id, { imageUrl: r.image_url, title: r.title, productUrl: r.product_url });
   return { matchMap, channelMap };
 }
 

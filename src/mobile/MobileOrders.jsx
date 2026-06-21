@@ -73,7 +73,6 @@ const I = {
   search: (s = 17) => (<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>),
   filter: (s = 18) => (<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.85" strokeLinecap="round" strokeLinejoin="round"><path d="M3 5h18M6 12h12M10 19h4" /></svg>),
   refresh: (s = 18) => (<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.85" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36M21 4v4h-4" /></svg>),
-  copy: (s = 12) => (<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V5a2 2 0 0 1 2-2h10" /></svg>),
   check: (s = 12) => (<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12l5 5 9-11" /></svg>),
   info: (s = 12) => (<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><circle cx="12" cy="12" r="9" /><path d="M12 16v-4M12 8h.01" /></svg>),
   clock: (s = 15) => (<svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>),
@@ -122,7 +121,7 @@ function PhotoSlot({ qty, src, alt }) {
       <div className="mo-slot">
         {src && !broken
           ? <img src={src} alt={alt || ''} loading="lazy" onError={() => setBroken(true)} />
-          : <span className="mo-slot-ph" aria-hidden="true">{I.photo(26)}</span>}
+          : <span className="mo-slot-ph" aria-hidden="true">{I.photo(30)}</span>}
       </div>
     </div>
   );
@@ -148,22 +147,22 @@ function statusBand(order) {
     return { kind: 'ok', icon: 'check', label: 'Teslim Edildi', value: fmtDateLong(order.lastModifiedDate) };
   }
   if (tab === 'tasima') {
-    return { kind: 'info', icon: 'truck', label: 'Kargoda', value: order.cargoProvider || null };
+    return { kind: 'amber', icon: 'truck', label: 'Kargoda', value: order.cargoProvider || null };
   }
   if (tab === 'yeni' || tab === 'isleme') {
     const rem = fmtRemaining(order.agreedDeliveryDate);
-    if (rem) return { kind: isUrgent(order.agreedDeliveryDate) ? 'warn' : 'amber', icon: 'clock', label: 'Kalan Süre', value: rem };
+    if (rem) return { kind: isUrgent(order.agreedDeliveryDate) ? 'warn' : 'info', icon: 'clock', label: 'Kalan Süre', value: rem };
     return { kind: 'amber', icon: 'clock', label: tab === 'yeni' ? 'Yeni sipariş' : 'İşleme alındı', value: null };
   }
   if (tab === 'yeniden') return { kind: 'warn', icon: 'clock', label: 'Yeniden gönderim', value: null };
   if (tab === 'aski') return { kind: 'neutral', icon: 'clock', label: 'Askıda bekliyor', value: null };
   const rem = fmtRemaining(order.agreedDeliveryDate);
-  if (rem) return { kind: 'amber', icon: 'clock', label: 'Kalan Süre', value: rem };
+  if (rem) return { kind: 'info', icon: 'clock', label: 'Kalan Süre', value: rem };
   return null;
 }
 
 // ─── Tek sipariş kartı ───────────────────────────────────────────────────────
-function OrderCard({ order, copied, onCopy, onOpenDetail }) {
+function OrderCard({ order, onOpenDetail }) {
   const hasDiscount = order.discount != null && Number(order.discount) > 0;
   const dateStr = [fmtDate(order.orderDate), fmtTime(order.orderDate)].filter(Boolean).join(' ');
   const loc = order.city || '';
@@ -181,9 +180,6 @@ function OrderCard({ order, copied, onCopy, onOpenDetail }) {
       <div className="mo-chead">
         <div className="mo-chead-id">
           <span className="mo-ordno">#{order.orderNumber}</span>
-          <button type="button" className="mo-copy" aria-label="Sipariş no kopyala" onClick={() => onCopy(order)}>
-            {copied ? I.check(12) : I.copy(12)}
-          </button>
         </div>
         {dateStr && <span className="mo-chead-date"><span className="mo-chead-date-l">Sipariş Tarihi:</span> {dateStr}</span>}
       </div>
@@ -242,7 +238,6 @@ export function MobileOrders({ onBack, onOpenDetail }) {
   const [tab, setTab] = React.useState('yeni');
   const [channel, setChannel] = React.useState('all');
   const [search, setSearch] = React.useState('');
-  const [copiedId, setCopiedId] = React.useState(null);
   const [filterOpen, setFilterOpen] = React.useState(false);
 
   // Web orders ekranıyla AYNI sorgu anahtarı → önbellek paylaşılır (viewport
@@ -282,17 +277,6 @@ export function MobileOrders({ onBack, onOpenDetail }) {
   const tabCount = (key) => key === 'tum' ? (tabCounts.tum ?? 0) : (tabCounts[key] ?? 0);
   const currentTab = TABS.find(t => t.key === tab);
   const lastUpdated = fmtDateTime(ordersQuery.dataUpdatedAt);
-
-  function handleCopy(order) {
-    const text = order.orderNumber;
-    if (!text || !navigator.clipboard?.writeText) return;
-    navigator.clipboard.writeText(text)
-      .then(() => {
-        setCopiedId(order.id);
-        setTimeout(() => setCopiedId(c => (c === order.id ? null : c)), 1400);
-      })
-      .catch(() => {});
-  }
 
   return (
     <div className="mo-page">
@@ -408,7 +392,7 @@ export function MobileOrders({ onBack, onOpenDetail }) {
         ) : (
           <div className="mo-list">
             {filtered.map(o => (
-              <OrderCard key={o.id} order={o} copied={copiedId === o.id} onCopy={handleCopy} onOpenDetail={onOpenDetail} />
+              <OrderCard key={o.id} order={o} onOpenDetail={onOpenDetail} />
             ))}
           </div>
         )}

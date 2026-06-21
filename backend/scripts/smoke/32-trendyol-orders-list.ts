@@ -67,7 +67,7 @@ async function run(): Promise<void> {
     // ── 2. buildOrdersList saf (eşleşme + foto + sayım + dedupe) ──────────────
     step("buildOrdersList saf: eşleşme/foto/sekme/dedupe doğru...");
     const matchMap: DisplayMatchMap = new Map([["AAA", { productId: "1", internalName: "İç Ürün" }]]);
-    const channelMap: ChannelInfoMap = new Map([["AAA", { imageUrl: "img://aaa", title: "TY AAA" }]]);
+    const channelMap: ChannelInfoMap = new Map([["AAA", { imageUrl: "img://aaa", title: "TY AAA", productUrl: "https://ty.example/p/aaa" }]]);
     const pure = buildOrdersList(
       [
         { orderNumber: "O1", shipmentPackageStatus: "Created", id: 11, lines: [
