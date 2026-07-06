@@ -138,7 +138,7 @@ function LessonTab({ slotInfo, weekStart, dateLabel, timeLabel, onCreated, setSu
 
   const selectedType = lessonTypes.find(t => String(t.id) === lessonTypeId);
   const selectedInstructor = instructors.find(i => String(i.id) === instructorId);
-  const durationMinutes = selectedType?.duration_minutes || 60;
+  const durationMinutes = selectedType?.default_duration_minutes || 60;
   const endHour = slotInfo ? slotInfo.hour + Math.floor(durationMinutes / 60) : 0;
   const endMin = durationMinutes % 60;
   const endTime = `${String(endHour).padStart(2, '0')}:${String(endMin).padStart(2, '0')}`;
@@ -241,7 +241,7 @@ function LessonTab({ slotInfo, weekStart, dateLabel, timeLabel, onCreated, setSu
           <span className="la-row-l">Ders türü</span>
           <span className="la-row-v">
             {selectedType?.name || '–'}
-            {selectedType && <small>{selectedType.duration_minutes} dk · {fmtTL(selectedType.default_price)}</small>}
+            {selectedType && <small>{selectedType.default_duration_minutes} dk · {fmtTL(selectedType.default_price)}</small>}
           </span>
           <span className="la-row-go" style={{ position: 'relative' }}>
             <select
