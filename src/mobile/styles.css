@@ -6864,7 +6864,7 @@
 .la-top {
   flex: 0 0 auto;
   display: grid; grid-template-columns: 44px 1fr 44px; align-items: center;
-  padding: calc(env(safe-area-inset-top, 0px) + 50px) 8px 0;
+  padding: calc(env(safe-area-inset-top, 0px) + 8px) 8px 0;
   background: var(--bg);
 }
 .la-icbtn {
