@@ -36,6 +36,10 @@ vi.mock("../api", () => ({
   createProductSaleApi: vi.fn(),
   getAuditLogs: vi.fn(),
   getAuditUsers: vi.fn(),
+  getCalendarEvents: vi.fn(),
+  createCalendarEvent: vi.fn(),
+  updateCalendarEventApi: vi.fn(),
+  deleteCalendarEventApi: vi.fn(),
 }));
 
 import { HomePage } from "../home";
@@ -47,6 +51,7 @@ import {
   getInstructors,
   getLessonTypes,
   getAuditLogs,
+  getCalendarEvents,
 } from "../api";
 
 describe("HomePage", () => {
@@ -67,6 +72,7 @@ describe("HomePage", () => {
       monthlyRevenue: { total: "6000" },
     });
     getWeekLessons.mockResolvedValue([]);
+    getCalendarEvents.mockResolvedValue([]);
     getSettings.mockResolvedValue({
       weeklyCapacity: 25,
       weekStart: "monday",

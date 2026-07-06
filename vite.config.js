@@ -37,7 +37,7 @@ export default defineConfig({
           {
             urlPattern: ({ url, request }) =>
               request.method === 'GET' &&
-              /^\/(kpi|lessons|students|packages|product-sales|products|settings|instructors|lesson-types|audit-logs|movements)/.test(url.pathname),
+              /^\/(kpi|lessons|calendar-events|students|packages|product-sales|products|settings|instructors|lesson-types|audit-logs|movements)/.test(url.pathname),
             handler: 'NetworkFirst',
             options: {
               cacheName: 'api-cache',
@@ -80,8 +80,15 @@ export default defineConfig({
     }),
   ],
   server: {
+    // Windows'ta "localhost" IPv4 (127.0.0.1) ve IPv6 (::1) arasında kararsız
+    // çözülebiliyor. Vite varsayılanı yalnız IPv6'ya bağlanınca tarayıcı IPv4'e
+    // düşüp bağlanamıyor ya da eski bir örneğe takılıyordu. host: true → tüm
+    // arabirimlere (0.0.0.0, IPv4 dahil) bağla; strictPort → port doluysa sessizce
+    // 5174'e kaymak yerine hata ver (böylece hangi portta olduğun hep belli).
+    host: true,
+    strictPort: true,
     proxy: {
-      '^/(auth|kpi|lessons|students|payments|packages|product-sales|products|channels|trendyol|mapping|settings|instructors|lesson-types|health|audit-logs|movements)': {
+      '^/(auth|kpi|lessons|students|payments|packages|product-sales|products|channels|trendyol|mapping|settings|instructors|lesson-types|health|audit-logs|movements|calendar-events|push)': {
         target: 'http://127.0.0.1:4000',
         changeOrigin: true,
       },
@@ -89,7 +96,7 @@ export default defineConfig({
   },
   preview: {
     proxy: {
-      '^/(auth|kpi|lessons|students|payments|packages|product-sales|products|channels|trendyol|mapping|settings|instructors|lesson-types|health|audit-logs|movements)': {
+      '^/(auth|kpi|lessons|students|payments|packages|product-sales|products|channels|trendyol|mapping|settings|instructors|lesson-types|health|audit-logs|movements|calendar-events|push)': {
         target: 'http://127.0.0.1:4000',
         changeOrigin: true,
       },

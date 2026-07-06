@@ -3,6 +3,7 @@ export const queryKeys = {
   financeFlow:        ()      => ['financeFlow'],
   occupancyFlow:      ()      => ['occupancyFlow'],
   weekLessons:        (ms)    => ms !== undefined ? ['weekLessons', ms] : ['weekLessons'],
+  calendarEvents:     (ms)    => ms !== undefined ? ['calendarEvents', ms] : ['calendarEvents'],
   students:           ()      => ['students'],
   studentsKpi:        ()      => ['studentsKpi'],
   studentById:        (id)    => ['student', id],

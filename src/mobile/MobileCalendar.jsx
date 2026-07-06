@@ -3,7 +3,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useWeekLessons } from './shared/useWeekLessons';
 import { queryKeys } from '../hooks/queryKeys';
 import { MobileLessonSheet } from './MobileLessonSheet';
-import { MobileCreateLessonSheet } from './MobileCreateLessonSheet';
+import { MobilePlanSheet } from './MobilePlanSheet';
+import { MobileAddToCalendar } from './MobileAddToCalendar';
 import { MobileToast } from './MobileToast';
 import { fmtTL } from '../data';
 
@@ -114,7 +115,7 @@ function LessonBlock({ session, onSelect }) {
   return (
     <div
       className={`mobile-cal-block mobile-cal-block-${session.lessonState}`}
-      style={{ top, minHeight: HOUR_PX - 3, maxHeight: HOUR_PX, height: 'auto' }}
+      style={{ top, height, minHeight: 20 }}
       role="button"
       tabIndex={0}
       onClick={() => onSelect(session)}
@@ -141,13 +142,46 @@ function LessonBlock({ session, onSelect }) {
   );
 }
 
+function PlanBlock({ event, onSelect }) {
+  const startMinutes = (event.hour - 8) * 60 + event.minute;
+  if (startMinutes < 0) return null;
+  const top = (startMinutes / 60) * HOUR_PX;
+  const height = (event.durationMinutes / 60) * HOUR_PX;
+
+  function handleKeyDown(e) {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onSelect(event);
+    }
+  }
+
+  return (
+    <div
+      className={`mobile-cal-block mobile-cal-block-plan mobile-cal-block-plan-${event.labelColor}`}
+      style={{ top, height, minHeight: 20 }}
+      role="button"
+      tabIndex={0}
+      onClick={() => onSelect(event)}
+      onKeyDown={handleKeyDown}
+    >
+      <div className="mobile-cal-block-top">
+        <span className="mobile-cal-block-time">{event.time}</span>
+      </div>
+      <div className="mobile-cal-block-name-row">
+        <span className="mobile-cal-block-name">{event.title}</span>
+      </div>
+    </div>
+  );
+}
+
 export function MobileCalendar() {
   const [weekStart, setWeekStart] = React.useState(() => getCurrentMonday());
   const [selectedSession, setSelectedSession] = React.useState(null);
+  const [selectedPlan, setSelectedPlan] = React.useState(null);
   const [slotInfo, setSlotInfo] = React.useState(null);
   const [toast, setToast] = React.useState(null);
   const queryClient = useQueryClient();
-  const { sessions, error, isLoading } = useWeekLessons(weekStart);
+  const { sessions, events, error, isLoading } = useWeekLessons(weekStart);
 
   const dayNumbers = getWeekDayNumbers(weekStart);
   const todayIndex = getTodayColumnIndex(weekStart);
@@ -296,9 +330,11 @@ export function MobileCalendar() {
   function handleNext() { setWeekStart(addWeeks(weekStart, 1)); }
   function handleToday() { setWeekStart(getCurrentMonday()); }
   function handleSlotClick(d, h) { setSlotInfo({ dayIndex: d, hour: h }); }
-  function handleCreated() {
+  function handleCreated(message) {
     setSlotInfo(null);
     queryClient.invalidateQueries({ queryKey: queryKeys.weekLessons() });
+    queryClient.invalidateQueries({ queryKey: queryKeys.calendarEvents() });
+    if (message) setToast(message);
   }
 
   const sessionsByDay = React.useMemo(() => {
@@ -310,6 +346,16 @@ export function MobileCalendar() {
     }
     return map;
   }, [sessions]);
+
+  const eventsByDay = React.useMemo(() => {
+    const map = Array.from({ length: 7 }, () => []);
+    if (Array.isArray(events)) {
+      for (const e of events) {
+        if (e.day >= 0 && e.day <= 6) map[e.day].push(e);
+      }
+    }
+    return map;
+  }, [events]);
 
   return (
     <div className="mobile-calendar-page">
@@ -370,6 +416,9 @@ export function MobileCalendar() {
                       {sessionsByDay[d].map(s => (
                         <LessonBlock key={s.id} session={s} onSelect={setSelectedSession} />
                       ))}
+                      {eventsByDay[d].map(e => (
+                        <PlanBlock key={`ev-${e.id}`} event={e} onSelect={setSelectedPlan} />
+                      ))}
                     </div>
                   );
                 })}
@@ -402,15 +451,24 @@ export function MobileCalendar() {
         />
       )}
 
+      {selectedPlan && (
+        <MobilePlanSheet
+          event={selectedPlan}
+          onClose={() => setSelectedPlan(null)}
+          onUpdated={(message) => {
+            setSelectedPlan(null);
+            queryClient.invalidateQueries({ queryKey: queryKeys.calendarEvents() });
+            if (message) setToast(message);
+          }}
+        />
+      )}
+
       {slotInfo && (
-        <MobileCreateLessonSheet
+        <MobileAddToCalendar
           slotInfo={slotInfo}
           weekStart={weekStart}
           onClose={() => setSlotInfo(null)}
-          onCreated={() => {
-            handleCreated();
-            setToast('Ders eklendi');
-          }}
+          onCreated={handleCreated}
         />
       )}
 

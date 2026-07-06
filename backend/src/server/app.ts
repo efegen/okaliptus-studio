@@ -23,6 +23,7 @@ import { instructorsRouter } from "./routes/instructors.router.js";
 import { lessonTypesRouter } from "./routes/lesson-types.router.js";
 import { authRouter } from "./routes/auth.router.js";
 import { auditRouter } from "./routes/audit.router.js";
+import { calendarEventsRouter } from "./routes/calendar-events.router.js";
 import { movementsRouter } from "./routes/movements.router.js";
 import { pushRouter } from "./routes/push.router.js";
 import { requireAuth } from "./middleware/requireAuth.js";
@@ -104,6 +105,7 @@ export function createApp() {
   app.use("/instructors", instructorsRouter);
   app.use("/lesson-types", lessonTypesRouter);
   app.use("/audit-logs", auditRouter);
+  app.use("/calendar-events", calendarEventsRouter);
   app.use("/movements", movementsRouter);
   app.use("/push", pushRouter);
   app.use("/students", studentsRouter);

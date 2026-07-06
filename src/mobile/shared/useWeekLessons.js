@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { getWeekLessons } from '../../api';
+import { getWeekLessons, getCalendarEvents } from '../../api';
 import { queryKeys } from '../../hooks/queryKeys';
 
 function extractIstanbulParts(isoString) {
@@ -67,19 +67,61 @@ function selectSessions(data) {
   return (data || []).map(normalizeLesson).filter(s => s.lessonState !== 'cancelled');
 }
 
+function normalizeCalendarEvent(e) {
+  const { year, month, day, hour, minute } = extractIstanbulParts(e.starts_at);
+  const localDate = new Date(year, month, day);
+  const dayIndex = (localDate.getDay() + 6) % 7;
+  const hh = String(hour).padStart(2, '0');
+  const mm = String(minute).padStart(2, '0');
+  const participants = Array.isArray(e.participants)
+    ? e.participants.map(p => ({
+        id: p.id,
+        name: p.full_name,
+        nickname: p.nickname || null,
+      }))
+    : [];
+  return {
+    id: e.id,
+    type: 'event',
+    day: dayIndex,
+    hour,
+    minute,
+    time: `${hh}:${mm}`,
+    title: e.title,
+    eventType: e.event_type,
+    durationMinutes: Number(e.duration_minutes) || 60,
+    labelColor: e.label_color || 'graphite',
+    note: e.note || null,
+    participants,
+  };
+}
+
+function selectEvents(data) {
+  return (data || []).map(normalizeCalendarEvent);
+}
+
 export function useWeekLessons(weekStart, options = {}) {
   const enabled = options.enabled !== false;
   const weekStartMs = weekStart.getTime();
-  const { data: sessions, error, isLoading } = useQuery({
+  const { data: sessions, error: lessonsError, isLoading: lessonsLoading } = useQuery({
     queryKey: queryKeys.weekLessons(weekStartMs),
     queryFn: () => getWeekLessons(weekStart),
     select: selectSessions,
     staleTime: 60 * 1000,
     enabled,
   });
+  const { data: events, error: eventsError, isLoading: eventsLoading } = useQuery({
+    queryKey: queryKeys.calendarEvents(weekStartMs),
+    queryFn: () => getCalendarEvents(weekStart),
+    select: selectEvents,
+    staleTime: 60 * 1000,
+    enabled,
+  });
+  const error = lessonsError || eventsError;
   return {
     sessions: sessions ?? null,
+    events: events ?? null,
     error: error?.message ?? null,
-    isLoading: enabled ? isLoading : false,
+    isLoading: enabled ? (lessonsLoading || eventsLoading) : false,
   };
 }

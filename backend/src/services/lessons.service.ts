@@ -1,4 +1,5 @@
 import { pool } from "../db/connection.js";
+import { assertNoConflictingCalendarEvent } from "./calendar-events.service.js";
 import {
   DeleteConflictError,
   DiscountNotAllowedError,
@@ -327,6 +328,9 @@ export async function createLesson(input: CreateLessonInput): Promise<LessonRow>
     if (instructor_conflict) {
       throw new LessonConflictError("Bu eğitmenin bu saatte zaten bir dersi var.");
     }
+
+    // Planlar ve dersler çakışamaz (bkz. calendar-events.service.ts).
+    await assertNoConflictingCalendarEvent(client, input.startsAt, defaults.duration_minutes);
 
     const insertResult = await client.query<LessonRow>(
       `

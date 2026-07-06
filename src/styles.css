@@ -900,6 +900,40 @@ input, select { font-family: inherit; }
 .wk-sess-name { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: -0.01em; flex: 1; min-width: 0; }
 .wk-sess-remain { flex-shrink: 0; white-space: nowrap; font-size: 9px; opacity: 0.75; font-variant-numeric: tabular-nums; margin-left: auto; }
 
+/* ── Calendar plans (etkinlik) — mirrors .wk-sess positioning; colors match
+   the mobile .mobile-cal-block-plan-* palette so a label color means the same
+   thing on both platforms. Unlike lesson blocks, height is duration-proportional. */
+.wk-plan {
+  position: absolute;
+  left: 3px; right: 3px;
+  padding: 4px 6px;
+  border-radius: 5px;
+  overflow: hidden;
+  cursor: pointer;
+  color: #fff;
+  border: 1px solid transparent;
+  border-left-width: 3px;
+  border-left-style: solid;
+  transition: transform 0.12s, box-shadow 0.12s;
+}
+.wk-plan:hover { box-shadow: var(--shadow-lg); transform: translateY(-1px); z-index: 5; }
+.wk-plan-graphite {
+  background: oklch(0.46 0.012 80);
+  border-color: oklch(0.40 0.012 80); border-left-color: oklch(0.30 0.012 80);
+}
+.wk-plan-slate {
+  background: oklch(0.50 0.07 275);
+  border-color: oklch(0.44 0.07 275); border-left-color: oklch(0.34 0.07 275);
+}
+.wk-plan-plum {
+  background: oklch(0.50 0.12 330);
+  border-color: oklch(0.44 0.12 330); border-left-color: oklch(0.34 0.12 330);
+}
+.wk-plan-teal {
+  background: oklch(0.52 0.075 200);
+  border-color: oklch(0.46 0.075 200); border-left-color: oklch(0.34 0.075 200);
+}
+
 .cal-legend {
   display: flex; gap: 18px; padding: 14px 4px 0;
   font-size: 12px; color: var(--ink-2); font-weight: 500;
@@ -2498,6 +2532,25 @@ input, select { font-family: inherit; }
   border-color: oklch(0.44 0.19 30);
 }
 
+/* PlanModal'ın "İptal et" aksiyonu — .lm-btn-danger ile aynı görsel tedavi */
+.btn.pm-btn-danger {
+  color: var(--warn);
+}
+.btn.btn-ghost.pm-btn-danger:hover {
+  background: var(--warn-2);
+  color: var(--warn);
+  border-color: oklch(0.78 0.10 30);
+}
+.btn.btn-primary.pm-btn-danger {
+  background: var(--warn);
+  border-color: var(--warn);
+  color: var(--surface);
+}
+.btn.btn-primary.pm-btn-danger:hover:not(:disabled) {
+  background: oklch(0.44 0.19 30);
+  border-color: oklch(0.44 0.19 30);
+}
+
 @media (max-width: 540px) {
   .modal.modal-lesson { width: 100%; }
   .lm-head,
@@ -3473,6 +3526,17 @@ input, select { font-family: inherit; }
 
 .mcl-form { padding: 16px 20px 20px; }
 
+/* AddToCalendarModal'da Ders/Plan sekmeleri arasında geçince pencere boyu
+   zıplamasın diye yalnız o iki forma uygulanır (bkz. LessonFields/PlanFields).
+   PlanModal gibi tek-fazlı, içeriğe göre kısa kalması gereken formları
+   ETKİLEMEZ — onlar .mcl-form ile içeriği kadar yer kaplamaya devam eder. */
+.mcl-tabform {
+  min-height: 352px;
+  display: flex;
+  flex-direction: column;
+}
+.mcl-tabform .modal-actions { margin-top: auto; padding-top: 20px; }
+
 .mcl-banner {
   margin: 0 20px;
   padding: 8px 12px;
@@ -3652,6 +3716,227 @@ input, select { font-family: inherit; }
 .mode-btn svg { opacity: 0.5; transition: opacity 0.12s; }
 .mode-btn:hover svg { opacity: 0.75; }
 .mode-btn.is-on svg { opacity: 0.85; }
+
+/* Ders/Plan tür seçici (AddToCalendarModal). Ağır siyah segment yerine
+   başlığın kendisi olan tipografik geçiş: italik serif "Yeni" lead-in +
+   iki serif seçenek; aktif olan koyu ink + sage altı çizgi, pasif olan sönük.
+   Kasıtlı olarak formdaki .mode-seg (Yüzyüze/Online) toggle'ından farklı
+   görünür — "ne oluşturuyorum" ile "hangi mod" hiyerarşik ayrışsın diye. */
+.mcl-head-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 11px;
+}
+.mcl-switch {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+}
+.mcl-switch-opt {
+  position: relative;
+  padding: 0 0 5px;
+  background: none;
+  border: none;
+  font-family: var(--f-serif);
+  font-size: 20px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  line-height: 1;
+  color: var(--ink-4);
+  cursor: pointer;
+  transition: color 0.14s;
+}
+.mcl-switch-opt:hover { color: var(--ink-2); }
+.mcl-switch-opt.is-on { color: var(--ink); }
+.mcl-switch-opt.is-on::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+.mcl-switch-opt:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+
+/* Plan süre/etiket rengi kontrolleri (DurationStepper / LabelColorDots) */
+.mcl-duration-stepper { display: flex; align-items: center; gap: 10px; min-height: 36px; }
+.mcl-duration-btn {
+  width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: 16px;
+  line-height: 1;
+  transition: background 0.12s, color 0.12s;
+}
+.mcl-duration-btn:hover:not(:disabled) { background: var(--bg-2); color: var(--ink); }
+.mcl-duration-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.mcl-duration-val {
+  min-width: 64px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.mcl-color-dots { display: flex; align-items: center; gap: 10px; min-height: 36px; }
+.mcl-color-dot {
+  width: 22px; height: 22px;
+  padding: 0;
+  border-radius: 50%;
+  border: 0;
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, black 15%, transparent);
+  cursor: pointer;
+  transition: transform 0.12s, box-shadow 0.12s;
+}
+.mcl-color-dot:hover { transform: scale(1.08); }
+.mcl-color-dot.is-sel {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in oklch, black 15%, transparent),
+    0 0 0 3px var(--surface),
+    0 0 0 5px var(--ink);
+}
+.mcl-color-dot-graphite { background: oklch(0.46 0.012 80); }
+.mcl-color-dot-slate    { background: oklch(0.50 0.07 275); }
+.mcl-color-dot-plum     { background: oklch(0.50 0.12 330); }
+.mcl-color-dot-teal     { background: oklch(0.52 0.075 200); }
+
+.mcl-plan-note {
+  font-size: 13px;
+  color: var(--ink-2);
+  line-height: 1.4;
+}
+
+/* PlanModal detay fazı boş kalmasın diye: katılımcı listesi + not alanı boşsa
+   düzenlemeye götüren tıklanabilir davet (bkz. PlanParticipantsRoster + not). */
+.mcl-plan-note-empty {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px dashed var(--line-2);
+  border-radius: var(--radius-sm);
+  background: none;
+  font-size: 12.5px;
+  color: var(--ink-3);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.mcl-plan-note-empty:hover {
+  background: var(--bg-2);
+  border-color: var(--line-strong);
+  color: var(--ink-2);
+}
+.mcl-plan-note-empty svg { flex-shrink: 0; color: var(--ink-4); }
+
+/* ─── Plan katılımcıları (PlanParticipantsField / Roster) ───────────────────
+   Katılımcı = plana iliştirilmiş öğrenci ismi (bilgi amaçlı, finansal değil).
+   Ders öğrenci seçicinin görsel dilini paylaşır; ayrı namespace (pp-*). */
+.pp-field { position: relative; }
+
+.pp-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.pp-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 7px 3px 4px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 12.5px;
+  color: var(--ink);
+}
+.pp-chip-name { line-height: 1; }
+.pp-chip-x {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border: none;
+  background: none;
+  color: var(--ink-4);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+.pp-chip-x:hover { background: var(--bg-2); color: var(--ink-2); }
+
+.pp-search { position: relative; display: flex; align-items: center; }
+.pp-search svg { position: absolute; left: 11px; color: var(--ink-4); pointer-events: none; }
+.pp-search input {
+  width: 100%;
+  padding: 9px 11px 9px 31px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  font-size: 13px;
+  color: var(--ink);
+}
+.pp-search input:focus { outline: none; border-color: var(--ink); }
+.pp-search input::placeholder { color: var(--ink-4); }
+
+.pp-drop {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 20;
+  background: var(--surface);
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-lg);
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 4px;
+}
+.pp-opt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 8px;
+  border: none;
+  background: none;
+  border-radius: 4px;
+  font-size: 13px;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+.pp-opt:hover { background: var(--bg-2); }
+.pp-opt-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.pp-roster { display: flex; flex-wrap: wrap; gap: 6px; }
+.pp-roster-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 4px 10px 4px 5px;
+  background: var(--sage-2);
+  border: 1px solid var(--sage-2);
+  border-radius: 999px;
+  font-size: 12.5px;
+  line-height: 1.3;
+  color: var(--ink);
+  transition: border-color 0.12s, transform 0.12s;
+}
+.pp-roster-item:hover { border-color: var(--sage); transform: translateY(-1px); }
+.pp-roster-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pp-roster-nick { color: var(--ink-3); }
 
 .mcl-mode-hint {
   font-size: 10px;
@@ -3999,10 +4284,14 @@ input, select { font-family: inherit; }
 
 /* Stok takibi vb. açık/kapalı anahtarı */
 .stg-toggle {
+  /* min-height: 0 → mobil kabuğun global "button { min-height: 44px }" (Apple
+     HIG tap target, mobile/styles.css:24) kuralı bu 23px'lik anahtarı 44px'e
+     şişirip border-radius:999px ile daireye dönüştürüyordu. */
   flex: 0 0 auto;
   position: relative;
   width: 40px;
   height: 23px;
+  min-height: 0;
   border-radius: 999px;
   border: 1px solid var(--line-2);
   background: var(--bg);

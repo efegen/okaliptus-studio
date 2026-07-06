@@ -98,6 +98,12 @@ export class DeleteConflictError extends AppError {
   }
 }
 
+export class CalendarEventNotFoundError extends AppError {
+  constructor(message = "Calendar event not found.") {
+    super("CALENDAR_EVENT_NOT_FOUND", message, 404);
+  }
+}
+
 export class ValidationError extends AppError {
   constructor(message = "Invalid input.") {
     super("VALIDATION_ERROR", message, 400);
@@ -107,6 +113,12 @@ export class ValidationError extends AppError {
 export class LessonConflictError extends AppError {
   constructor(message = "This time slot conflicts with an existing lesson.") {
     super("LESSON_CONFLICT", message, 409);
+  }
+}
+
+export class CalendarEventConflictError extends AppError {
+  constructor(message = "This time slot conflicts with an existing calendar event.") {
+    super("CALENDAR_EVENT_CONFLICT", message, 409);
   }
 }
 

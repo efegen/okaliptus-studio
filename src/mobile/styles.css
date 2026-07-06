@@ -1112,6 +1112,24 @@
     border-left-color: oklch(0.38 calc(0.22 * var(--ls-sat)) 145);
   }
 
+  .mobile-cal-block-plan { border-left-width: 3.5px; }
+  .mobile-cal-block-plan-graphite {
+    background: oklch(0.46 0.012 80); color: #fff;
+    border-color: oklch(0.40 0.012 80); border-left-color: oklch(0.30 0.012 80);
+  }
+  .mobile-cal-block-plan-slate {
+    background: oklch(0.50 0.07 275); color: #fff;
+    border-color: oklch(0.44 0.07 275); border-left-color: oklch(0.34 0.07 275);
+  }
+  .mobile-cal-block-plan-plum {
+    background: oklch(0.50 0.12 330); color: #fff;
+    border-color: oklch(0.44 0.12 330); border-left-color: oklch(0.34 0.12 330);
+  }
+  .mobile-cal-block-plan-teal {
+    background: oklch(0.52 0.075 200); color: #fff;
+    border-color: oklch(0.46 0.075 200); border-left-color: oklch(0.34 0.075 200);
+  }
+
   .mobile-cal-block-top {
     display: flex;
     align-items: center;
@@ -1221,6 +1239,14 @@
     outline: none;
   }
 
+  /* Plan sayfası ders sayfasından çok daha az veri taşır (borç/ödeme kartları
+     yok) — 50dvh tabanı paylaşmak devasa boş alan bırakıyordu. İçeriğe göre
+     kısa kalsın diye taban kaldırılır, tavan (85dvh) ve kapanış davranışı
+     korunur. */
+  .mobile-lsheet-content-plan {
+    min-height: 0;
+  }
+
   .mobile-lsheet-handle {
     width: 40px;
     height: 4px;
@@ -1261,6 +1287,10 @@
   .mobile-lsheet-pill-unpaid {
     background: oklch(0.93 calc(0.08 * var(--ls-sat)) 20);
     color: oklch(0.34 calc(0.18 * var(--ls-sat)) 20);
+  }
+  .mobile-lsheet-pill-plan {
+    background: var(--surface-2);
+    color: var(--ink-2);
   }
 
   .mobile-lsheet-name {
@@ -1485,6 +1515,23 @@
     font-style: italic;
     line-height: 1.4;
   }
+
+  .mobile-lsheet-note-empty {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    min-height: 44px;
+    padding: 10px 12px;
+    border: 1px dashed var(--ink-4);
+    border-radius: 10px;
+    background: none;
+    font-size: 13px;
+    color: var(--ink-3);
+    text-align: left;
+  }
+  .mobile-lsheet-note-empty svg { flex-shrink: 0; color: var(--ink-4); }
+  .mobile-lsheet-note-empty:active { background: var(--surface-2); }
 
   /* ---------- Toast (snackbar) ---------- */
 
@@ -6805,4 +6852,271 @@
   margin: 0; padding: 10px 12px; border-radius: 10px;
   background: var(--warn-2); color: var(--warn-ink); font-size: 13px; font-weight: 500;
 }
+
+/* ═══ Add-to-Calendar (Takvime Ekle) full-page ═══════════════════════════════ */
+
+.la-page {
+  position: absolute; inset: 0; z-index: 60;
+  display: flex; flex-direction: column;
+  background: var(--bg); color: var(--ink);
+  font-family: var(--f-sans); -webkit-font-smoothing: antialiased;
+}
+.la-top {
+  flex: 0 0 auto;
+  display: grid; grid-template-columns: 44px 1fr 44px; align-items: center;
+  padding: calc(env(safe-area-inset-top, 0px) + 50px) 8px 0;
+  background: var(--bg);
+}
+.la-icbtn {
+  width: 44px; height: 44px; border: 0; border-radius: 999px; background: transparent;
+  color: var(--ink); display: inline-flex; align-items: center; justify-content: center;
+  cursor: pointer;
+}
+.la-icbtn:active { background: var(--surface-3, oklch(0.92 0.011 80)); }
+.la-top-spacer { width: 44px; }
+
+.la-body {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  display: flex; flex-direction: column; gap: 15px; padding: 14px 16px 24px;
+  border-top: 1px solid var(--line);
+}
+.la-body::-webkit-scrollbar { width: 0; }
+
+.la-foot {
+  flex: 0 0 auto;
+  padding: 11px 16px calc(env(safe-area-inset-bottom, 0px) + 34px + 8px);
+  border-top: 1px solid var(--line); background: var(--bg);
+}
+.la-cta {
+  width: 100%; min-height: 52px; border: 0; border-radius: 15px;
+  background: var(--accent); color: #fff; font-size: 16px; font-weight: 600;
+  letter-spacing: -0.01em; cursor: pointer;
+  box-shadow: 0 8px 18px -8px var(--accent), 0 1px 0 var(--accent-deep, oklch(0.34 0.06 155));
+  transition: transform 60ms ease, background 120ms ease;
+}
+.la-cta:active { transform: translateY(1px); background: var(--accent-hover, oklch(0.46 0.072 155)); }
+.la-cta:disabled { opacity: 0.42; box-shadow: none; cursor: not-allowed; }
+.la-cta.ink { background: var(--ink); color: var(--bg); box-shadow: 0 8px 18px -10px var(--ink); }
+.la-cta.ink:active { background: var(--ink-2); }
+
+/* tab bar */
+.lb-tabs { display: flex; align-items: flex-end; justify-content: center; gap: 18px; }
+.lb-tab {
+  position: relative; border: 0; background: transparent; padding: 6px 2px 12px;
+  font-size: 16px; font-weight: 600; color: var(--ink-4); letter-spacing: -0.01em;
+  white-space: nowrap; cursor: pointer; transition: color 120ms;
+}
+.lb-tab.on { color: var(--ink); }
+.lb-tab.on::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0;
+  height: 2.5px; border-radius: 3px; background: var(--accent);
+}
+
+/* student picker card */
+.la-pick {
+  display: flex; align-items: center; gap: 13px; width: 100%; text-align: left;
+  padding: 15px; border: 1px solid var(--line-2, oklch(0.80 0.012 75));
+  border-radius: 18px; background: var(--surface); cursor: pointer;
+  transition: border-color 110ms ease;
+}
+.la-pick:active { border-color: var(--accent); }
+.la-pick-empty { border-style: dashed; }
+.la-pick-av {
+  flex: 0 0 auto; width: 52px; height: 52px; border-radius: 999px;
+  background: color-mix(in oklch, var(--accent) 16%, var(--surface));
+  color: var(--accent-ink, oklch(0.40 0.072 155));
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 18px; font-weight: 700; letter-spacing: 0.02em;
+}
+.la-pick-av.ph {
+  background: transparent; border: 1.5px dashed var(--line-2, oklch(0.80 0.012 75));
+  color: var(--ink-4);
+}
+.la-pick-tx { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.la-pick-t { font-size: 18px; font-weight: 600; color: var(--ink); }
+.la-pick-d { font-size: 12.5px; color: var(--ink-3); }
+.la-pick-empty .la-pick-t { color: var(--ink-2); }
+.la-pick-edit, .la-pick-go { flex: 0 0 auto; color: var(--ink-4); display: inline-flex; }
+.la-pick-go { color: var(--accent-ink, oklch(0.40 0.072 155)); }
+
+/* when card */
+.lb-when {
+  display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
+  padding: 13px 15px; border: 1px solid var(--line-2, oklch(0.80 0.012 75));
+  border-radius: 15px; background: var(--surface);
+}
+.lb-when-ic {
+  flex: 0 0 auto; width: 40px; height: 40px; border-radius: 11px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--accent-2, oklch(0.94 0.026 155));
+  color: var(--accent-ink, oklch(0.40 0.072 155));
+}
+.lb-when-tx { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.lb-when-t { font-size: 15.5px; font-weight: 600; color: var(--ink); }
+.lb-when-d { font-size: 12.5px; color: var(--ink-3); font-family: var(--f-mono); }
+
+/* detail card + rows */
+.la-card {
+  background: var(--surface);
+  border: 1px solid var(--line-2, oklch(0.80 0.012 75));
+  border-radius: 15px; overflow: hidden;
+  /* .la-body flex-column içinde bir flex item; overflow:hidden taşıyan flex
+     item'ların otomatik min-height'ı içerik boyutu yerine 0'dır (flexbox
+     spec), bu yüzden .la-body sığmayınca bu kart flex-shrink ile sıfıra kadar
+     ezilip overflow:hidden ile de görünmez oluyordu. flex-shrink: 0 bunu
+     .la-body'nin scroll'una (overflow-y: auto) bırakır. */
+  flex-shrink: 0;
+}
+.la-row {
+  display: flex; align-items: center; min-height: 52px;
+  padding: 8px 15px; gap: 12px; border-bottom: 1px solid var(--line);
+}
+.la-row:last-child { border-bottom: 0; }
+.la-row-l { flex: 0 0 auto; font-size: 14.5px; color: var(--ink-2); font-weight: 500; }
+.la-row-v {
+  flex: 1 1 auto; min-width: 0; text-align: right; font-size: 15.5px; font-weight: 600;
+  color: var(--ink); display: flex; flex-direction: column; align-items: flex-end; gap: 1px;
+  white-space: nowrap;
+}
+.la-row-v small { font-size: 11.5px; font-weight: 500; color: var(--ink-4); font-family: var(--f-mono); white-space: nowrap; }
+.la-row-go { flex: 0 0 auto; color: var(--ink-4); display: inline-flex; margin-right: -4px; }
+.la-row-mode { flex-wrap: wrap; gap: 10px; }
+.la-row-mode .la-row-l { width: 100%; }
+
+/* mode segment */
+.la-mode { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.la-mode-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  min-height: 48px; border: 1px solid var(--line-2, oklch(0.80 0.012 75));
+  border-radius: 12px; background: var(--surface); color: var(--ink-2);
+  font-size: 14.5px; font-weight: 600; cursor: pointer;
+  transition: background 90ms, border-color 90ms, color 90ms;
+}
+.la-mode-btn.on {
+  background: var(--accent-2, oklch(0.94 0.026 155));
+  border-color: var(--accent);
+  color: var(--accent-ink, oklch(0.40 0.072 155));
+}
+.la-row-mode .la-mode { flex: 1 1 auto; width: 100%; }
+
+/* note textarea */
+.la-note {
+  width: 100%; min-height: 72px; padding: 12px 14px; font-size: 15.5px; line-height: 1.45;
+  border: 1px solid var(--line-2, oklch(0.80 0.012 75)); border-radius: 15px;
+  background: var(--surface); color: var(--ink);
+  resize: none; outline: none; font-family: var(--f-sans);
+}
+.la-note::placeholder { color: var(--ink-4); }
+.la-note:focus { border-color: var(--accent); }
+
+/* section headings */
+.la-sec { display: flex; flex-direction: column; gap: 9px; }
+.la-sec-h { display: flex; align-items: center; gap: 8px; padding: 0 3px; }
+.la-sec-t {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em;
+  color: var(--ink-3); font-weight: 600; white-space: nowrap;
+}
+.la-sec-opt {
+  font-size: 11px; color: var(--ink-4); font-weight: 500; text-transform: none;
+  letter-spacing: 0;
+}
+
+/* ── Plan katılımcıları (MobilePlanParticipantsField / Roster) ──────────────
+   Hem plan oluşturma (PlanTab) hem plan detay/düzenleme sheet'inde kullanılır.
+   Katılımcı = plana iliştirilmiş öğrenci ismi (bilgi amaçlı, finansal değil). */
+.mpp-section { display: flex; flex-direction: column; gap: 8px; }
+.mpp-section-label {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--ink-3); font-weight: 600;
+}
+.mpp-field { display: flex; flex-direction: column; gap: 8px; }
+.mpp-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.mpp-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 8px 4px 5px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 999px;
+  font-size: 13px; color: var(--ink);
+}
+.mpp-chip-name { line-height: 1; }
+.mpp-chip-x {
+  display: grid; place-items: center; width: 20px; height: 20px; min-height: 0;
+  border: none; background: none; color: var(--ink-3); font-size: 17px; line-height: 1;
+  cursor: pointer; padding: 0;
+}
+.mpp-roster { display: flex; flex-direction: column; gap: 6px; }
+.mpp-roster-item {
+  display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--ink);
+}
+.mpp-roster-nick { color: var(--ink-3); }
+
+/* error display */
+.la-error {
+  margin: 0; padding: 10px 12px; border-radius: 10px;
+  background: var(--warn-2, oklch(0.95 0.04 25)); color: var(--warn-ink, oklch(0.42 0.14 25));
+  font-size: 13px; font-weight: 500;
+}
+
+/* ── Plan tab specifics ──────────────────────────────────────────────────── */
+
+/* title input */
+.pl-input {
+  width: 100%; border: 1px solid var(--line-2, oklch(0.80 0.012 75));
+  border-radius: 14px; background: var(--surface); padding: 14px 15px;
+  font-size: 16px; font-weight: 600; color: var(--ink); outline: none;
+  transition: border-color 110ms; font-family: var(--f-sans);
+}
+.pl-input::placeholder { color: var(--ink-4); font-weight: 500; }
+.pl-input:focus { border-color: var(--ink-3); }
+
+/* toggle switch */
+.pl-sw {
+  /* min-height: 0 → global "button { min-height: 44px }" (Apple HIG tap
+     target, styles.css:24) yenmezse bu 28px'lik anahtar 44px'e şişip
+     neredeyse kareleşiyor ve border-radius:999px onu daire gibi gösteriyor. */
+  flex: 0 0 auto; width: 46px; height: 28px; min-height: 0; border: 0; border-radius: 999px;
+  background: var(--line-2, oklch(0.80 0.012 75)); padding: 2px;
+  display: inline-flex; cursor: pointer; transition: background 0.18s;
+}
+.pl-sw-knob {
+  width: 24px; height: 24px; border-radius: 50%; background: #fff;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.28);
+  transition: transform 0.18s cubic-bezier(0.4,0,0.2,1);
+}
+.pl-sw.on { background: var(--accent); }
+.pl-sw.on .pl-sw-knob { transform: translateX(18px); }
+.pl-ctrl { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; }
+
+/* duration stepper */
+.pl-duration-stepper {
+  display: flex; align-items: center; gap: 2px; height: 34px; padding: 2px;
+  border-radius: 999px; border: 1px solid var(--line-2, oklch(0.80 0.012 75));
+  background: var(--surface);
+}
+.pl-duration-btn {
+  width: 28px; height: 28px; min-height: 0; flex-shrink: 0; border: 0; border-radius: 999px;
+  background: transparent; color: var(--ink); font-size: 17px; line-height: 1;
+  cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+}
+.pl-duration-btn:active { background: var(--surface-2); }
+.pl-duration-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.pl-duration-val {
+  min-width: 64px; text-align: center; font-size: 13.5px; font-weight: 600;
+  font-variant-numeric: tabular-nums; color: var(--ink);
+}
+
+/* label color dots */
+.pl-dots { display: flex; align-items: center; gap: 16px; padding: 2px 4px; }
+.pl-dot {
+  flex-shrink: 0; width: 30px; height: 30px; min-height: 0; aspect-ratio: 1 / 1; border-radius: 999px;
+  box-shadow: 0 0 0 1px var(--line);
+  position: relative; border: 0; padding: 0; cursor: pointer;
+}
+.pl-dot.sel::after {
+  content: ""; position: absolute; inset: -5px; border-radius: 999px;
+  border: 2px solid var(--ink);
+}
+.pl-dot-graphite { background: oklch(0.46 0.012 80); }
+.pl-dot-slate { background: oklch(0.50 0.07 275); }
+.pl-dot-plum { background: oklch(0.50 0.12 330); }
+.pl-dot-teal { background: oklch(0.52 0.075 200); }
 

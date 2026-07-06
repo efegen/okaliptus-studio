@@ -250,6 +250,64 @@ export async function getWeekLessons(weekStart) {
   return payload.data;
 }
 
+// ─── Calendar Events (Plans) ────────────────────────────────────────────────
+
+export async function getCalendarEvents(weekStart) {
+  if (!(weekStart instanceof Date) || Number.isNaN(weekStart.getTime())) {
+    throw new Error("weekStart gecerli bir Date olmali.");
+  }
+  const to = new Date(weekStart);
+  to.setDate(to.getDate() + 7);
+  const fromParam = encodeURIComponent(weekStart.toISOString());
+  const toParam = encodeURIComponent(to.toISOString());
+  const payload = await apiGet(`/calendar-events?from=${fromParam}&to=${toParam}`);
+  if (!Array.isArray(payload?.data)) {
+    throw new Error("Takvim etkinlikleri alinamadi.");
+  }
+  return payload.data;
+}
+
+export async function createCalendarEvent({
+  eventType, title, startsAt, durationMinutes, labelColor, note, participantIds,
+}) {
+  const payload = await apiRequest("/calendar-events", {
+    method: "POST",
+    body: JSON.stringify({
+      eventType,
+      title,
+      startsAt,
+      durationMinutes: durationMinutes ?? 60,
+      labelColor: labelColor ?? "graphite",
+      note: note ?? null,
+      participantIds: participantIds ?? [],
+    }),
+  });
+  return ensureMutationResult(payload, "Plan oluşturulamadı.");
+}
+
+export async function updateCalendarEventApi(eventId, {
+  title, durationMinutes, labelColor, note, participantIds,
+}) {
+  const payload = await apiRequest(
+    `/calendar-events/${encodeURIComponent(eventId)}`,
+    {
+      method: "PATCH",
+      // participantIds undefined bırakılırsa JSON.stringify onu atlar → backend
+      // katılımcılara dokunmaz. Dizi (boş dahil) gönderilirse tam liste değişir.
+      body: JSON.stringify({ title, durationMinutes, labelColor, note, participantIds }),
+    },
+  );
+  return ensureMutationResult(payload, "Plan güncellenemedi.");
+}
+
+export async function deleteCalendarEventApi(eventId) {
+  const payload = await apiRequest(
+    `/calendar-events/${encodeURIComponent(eventId)}`,
+    { method: "DELETE" },
+  );
+  return ensureMutationResult(payload, "Plan silinemedi.");
+}
+
 // ─── Students ────────────────────────────────────────────────────────────────
 
 export async function getStudents() {

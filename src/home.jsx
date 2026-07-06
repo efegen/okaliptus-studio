@@ -15,6 +15,7 @@ import {
   createCashPayment,
   getInstructors, getLessonTypes,
   getDebtors, getStudentLessons, getStudentProductSales,
+  getCalendarEvents, createCalendarEvent, updateCalendarEventApi, deleteCalendarEventApi,
 } from './api';
 import { ReceivePaymentModal } from './students';
 import { useLessonActions } from './mobile/shared/useLessonActions';
@@ -23,6 +24,9 @@ import {
   formatIstanbulTime,
   getCompleteAvailableAt,
 } from './mobile/shared/lessonMeta';
+import {
+  LABEL_COLORS, DURATION_STEP, DURATION_MIN, DURATION_MAX, formatDuration,
+} from './mobile/shared/planFields';
 
 function parseNumericValue(value, fallback = null) {
   if (value === null || value === undefined || value === '') {
@@ -237,6 +241,43 @@ function useWeekLessonsState(weekStart) {
   return { lessons: lessons ?? null, error: error?.message ?? null, isLoading };
 }
 
+function normalizeApiCalendarEvent(e) {
+  const { year, month, day, hour, minute } = extractIstanbulParts(e.starts_at);
+  const localDate = new Date(year, month, day);
+  const dayIndex = (localDate.getDay() + 6) % 7; // 0=Mon..6=Sun
+  const hh = String(hour).padStart(2, '0');
+  const mm = String(minute).padStart(2, '0');
+  const participants = Array.isArray(e.participants)
+    ? e.participants.map(p => ({
+        id: p.id,
+        name: p.full_name,
+        nickname: p.nickname || null,
+      }))
+    : [];
+  return {
+    id: e.id,
+    day: dayIndex,
+    hour,
+    minute,
+    time: `${hh}:${mm}`,
+    startsAt: e.starts_at,
+    title: e.title,
+    durationMinutes: Number(e.duration_minutes) || 60,
+    labelColor: e.label_color || 'graphite',
+    note: e.note || null,
+    participants,
+  };
+}
+
+function useWeekCalendarEventsState(weekStart) {
+  const { data: events, error, isLoading } = useQuery({
+    queryKey: queryKeys.calendarEvents(weekStart.getTime()),
+    queryFn: () => getCalendarEvents(weekStart),
+    staleTime: 60 * 1000,
+  });
+  return { events: events ?? null, error: error?.message ?? null, isLoading };
+}
+
 // ─── Collapsed calendar helpers ─────────────────────────────────────────────
 
 const COLLAPSED_H = 28;    // px height of a collapsed band row
@@ -250,9 +291,18 @@ const MORNING_BAND_END = 13; // morning [CALENDAR_START, MORNING_BAND_END), afte
 //   - Hours in [alwaysFrom, alwaysTo] are always shown as individual rows.
 //   - Hours before alwaysFrom without sessions form collapsible bands, capped at fixed
 //     split points (morning / afternoon) so they collapse independently.
-//   - Hours occupied by sessions are always shown as individual rows.
-function buildCalendarRows(sessions, expandedBands, alwaysFrom, alwaysTo) {
-  const occupied = new Set(sessions.map(s => parseInt(s.time.split(':')[0], 10)));
+//   - Hours occupied by sessions or calendar events are always shown as individual
+//     rows — for multi-hour events every hour in [start, start+duration) is marked
+//     occupied, not just the start hour, so a long plan can't have its tail hours
+//     land inside a squashed collapsed band.
+function buildCalendarRows(sessions, events, expandedBands, alwaysFrom, alwaysTo) {
+  const occupied = new Set();
+  for (const s of sessions) occupied.add(parseInt(s.time.split(':')[0], 10));
+  for (const e of events) {
+    const startHour = parseInt(e.time.split(':')[0], 10);
+    const spanEnd = Math.ceil((startHour * 60 + e.minute + e.durationMinutes) / 60);
+    for (let h = startHour; h < spanEnd; h++) occupied.add(h);
+  }
   const endHour = alwaysTo + 1; // include the alwaysTo hour slot (e.g. 23:00)
   const bandStarts = [CALENDAR_START, MORNING_BAND_END, alwaysFrom].sort((a, b) => a - b);
   const rows = [];
@@ -307,9 +357,216 @@ function useStudioSettings() {
   return data ?? null;
 }
 
-// ─── Create Lesson Modal ─────────────────────────────────────────────────────
+// ─── Add To Calendar Modal (lesson / plan) ──────────────────────────────────
 
-function CreateLessonModal({ dayIndex, hour, weekStart, onClose, onCreated, defaultMode = 'onsite' }) {
+function DurationStepper({ value, onChange }) {
+  function dec() { onChange(Math.max(DURATION_MIN, value - DURATION_STEP)); }
+  function inc() { onChange(Math.min(DURATION_MAX, value + DURATION_STEP)); }
+  return (
+    <div className="mcl-duration-stepper">
+      <button type="button" className="mcl-duration-btn" onClick={dec} disabled={value <= DURATION_MIN} aria-label="Süreyi azalt">–</button>
+      <span className="mcl-duration-val">{formatDuration(value)}</span>
+      <button type="button" className="mcl-duration-btn" onClick={inc} disabled={value >= DURATION_MAX} aria-label="Süreyi artır">+</button>
+    </div>
+  );
+}
+
+function LabelColorDots({ value, onChange }) {
+  return (
+    <div className="mcl-color-dots">
+      {LABEL_COLORS.map(c => (
+        <button
+          key={c}
+          type="button"
+          className={"mcl-color-dot mcl-color-dot-" + c + (value === c ? ' is-sel' : '')}
+          onClick={() => onChange(c)}
+          aria-label={c}
+        />
+      ))}
+    </div>
+  );
+}
+
+// Plan katılımcı seçici (öğrenciler arasından çoklu seçim). Ders öğrenci
+// seçiciyle görsel dili paylaşır ama ayrı bir bileşendir: katılımcı olmak
+// finansal DEĞİLDİR (borç/ders yaratmaz), bilgi amaçlı bir isim listesidir.
+// value: [{ id, name, nickname }]
+function PlanParticipantsField({ students, value, onChange, loading }) {
+  const [query, setQuery] = React.useState('');
+  const [open, setOpen] = React.useState(false);
+  const rootRef = React.useRef(null);
+
+  const selectedIds = React.useMemo(
+    () => new Set(value.map(p => String(p.id))),
+    [value],
+  );
+
+  React.useEffect(() => {
+    if (!open) return;
+    function onDoc(e) {
+      if (rootRef.current && !rootRef.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+
+  const filtered = React.useMemo(() => {
+    const available = students.filter(s => !selectedIds.has(String(s.id)));
+    const q = query.trim().toLowerCase();
+    if (!q) return available.slice(0, 8);
+    const qd = q.replace(/\D/g, '');
+    return available.filter(s =>
+      s.full_name.toLowerCase().includes(q) ||
+      (s.nickname && s.nickname.toLowerCase().includes(q)) ||
+      (qd.length > 0 && s.phone && s.phone.replace(/\D/g, '').includes(qd))
+    ).slice(0, 8);
+  }, [students, query, selectedIds]);
+
+  function add(s) {
+    onChange([...value, { id: s.id, name: s.full_name, nickname: s.nickname || null }]);
+    setQuery('');
+    setOpen(true);
+  }
+  function remove(id) {
+    onChange(value.filter(p => String(p.id) !== String(id)));
+  }
+
+  return (
+    <div className="pp-field" ref={rootRef}>
+      {value.length > 0 && (
+        <div className="pp-chips">
+          {value.map(p => (
+            <span key={p.id} className="pp-chip">
+              <Avatar name={p.name} size="xs" soft />
+              <span className="pp-chip-name">{p.name}</span>
+              <button type="button" className="pp-chip-x" onClick={() => remove(p.id)} aria-label={`${p.name} çıkar`}>
+                <svg width="10" height="10" viewBox="0 0 11 11" fill="none"><path d="M1.5 1.5l8 8M9.5 1.5l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="pp-search">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <circle cx="6.5" cy="6.5" r="4" stroke="currentColor" strokeWidth="1.35"/>
+          <path d="M9.5 9.5L13.5 13.5" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round"/>
+        </svg>
+        <input
+          type="text"
+          value={query}
+          onChange={e => { setQuery(e.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          placeholder="İsim veya telefon ara…"
+          autoComplete="off"
+          spellCheck={false}
+        />
+      </div>
+      {open && (
+        <div className="pp-drop">
+          {loading && students.length === 0 ? (
+            <div className="combo-hint">Yükleniyor…</div>
+          ) : filtered.length === 0 ? (
+            <div className="combo-hint">{query.trim() ? 'Sonuç bulunamadı.' : 'Eklenecek öğrenci kalmadı.'}</div>
+          ) : (
+            filtered.map(s => (
+              <button
+                key={s.id}
+                type="button"
+                className="pp-opt"
+                onMouseDown={e => { e.preventDefault(); add(s); }}
+              >
+                <Avatar name={s.full_name} size="xs" soft />
+                <span className="pp-opt-name">{s.full_name}{s.nickname && <span className="combo-opt-nick"> ({s.nickname})</span>}</span>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Plan detayında katılımcıların salt-okunur listesi. Boşsa düzenlemeye
+// yönlendiren bir davet gösterir (boş ekran yerine eylem).
+function PlanParticipantsRoster({ participants, onAdd }) {
+  if (!participants || participants.length === 0) {
+    return (
+      <button type="button" className="mcl-plan-note-empty" onClick={onAdd}>
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>
+        Katılımcı yok. Eklemek için tıklayın.
+      </button>
+    );
+  }
+  return (
+    <div className="pp-roster">
+      {participants.map(p => (
+        <div key={p.id} className="pp-roster-item">
+          <Avatar name={p.name} size="xs" soft />
+          <span className="pp-roster-name">{p.name}{p.nickname && <span className="pp-roster-nick"> ({p.nickname})</span>}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function AddToCalendarModal({ dayIndex, hour, weekStart, onClose, onCreated }) {
+  const [tab, setTab] = React.useState('lesson');
+
+  const slotDate = React.useMemo(() => {
+    const d = new Date(weekStart);
+    d.setDate(d.getDate() + dayIndex);
+    d.setHours(hour, 0, 0, 0);
+    return d;
+  }, [weekStart, dayIndex, hour]);
+
+  const dateLabel = slotDate.toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' });
+  const timeLabel = `${String(hour).padStart(2, '0')}:00`;
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal modal-create-lesson" onClick={e => e.stopPropagation()}>
+
+        <div className="mcl-head">
+          <div className="mcl-head-row">
+            <div className="mcl-switch" role="group" aria-label="Ne oluşturulsun?">
+              <button
+                type="button"
+                aria-pressed={tab === 'lesson'}
+                className={"mcl-switch-opt" + (tab === 'lesson' ? ' is-on' : '')}
+                onClick={() => setTab('lesson')}
+              >Ders</button>
+              <button
+                type="button"
+                aria-pressed={tab === 'plan'}
+                className={"mcl-switch-opt" + (tab === 'plan' ? ' is-on' : '')}
+                onClick={() => setTab('plan')}
+              >Plan</button>
+            </div>
+            <button type="button" className="mcl-close" onClick={onClose} aria-label="Kapat">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 2l10 10M12 2L2 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+            </button>
+          </div>
+          <div className="mcl-when">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <rect x="2" y="3" width="12" height="11" rx="2" stroke="currentColor" strokeWidth="1.35"/>
+              <path d="M2 7h12" stroke="currentColor" strokeWidth="1.35"/>
+              <path d="M5 1v4M11 1v4" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round"/>
+            </svg>
+            <span className="mcl-when-date">{dateLabel}</span>
+            <span className="mcl-when-sep">·</span>
+            <span className="mcl-when-time">{timeLabel}</span>
+          </div>
+        </div>
+
+        {tab === 'lesson'
+          ? <LessonFields slotDate={slotDate} onClose={onClose} onCreated={onCreated} />
+          : <PlanFields slotDate={slotDate} onClose={onClose} onCreated={onCreated} />}
+      </div>
+    </div>
+  );
+}
+
+function LessonFields({ slotDate, onClose, onCreated, defaultMode = 'onsite' }) {
   const studentsQuery = useQuery({ queryKey: queryKeys.students(), queryFn: getStudents, staleTime: 2 * 60 * 1000 });
   const instructorsQuery = useQuery({ queryKey: queryKeys.instructors(), queryFn: getInstructors, staleTime: 5 * 60 * 1000 });
   const lessonTypesQuery = useQuery({ queryKey: queryKeys.lessonTypes(), queryFn: getLessonTypes, staleTime: 5 * 60 * 1000 });
@@ -357,16 +614,6 @@ function CreateLessonModal({ dayIndex, hour, weekStart, onClose, onCreated, defa
     document.addEventListener('mousedown', onDocClick);
     return () => document.removeEventListener('mousedown', onDocClick);
   }, [comboOpen]);
-
-  const lessonDate = React.useMemo(() => {
-    const d = new Date(weekStart);
-    d.setDate(d.getDate() + dayIndex);
-    d.setHours(hour, 0, 0, 0);
-    return d;
-  }, [weekStart, dayIndex, hour]);
-
-  const dateLabel = lessonDate.toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' });
-  const timeLabel = `${String(hour).padStart(2, '0')}:00`;
 
   const filtered = React.useMemo(() => {
     if (!query.trim()) return students;
@@ -432,7 +679,7 @@ function CreateLessonModal({ dayIndex, hour, weekStart, onClose, onCreated, defa
     try {
       await createLesson({
         studentId: Number(selectedStudent.id),
-        startsAt: lessonDate.toISOString(),
+        startsAt: slotDate.toISOString(),
         mode,
         note: note.trim() || null,
         instructorId: Number(instructorId),
@@ -446,31 +693,10 @@ function CreateLessonModal({ dayIndex, hour, weekStart, onClose, onCreated, defa
   }
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal modal-create-lesson" onClick={e => e.stopPropagation()}>
+    <>
+      {fetchError && <div className="mcl-banner mcl-banner-error">{fetchError}</div>}
 
-        <div className="mcl-head">
-          <div className="mcl-title-row">
-            <h3>Yeni ders</h3>
-            <button type="button" className="mcl-close" onClick={onClose} aria-label="Kapat">
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 2l10 10M12 2L2 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
-            </button>
-          </div>
-          <div className="mcl-when">
-            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-              <rect x="2" y="3" width="12" height="11" rx="2" stroke="currentColor" strokeWidth="1.35"/>
-              <path d="M2 7h12" stroke="currentColor" strokeWidth="1.35"/>
-              <path d="M5 1v4M11 1v4" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round"/>
-            </svg>
-            <span className="mcl-when-date">{dateLabel}</span>
-            <span className="mcl-when-sep">·</span>
-            <span className="mcl-when-time">{timeLabel}</span>
-          </div>
-        </div>
-
-        {fetchError && <div className="mcl-banner mcl-banner-error">{fetchError}</div>}
-
-        <form onSubmit={handleSubmit} className="mcl-form">
+      <form onSubmit={handleSubmit} className="mcl-form mcl-tabform">
 
           <div className="form-row">
             <label>Öğrenci</label>
@@ -628,9 +854,100 @@ function CreateLessonModal({ dayIndex, hour, weekStart, onClose, onCreated, defa
               {submitting ? 'Ekleniyor…' : 'Ekle'}
             </button>
           </div>
-        </form>
+      </form>
+    </>
+  );
+}
+
+function PlanFields({ slotDate, onClose, onCreated }) {
+  const [title, setTitle] = React.useState('');
+  const [durationMinutes, setDurationMinutes] = React.useState(60);
+  const [labelColor, setLabelColor] = React.useState('graphite');
+  const [note, setNote] = React.useState('');
+  const [participants, setParticipants] = React.useState([]);
+  const [submitting, setSubmitting] = React.useState(false);
+  const [submitError, setSubmitError] = React.useState(null);
+
+  const studentsQuery = useQuery({ queryKey: queryKeys.students(), queryFn: getStudents, staleTime: 2 * 60 * 1000 });
+  const students = studentsQuery.data ?? [];
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!title.trim()) return;
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      await createCalendarEvent({
+        eventType: 'plan',
+        title: title.trim(),
+        startsAt: slotDate.toISOString(),
+        durationMinutes,
+        labelColor,
+        note: note.trim() || null,
+        participantIds: participants.map(p => Number(p.id)),
+      });
+      onCreated();
+    } catch (err) {
+      setSubmitError(err.message || 'Plan oluşturulamadı.');
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="mcl-form mcl-tabform">
+      <div className="form-row">
+        <label>Başlık</label>
+        <input
+          type="text"
+          value={title}
+          onChange={e => setTitle(e.target.value)}
+          placeholder="Plan adı…"
+          autoFocus
+        />
       </div>
-    </div>
+
+      <div className="form-row-2">
+        <div className="form-row">
+          <label>Süre</label>
+          <DurationStepper value={durationMinutes} onChange={setDurationMinutes} />
+        </div>
+        <div className="form-row">
+          <label>Etiket rengi</label>
+          <LabelColorDots value={labelColor} onChange={setLabelColor} />
+        </div>
+      </div>
+
+      <div className="form-row">
+        <label>Katılımcılar <span className="mcl-opt">(opsiyonel)</span></label>
+        <PlanParticipantsField
+          students={students}
+          value={participants}
+          onChange={setParticipants}
+          loading={studentsQuery.isLoading}
+        />
+      </div>
+
+      <div className="form-row mcl-note-row">
+        <label>Not <span className="mcl-opt">(opsiyonel)</span></label>
+        <input
+          type="text"
+          value={note}
+          onChange={e => setNote(e.target.value)}
+          placeholder="Hatırlatıcı veya ek bilgi…"
+        />
+      </div>
+
+      {submitError && (
+        <div className="mcl-banner mcl-banner-error" style={{ marginBottom: 4 }}>{submitError}</div>
+      )}
+
+      <div className="modal-actions">
+        <button type="button" className="btn btn-ghost" onClick={onClose}>Vazgeç</button>
+        <button type="submit" className="btn btn-primary" disabled={!title.trim() || submitting}>
+          {submitting ? 'Ekleniyor…' : 'Ekle'}
+        </button>
+      </div>
+    </form>
   );
 }
 
@@ -1606,11 +1923,222 @@ function LessonModal({ session, onClose, onUpdated }) {
   );
 }
 
+// ─── Plan Modal ──────────────────────────────────────────────────────────────
+
+function PlanModal({ event, onClose, onUpdated }) {
+  // phase: 'detail' | 'edit' | 'cancel'
+  const [phase, setPhase] = React.useState('detail');
+  const [title, setTitle] = React.useState('');
+  const [durationMinutes, setDurationMinutes] = React.useState(60);
+  const [labelColor, setLabelColor] = React.useState('graphite');
+  const [note, setNote] = React.useState('');
+  const [participants, setParticipants] = React.useState([]);
+  const [submitting, setSubmitting] = React.useState(false);
+  const [error, setError] = React.useState(null);
+  const noteInputRef = React.useRef(null);
+
+  const studentsQuery = useQuery({ queryKey: queryKeys.students(), queryFn: getStudents, staleTime: 2 * 60 * 1000 });
+  const students = studentsQuery.data ?? [];
+
+  // Modal yeni bir plan için açıldığında hem faz hem edit alanları sıfırlanır.
+  React.useEffect(() => {
+    if (!event) return;
+    setPhase('detail');
+    setError(null);
+    setSubmitting(false);
+    setTitle(event.title || '');
+    setDurationMinutes(event.durationMinutes || 60);
+    setLabelColor(event.labelColor || 'graphite');
+    setNote(event.note || '');
+    setParticipants(event.participants || []);
+  }, [event?.id]);
+
+  React.useEffect(() => {
+    function onKey(e) { if (e.key === 'Escape' && !submitting) onClose(); }
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose, submitting]);
+
+  if (!event) return null;
+
+  function resetToDetail() {
+    setPhase('detail');
+    setError(null);
+  }
+
+  function goToEditNote() {
+    setPhase('edit');
+    setError(null);
+    setTimeout(() => noteInputRef.current?.focus(), 0);
+  }
+
+  function goToEdit() {
+    setPhase('edit');
+    setError(null);
+  }
+
+  const dateLabel = event.startsAt
+    ? new Date(event.startsAt).toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' })
+    : '';
+  const endTotalMin = event.hour * 60 + event.minute + event.durationMinutes;
+  const endTime = `${String(Math.floor(endTotalMin / 60) % 24).padStart(2, '0')}:${String(endTotalMin % 60).padStart(2, '0')}`;
+
+  async function handleCancelPlan() {
+    setSubmitting(true);
+    setError(null);
+    try {
+      await deleteCalendarEventApi(event.id);
+      onUpdated();
+    } catch (err) {
+      setError(err.message || 'Plan iptal edilemedi.');
+      setSubmitting(false);
+    }
+  }
+
+  const canSaveEdit = title.trim().length > 0;
+
+  async function handleSaveEdit(e) {
+    e.preventDefault();
+    if (!canSaveEdit) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await updateCalendarEventApi(event.id, {
+        title: title.trim(),
+        durationMinutes,
+        labelColor,
+        note: note.trim() || null,
+        participantIds: participants.map(p => Number(p.id)),
+      });
+      onUpdated();
+    } catch (err) {
+      setError(err.message || 'Plan güncellenemedi.');
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={() => { if (!submitting) onClose(); }}>
+      <div className="modal modal-create-lesson" role="dialog" aria-modal="true" onClick={e => e.stopPropagation()}>
+
+        <div className="mcl-head">
+          <div className="mcl-title-row">
+            <h3>{phase === 'edit' ? 'Planı düzenle' : phase === 'cancel' ? 'Planı iptal et' : event.title}</h3>
+            <button type="button" className="mcl-close" onClick={onClose} aria-label="Kapat" disabled={submitting}>
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 2l10 10M12 2L2 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+            </button>
+          </div>
+          <div className="mcl-when">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <rect x="2" y="3" width="12" height="11" rx="2" stroke="currentColor" strokeWidth="1.35"/>
+              <path d="M2 7h12" stroke="currentColor" strokeWidth="1.35"/>
+              <path d="M5 1v4M11 1v4" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round"/>
+            </svg>
+            <span className="mcl-when-date">{dateLabel}</span>
+            <span className="mcl-when-sep">·</span>
+            <span className="mcl-when-time">{event.time} – {endTime} · {formatDuration(event.durationMinutes)}</span>
+          </div>
+        </div>
+
+        {phase === 'detail' && (
+          <div className="mcl-form">
+            <div className="form-row">
+              <label>Katılımcılar{participants.length > 0 ? ` · ${participants.length}` : ''}</label>
+              <PlanParticipantsRoster participants={participants} onAdd={goToEdit} />
+            </div>
+
+            <div className="form-row">
+              <label>Not</label>
+              {event.note
+                ? <div className="mcl-plan-note">{event.note}</div>
+                : (
+                  <button type="button" className="mcl-plan-note-empty" onClick={goToEditNote}>
+                    <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>
+                    Not eklenmedi. Eklemek için tıklayın.
+                  </button>
+                )}
+            </div>
+
+            {error && <div className="mcl-banner mcl-banner-error">{error}</div>}
+            <div className="modal-actions">
+              <button type="button" className="btn btn-ghost pm-btn-danger" onClick={() => { setPhase('cancel'); setError(null); }}>
+                İptal et
+              </button>
+              <button type="button" className="btn btn-primary" onClick={() => { setPhase('edit'); setError(null); }}>
+                Düzenle
+              </button>
+            </div>
+          </div>
+        )}
+
+        {phase === 'cancel' && (
+          <div className="mcl-form">
+            <div className="form-row">
+              <div className="mcl-plan-note">Bu plan takvimden kaldırılacak.</div>
+            </div>
+            {error && <div className="mcl-banner mcl-banner-error">{error}</div>}
+            <div className="modal-actions">
+              <button type="button" className="btn btn-ghost" onClick={resetToDetail} disabled={submitting}>Vazgeç</button>
+              <button type="button" className="btn btn-primary pm-btn-danger" onClick={handleCancelPlan} disabled={submitting}>
+                {submitting ? 'İptal ediliyor…' : 'Planı iptal et'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {phase === 'edit' && (
+          <form onSubmit={handleSaveEdit} className="mcl-form">
+            <div className="form-row">
+              <label>Başlık</label>
+              <input type="text" value={title} onChange={e => setTitle(e.target.value)} />
+            </div>
+
+            <div className="form-row-2">
+              <div className="form-row">
+                <label>Süre</label>
+                <DurationStepper value={durationMinutes} onChange={setDurationMinutes} />
+              </div>
+              <div className="form-row">
+                <label>Etiket rengi</label>
+                <LabelColorDots value={labelColor} onChange={setLabelColor} />
+              </div>
+            </div>
+
+            <div className="form-row">
+              <label>Katılımcılar <span className="mcl-opt">(opsiyonel)</span></label>
+              <PlanParticipantsField
+                students={students}
+                value={participants}
+                onChange={setParticipants}
+                loading={studentsQuery.isLoading}
+              />
+            </div>
+
+            <div className="form-row mcl-note-row">
+              <label>Not <span className="mcl-opt">(opsiyonel)</span></label>
+              <input ref={noteInputRef} type="text" value={note} onChange={e => setNote(e.target.value)} placeholder="Açıklama…" />
+            </div>
+
+            {error && <div className="mcl-banner mcl-banner-error" style={{ marginBottom: 4 }}>{error}</div>}
+
+            <div className="modal-actions">
+              <button type="button" className="btn btn-ghost" onClick={resetToDetail} disabled={submitting}>Vazgeç</button>
+              <button type="submit" className="btn btn-primary" disabled={submitting || !canSaveEdit}>
+                {submitting ? 'Kaydediliyor…' : 'Kaydet'}
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Week Nav Bar ────────────────────────────────────────────────────────────
 
 const MC_DAYS_TR = ['P', 'S', 'Ç', 'P', 'C', 'C', 'P'];
 
-function WeekNavBar({ weekStart, onPrev, onNext, onToday, onWeekSelect, sessions }) {
+function WeekNavBar({ weekStart, onPrev, onNext, onToday, onWeekSelect, sessions, events }) {
   const [open, setOpen] = React.useState(false);
   const [month, setMonth] = React.useState(() => new Date(weekStart.getFullYear(), weekStart.getMonth(), 1));
   const wrapRef = React.useRef(null);
@@ -1630,13 +2158,12 @@ function WeekNavBar({ weekStart, onPrev, onNext, onToday, onWeekSelect, sessions
 
   const lessonDateKeys = React.useMemo(() => {
     const set = new Set();
-    if (!sessions) return set;
-    sessions.forEach(s => {
+    (sessions || []).concat(events || []).forEach(s => {
       const d = new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + s.day);
       set.add(`${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`);
     });
     return set;
-  }, [sessions, weekStart]);
+  }, [sessions, events, weekStart]);
 
   const calDays = React.useMemo(() => {
     const year = month.getFullYear();
@@ -1711,7 +2238,7 @@ function WeekNavBar({ weekStart, onPrev, onNext, onToday, onWeekSelect, sessions
 
 // ─── Week Calendar ───────────────────────────────────────────────────────────
 
-export function WeekCalendar({ weekStart, variant = "detailed", onSessionClick, alwaysFrom = 17, alwaysTo = 23, onSessionsLoaded }) {
+export function WeekCalendar({ weekStart, variant = "detailed", onSessionClick, alwaysFrom = 17, alwaysTo = 23, onSessionsLoaded, onEventsLoaded }) {
   const hourH = variant === "compact" ? 36 : 48;
   const queryClient = useQueryClient();
 
@@ -1720,6 +2247,7 @@ export function WeekCalendar({ weekStart, variant = "detailed", onSessionClick, 
   const [expandedBands, setExpandedBands] = React.useState(new Set());
   const [createModal, setCreateModal] = React.useState(null);
   const [lessonModalSession, setLessonModalSession] = React.useState(null);
+  const [selectedPlan, setSelectedPlan] = React.useState(null);
 
   function handleSessionClick(s) {
     setLessonModalSession(s);
@@ -1727,6 +2255,7 @@ export function WeekCalendar({ weekStart, variant = "detailed", onSessionClick, 
   }
 
   const { lessons, error } = useWeekLessonsState(weekStart);
+  const { events: rawEvents } = useWeekCalendarEventsState(weekStart);
 
   // Reset expanded bands when week changes so bands from the old week don't bleed over.
   React.useEffect(() => {
@@ -1740,13 +2269,22 @@ export function WeekCalendar({ weekStart, variant = "detailed", onSessionClick, 
       .filter(s => s.lessonState !== 'cancelled');
   }, [lessons]);
 
+  const events = React.useMemo(() => {
+    if (rawEvents === null) return [];
+    return rawEvents.map(normalizeApiCalendarEvent);
+  }, [rawEvents]);
+
   React.useEffect(() => {
     onSessionsLoaded && onSessionsLoaded(sessions);
   }, [sessions]);
 
+  React.useEffect(() => {
+    onEventsLoaded && onEventsLoaded(events);
+  }, [events]);
+
   const rows = React.useMemo(
-    () => buildCalendarRows(sessions, expandedBands, alwaysFrom, alwaysTo),
-    [sessions, expandedBands, alwaysFrom, alwaysTo]
+    () => buildCalendarRows(sessions, events, expandedBands, alwaysFrom, alwaysTo),
+    [sessions, events, expandedBands, alwaysFrom, alwaysTo]
   );
 
   const { rowOffsets, totalHeight } = React.useMemo(
@@ -1830,18 +2368,42 @@ export function WeekCalendar({ weekStart, variant = "detailed", onSessionClick, 
                     </div>
                   );
                 })}
+                {events.filter(ev => ev.day === d).map(ev => {
+                  const top = getSessionTopPx(rows, rowOffsets, hourH, ev.time);
+                  if (top < 0) return null;
+                  const height = (ev.durationMinutes / 60) * hourH;
+                  return (
+                    <div
+                      key={'ev-' + ev.id}
+                      className={"wk-plan wk-plan-" + ev.labelColor}
+                      style={{ top, height: Math.max(height, hourH - 3) }}
+                      onClick={e => { e.stopPropagation(); setSelectedPlan(ev); }}
+                    >
+                      <div className="wk-sess-top">
+                        <span className="wk-sess-time">{ev.time}</span>
+                      </div>
+                      <div className="wk-sess-name-row">
+                        <span className="wk-sess-name">{ev.title}</span>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             ))}
           </div>
         </div>
       </div>
       {createModal && (
-        <CreateLessonModal
+        <AddToCalendarModal
           dayIndex={createModal.dayIndex}
           hour={createModal.hour}
           weekStart={weekStart}
           onClose={() => setCreateModal(null)}
-          onCreated={() => { setCreateModal(null); queryClient.invalidateQueries({ queryKey: queryKeys.weekLessons() }); }}
+          onCreated={() => {
+            setCreateModal(null);
+            queryClient.invalidateQueries({ queryKey: queryKeys.weekLessons() });
+            queryClient.invalidateQueries({ queryKey: queryKeys.calendarEvents() });
+          }}
         />
       )}
       {lessonModalSession && (
@@ -1849,6 +2411,13 @@ export function WeekCalendar({ weekStart, variant = "detailed", onSessionClick, 
           session={lessonModalSession}
           onClose={() => setLessonModalSession(null)}
           onUpdated={() => { setLessonModalSession(null); queryClient.invalidateQueries({ queryKey: queryKeys.weekLessons() }); }}
+        />
+      )}
+      {selectedPlan && (
+        <PlanModal
+          event={selectedPlan}
+          onClose={() => setSelectedPlan(null)}
+          onUpdated={() => { setSelectedPlan(null); queryClient.invalidateQueries({ queryKey: queryKeys.calendarEvents() }); }}
         />
       )}
     </>
@@ -2173,6 +2742,7 @@ export function HomePage({ layout, onNavigate }) {
   const queryClient = useQueryClient();
   const [weekStart, setWeekStart] = React.useState(() => getCurrentMonday());
   const [weekSessions, setWeekSessions] = React.useState([]);
+  const [weekEvents, setWeekEvents] = React.useState([]);
   function goToPrevWeek() { setWeekStart(ws => addWeeks(ws, -1)); }
   function goToNextWeek() { setWeekStart(ws => addWeeks(ws, 1)); }
   function goToCurrentWeek() { setWeekStart(getCurrentMonday()); }
@@ -2205,10 +2775,10 @@ export function HomePage({ layout, onNavigate }) {
           <div className="card-head">
             <h3 className="card-title">Haftalık takvim</h3>
             <div className="card-actions">
-              <WeekNavBar weekStart={weekStart} onPrev={goToPrevWeek} onNext={goToNextWeek} onToday={goToCurrentWeek} onWeekSelect={setWeekStart} sessions={weekSessions} />
+              <WeekNavBar weekStart={weekStart} onPrev={goToPrevWeek} onNext={goToNextWeek} onToday={goToCurrentWeek} onWeekSelect={setWeekStart} sessions={weekSessions} events={weekEvents} />
             </div>
           </div>
-          <WeekCalendar weekStart={weekStart} variant="detailed" alwaysFrom={calendarAlwaysFrom} alwaysTo={calendarAlwaysTo} onSessionsLoaded={setWeekSessions} />
+          <WeekCalendar weekStart={weekStart} variant="detailed" alwaysFrom={calendarAlwaysFrom} alwaysTo={calendarAlwaysTo} onSessionsLoaded={setWeekSessions} onEventsLoaded={setWeekEvents} />
           <div className="cal-legend">
             <span className="leg"><span className="leg-sw ls-planned"></span>Planlandı</span>
             <span className="leg"><span className="leg-sw ls-unpaid"></span>Tamamlandı · Ödenmedi</span>
@@ -2277,10 +2847,10 @@ export function HomePage({ layout, onNavigate }) {
           <div className="card-head">
             <h3 className="card-title">Haftalık program</h3>
             <div className="card-actions">
-              <WeekNavBar weekStart={weekStart} onPrev={goToPrevWeek} onNext={goToNextWeek} onToday={goToCurrentWeek} onWeekSelect={setWeekStart} sessions={weekSessions} />
+              <WeekNavBar weekStart={weekStart} onPrev={goToPrevWeek} onNext={goToNextWeek} onToday={goToCurrentWeek} onWeekSelect={setWeekStart} sessions={weekSessions} events={weekEvents} />
             </div>
           </div>
-          <WeekCalendar weekStart={weekStart} variant="compact" alwaysFrom={calendarAlwaysFrom} alwaysTo={calendarAlwaysTo} onSessionsLoaded={setWeekSessions} />
+          <WeekCalendar weekStart={weekStart} variant="compact" alwaysFrom={calendarAlwaysFrom} alwaysTo={calendarAlwaysTo} onSessionsLoaded={setWeekSessions} onEventsLoaded={setWeekEvents} />
         </div>
       </div>
     );
@@ -2355,11 +2925,11 @@ export function HomePage({ layout, onNavigate }) {
           <div className="card-head" style={{padding: "16px 18px 0"}}>
             <h3 className="card-title">Haftalık takvim</h3>
             <div className="card-actions">
-              <WeekNavBar weekStart={weekStart} onPrev={goToPrevWeek} onNext={goToNextWeek} onToday={goToCurrentWeek} onWeekSelect={setWeekStart} sessions={weekSessions} />
+              <WeekNavBar weekStart={weekStart} onPrev={goToPrevWeek} onNext={goToNextWeek} onToday={goToCurrentWeek} onWeekSelect={setWeekStart} sessions={weekSessions} events={weekEvents} />
             </div>
           </div>
           <div style={{padding: "14px 18px 18px"}}>
-            <WeekCalendar weekStart={weekStart} variant="detailed" alwaysFrom={calendarAlwaysFrom} alwaysTo={calendarAlwaysTo} onSessionsLoaded={setWeekSessions} />
+            <WeekCalendar weekStart={weekStart} variant="detailed" alwaysFrom={calendarAlwaysFrom} alwaysTo={calendarAlwaysTo} onSessionsLoaded={setWeekSessions} onEventsLoaded={setWeekEvents} />
             <div className="cal-legend">
               <span className="leg"><span className="leg-sw onsite"></span>yüzyüze</span>
               <span className="leg"><span className="leg-sw online"></span>online</span>
