@@ -6881,10 +6881,15 @@
   border-top: 1px solid var(--line);
 }
 .la-body::-webkit-scrollbar { width: 0; }
+/* Direct children keep their intrinsic height; when the form is taller than the
+   viewport .la-body scrolls instead of flex-shrinking a card below its content
+   (which let the 52px student avatar poke out of a squeezed .la-pick on short
+   screens like iPhone 15). Mirrors the per-card flex-shrink:0 on .la-card. */
+.la-body > * { flex-shrink: 0; }
 
 .la-foot {
   flex: 0 0 auto;
-  padding: 11px 16px calc(env(safe-area-inset-bottom, 0px) + 34px + 8px);
+  padding: 11px 16px 14px;
   border-top: 1px solid var(--line); background: var(--bg);
 }
 .la-cta {

@@ -334,12 +334,15 @@ function PlanTab({ slotInfo, weekStart, dateLabel, timeLabel, setSubmitError: se
   return (
     <>
       {/* Title input */}
-      <input
-        className="pl-input"
-        placeholder={cfg.ph}
-        value={title}
-        onChange={e => setTitle(e.target.value)}
-      />
+      <div className="la-sec">
+        <div className="la-sec-h"><span className="la-sec-t">Plan adı</span></div>
+        <input
+          className="pl-input"
+          placeholder={cfg.ph}
+          value={title}
+          onChange={e => setTitle(e.target.value)}
+        />
+      </div>
 
       {/* When card */}
       <WhenCard title={dateLabel} sub={`${timeLabel} – ${endTime} · ${formatDuration(durationMinutes)}`} />
