@@ -145,7 +145,7 @@ export function Header({ page, user, onLogout, onOpenStudent }) {
       <div className="header-tools">
         <HeaderSearch onOpenStudent={onOpenStudent} />
         <div className="header-actions">
-          <button className="iconbtn" aria-label="Bildirimler"><Icon.Bell width="16" height="16"/></button>
+          <NotificationBell key={user?.id || 'anonymous'} user={user} />
           <div className="header-profile-wrap" ref={menuRef}>
             <button
               type="button"
@@ -175,6 +175,171 @@ export function Header({ page, user, onLogout, onOpenStudent }) {
         </div>
       </div>
     </header>
+  );
+}
+
+const NOTIFICATION_STORAGE_PREFIX = 'okaliptus.notifications.v1';
+const MAX_STORED_NOTIFICATIONS = 30;
+
+function notificationStorageKey(user) {
+  return `${NOTIFICATION_STORAGE_PREFIX}.${user?.id || 'anonymous'}`;
+}
+
+function readStoredNotifications(key) {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(key);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeStoredNotifications(key, items) {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(key, JSON.stringify(items.slice(0, MAX_STORED_NOTIFICATIONS)));
+  } catch {
+    // Bildirim geçmişi kritik veri değil; depolama doluysa sessiz geç.
+  }
+}
+
+function formatNotificationTime(value) {
+  if (!value) return '';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleString('tr-TR', {
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function NotificationBell({ user }) {
+  const [open, setOpen] = React.useState(false);
+  const storageKey = React.useMemo(() => notificationStorageKey(user), [user?.id]);
+  const [items, setItems] = React.useState(() => readStoredNotifications(storageKey));
+  const wrapRef = React.useRef(null);
+
+  React.useEffect(() => {
+    writeStoredNotifications(storageKey, items);
+  }, [items, storageKey]);
+
+  React.useEffect(() => {
+    function handleStorage(e) {
+      if (e.key === storageKey) setItems(readStoredNotifications(storageKey));
+    }
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, [storageKey]);
+
+  React.useEffect(() => {
+    if (!('serviceWorker' in navigator)) return;
+    function onMessage(e) {
+      if (e.data?.type !== 'push:received') return;
+      const now = new Date().toISOString();
+      const next = {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        title: e.data.title || 'Okaliptus',
+        body: e.data.body || '',
+        url: e.data.url || '/',
+        receivedAt: now,
+        readAt: null,
+      };
+      setItems(current => [next, ...current].slice(0, MAX_STORED_NOTIFICATIONS));
+    }
+    navigator.serviceWorker.addEventListener('message', onMessage);
+    return () => navigator.serviceWorker.removeEventListener('message', onMessage);
+  }, []);
+
+  React.useEffect(() => {
+    if (!open) return;
+    function handleClick(e) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [open]);
+
+  React.useEffect(() => {
+    if (!open) return;
+    setItems(current => {
+      if (!current.some(it => !it.readAt)) return current;
+      const readAt = new Date().toISOString();
+      return current.map(it => it.readAt ? it : { ...it, readAt });
+    });
+  }, [open]);
+
+  const unreadCount = items.filter(it => !it.readAt).length;
+
+  function openNotification(item) {
+    setOpen(false);
+    if (item.url) window.location.assign(item.url);
+  }
+
+  function clearAll() {
+    setItems([]);
+    setOpen(false);
+  }
+
+  return (
+    <div className="notification-wrap" ref={wrapRef}>
+      <button
+        type="button"
+        className={'iconbtn notification-btn' + (unreadCount > 0 ? ' has-unread' : '')}
+        aria-label={unreadCount > 0 ? `Bildirimler, ${unreadCount} okunmamış` : 'Bildirimler'}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen(o => !o)}
+      >
+        <Icon.Bell width="16" height="16"/>
+        {unreadCount > 0 && (
+          <span className="notification-badge" aria-hidden="true">
+            {unreadCount > 9 ? '9+' : unreadCount}
+          </span>
+        )}
+      </button>
+      {open && (
+        <div className="notification-menu" role="menu" aria-label="Bildirimler">
+          <div className="notification-head">
+            <span>Bildirimler</span>
+            {items.length > 0 && (
+              <button type="button" className="notification-clear" onClick={clearAll}>
+                Temizle
+              </button>
+            )}
+          </div>
+          {items.length === 0 ? (
+            <div className="notification-empty">
+              <Icon.Bell width="20" height="20" aria-hidden="true"/>
+              <span>Henüz bildirim yok.</span>
+              <small>Push bildirimleri geldiğinde burada görünür.</small>
+            </div>
+          ) : (
+            <div className="notification-list">
+              {items.map(item => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={'notification-item' + (!item.readAt ? ' is-unread' : '')}
+                  onClick={() => openNotification(item)}
+                  role="menuitem"
+                >
+                  <span className="notification-dot" aria-hidden="true"/>
+                  <span className="notification-copy">
+                    <span className="notification-title">{item.title}</span>
+                    {item.body && <span className="notification-body">{item.body}</span>}
+                    <span className="notification-time">{formatNotificationTime(item.receivedAt)}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 

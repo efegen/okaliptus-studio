@@ -35,7 +35,7 @@ self.addEventListener('push', (event) => {
         includeUncontrolled: true,
       });
       for (const client of windows) {
-        client.postMessage({ type: 'push:received', title, body });
+        client.postMessage({ type: 'push:received', title, body, url });
       }
     })(),
   );
