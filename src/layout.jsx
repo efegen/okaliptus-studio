@@ -5,6 +5,8 @@ import { useQuery } from '@tanstack/react-query';
 import { initials } from './data';
 import { getStudents, getSettings } from './api';
 import { queryKeys } from './hooks/queryKeys';
+import { canSeePage } from './permissions';
+import { useCurrentUser } from './currentUser';
 
 export const Icon = {
   Calendar: (p) => (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" {...p}><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 9h18M8 3v4M16 3v4"/></svg>),
@@ -56,6 +58,10 @@ export function Sidebar({ page, setPage }) {
   });
   const marketplaceEnabled = settingsQuery.data?.marketplaceSyncEnabled === true;
 
+  // Rol-bazlı süzme: asistan için katalog (settings.manage), siparişler
+  // (marketplace.manage), hareketler (movements.read) ve ayarlar gizlenir.
+  const role = useCurrentUser()?.role;
+
   const topItems = [
     { id: "home",     label: "Ana Sayfa",            icon: Icon.Home },
     { id: "students", label: "Öğrenciler",           icon: Icon.Users },
@@ -65,7 +71,7 @@ export function Sidebar({ page, setPage }) {
     ] : []),
     { id: "products", label: "Ürünler",                icon: Icon.Tag },
     { id: "movements",label: "Hareketler",             icon: Icon.Repeat },
-  ];
+  ].filter(it => canSeePage(role, it.id));
   return (
     <aside className="sidebar">
       <img src="/logo.png" className="brand-logo" alt="Okaliptus"/>
@@ -85,16 +91,18 @@ export function Sidebar({ page, setPage }) {
           );
         })}
       </nav>
-      <nav className="nav nav-bottom">
-        <button
-          className={"nav-item" + (page === "settings" ? " active" : "")}
-          onClick={() => setPage("settings")}
-          aria-label="Ayarlar"
-        >
-          <Icon.Settings width="20" height="20"/>
-          <span className="nav-tip">Ayarlar</span>
-        </button>
-      </nav>
+      {canSeePage(role, 'settings') && (
+        <nav className="nav nav-bottom">
+          <button
+            className={"nav-item" + (page === "settings" ? " active" : "")}
+            onClick={() => setPage("settings")}
+            aria-label="Ayarlar"
+          >
+            <Icon.Settings width="20" height="20"/>
+            <span className="nav-tip">Ayarlar</span>
+          </button>
+        </nav>
+      )}
     </aside>
   );
 }

@@ -14,6 +14,7 @@ import { useQuery } from '@tanstack/react-query';
 import { getOccupancyFlow } from '../api';
 import { queryKeys } from '../hooks/queryKeys';
 import { fmtTL } from '../data';
+import { useCan } from '../currentUser';
 
 const MONTH_LONG = [
   'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
@@ -212,6 +213,8 @@ function CellIcon({ s }) {
 export function MobileOccupancy({ onBack }) {
   const [period, setPeriod] = React.useState('hafta');
   const [sel, setSel] = React.useState(null);
+  // Asistan doluluğu görür ama ders cirosu (finansal) gizli kalır.
+  const canSeeRevenue = useCan('finance.read');
 
   // Dönem değişince seçimi sıfırla (varsayılan = son/cari bar).
   React.useEffect(() => { setSel(null); }, [period]);
@@ -311,8 +314,10 @@ export function MobileOccupancy({ onBack }) {
             </div>
           </section>
 
-          {/* KPI çifti — seçili döneme göre; rozet hangi dönem olduğunu söyler */}
-          <section className="fax-pair">
+          {/* KPI çifti — seçili döneme göre; rozet hangi dönem olduğunu söyler.
+              Asistanda ders cirosu (finansal) gizli → yalnız iptal kartı, tam genişlik. */}
+          <section className={"fax-pair" + (canSeeRevenue ? "" : " fax-pair-solo")}>
+            {canSeeRevenue && (
             <div className="fax-mini fax-mini-blue">
               <div className="fax-mini-top">
                 <span className="fax-mini-k">Ders cirosu</span>
@@ -321,6 +326,7 @@ export function MobileOccupancy({ onBack }) {
               <span key={period + '-k1-' + selIndex} className="fax-mini-v fax-anim">{fmtTL(view.revenue)}</span>
               <span className="fax-mini-s">{view.completed}/{view.planned} ders işlendi</span>
             </div>
+            )}
             <div className="fax-mini fax-mini-amber">
               <div className="fax-mini-top">
                 <span className="fax-mini-k">Öğrenci iptali</span>

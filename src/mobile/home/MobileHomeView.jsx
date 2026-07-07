@@ -69,6 +69,7 @@ export function MobileHomeView({
   occupancy = 0, plannedLessons = 0, capacity = null,
   kpiLoading = false,
   ordersPending = 0, ordersUrgent = 0,
+  canSeeFinance = true, canSeeOrders = true,
 }) {
   const barWidth = Math.max(0, Math.min(100, collectionRate));
   const occupancyTag = capacity != null
@@ -86,7 +87,7 @@ export function MobileHomeView({
         <ProfileMenu user={user} onLogout={onLogout} />
       </div>
 
-      {(() => {
+      {canSeeFinance && (() => {
         const heroInner = (
           <>
             <div className="mh-hero-top">
@@ -122,12 +123,14 @@ export function MobileHomeView({
         );
       })()}
 
-      <div className="mh-pills">
-        <div className={`mh-pill warn${kpiDim}`}>
-          <p className="mh-pill-label">Bekleyen tahsilat</p>
-          <div className="mh-pill-val">{kpiLoading ? '—' : fmtTL(receivable)}</div>
-          <span className="mh-pill-tag">{debtorCount} öğrenci</span>
-        </div>
+      <div className={`mh-pills${canSeeFinance ? '' : ' mh-pills-solo'}`}>
+        {canSeeFinance && (
+          <div className={`mh-pill warn${kpiDim}`}>
+            <p className="mh-pill-label">Bekleyen tahsilat</p>
+            <div className="mh-pill-val">{kpiLoading ? '—' : fmtTL(receivable)}</div>
+            <span className="mh-pill-tag">{debtorCount} öğrenci</span>
+          </div>
+        )}
         {(() => {
           const body = (
             <>
@@ -164,6 +167,7 @@ export function MobileHomeView({
           noktası + sağda turuncu "bugün kargo" çipi aksiyon gerektiren işi
           öne çıkarır. Dokununca Pazaryeri Siparişleri ekranını açar. Sayılar
           şimdilik statik; gerçek sipariş verisine bağlanınca prop'a taşınacak. */}
+      {canSeeOrders && (
       <div className="mod-wrap">
         <button type="button" className="mod-row mod-rowu" onClick={onOpenOrders}>
           <span className="mod-row-icon">
@@ -187,6 +191,7 @@ export function MobileHomeView({
           <span className="mod-row-chev" aria-hidden="true">›</span>
         </button>
       </div>
+      )}
     </div>
   );
 }

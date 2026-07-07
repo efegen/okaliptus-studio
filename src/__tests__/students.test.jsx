@@ -25,6 +25,7 @@ vi.mock("../api", () => ({
 }));
 
 import { StudentsPage } from "../students";
+import { CurrentUserProvider } from "../currentUser";
 import {
   getStudents,
   getStudentById,
@@ -35,6 +36,12 @@ import {
   getStudentPackages,
   getStudentProductSales,
 } from "../api";
+
+// Etap 3: silme aksiyonu `useCan('students.delete')`'e bağlı → testler
+// CurrentUserProvider ile rol vererek render eder. Varsayılan admin (silebilir).
+function renderWithUser(ui, role = "admin") {
+  return render(<CurrentUserProvider user={{ role }}>{ui}</CurrentUserProvider>);
+}
 
 // Tek satırlık öğrenci listesi kurar; overrides ile alanlar ezilir.
 function oneStudent(overrides = {}) {
@@ -89,7 +96,7 @@ describe("StudentsPage", () => {
       },
     ]);
 
-    render(<StudentsPage onOpenStudent={() => {}} />);
+    renderWithUser(<StudentsPage onOpenStudent={() => {}} />);
 
     expect(await screen.findByText(/Ali Yılmaz/i)).toBeInTheDocument();
     expect(screen.getByText(/Ayşe Demir/i)).toBeInTheDocument();
@@ -110,7 +117,7 @@ describe("StudentsPage", () => {
       },
     ]);
 
-    render(<StudentsPage onOpenStudent={() => {}} />);
+    renderWithUser(<StudentsPage onOpenStudent={() => {}} />);
 
     await screen.findByText(/Test Müşteri/i);
     // Yeni tasarım: açık borç "Açık borç" sütununda ve alt toplam çubuğunda
@@ -120,14 +127,14 @@ describe("StudentsPage", () => {
 
   it("renders empty state when student list is empty", async () => {
     getStudents.mockResolvedValue([]);
-    render(<StudentsPage onOpenStudent={() => {}} />);
+    renderWithUser(<StudentsPage onOpenStudent={() => {}} />);
     // Liste boş — başlık veya empty hint render edilmiş, hata atmaz
     await screen.findAllByText(/öğrenci/i);
   });
 
   it("aktif öğrencinin kebab menüsünde sadece 'Pasife al' var, silme yok", async () => {
     getStudents.mockResolvedValue(oneStudent({ is_active: true }));
-    render(<StudentsPage onOpenStudent={() => {}} />);
+    renderWithUser(<StudentsPage onOpenStudent={() => {}} />);
     await screen.findByText(/Menü Kişi/i);
 
     fireEvent.click(screen.getByLabelText("İşlemler"));
@@ -138,7 +145,7 @@ describe("StudentsPage", () => {
 
   it("pasif öğrencinin menüsünde 'Tekrar aktif et' ve 'Tamamen sil' var", async () => {
     getStudents.mockResolvedValue(oneStudent({ is_active: false }));
-    render(<StudentsPage onOpenStudent={() => {}} />);
+    renderWithUser(<StudentsPage onOpenStudent={() => {}} />);
     await screen.findByText(/Menü Kişi/i);
 
     fireEvent.click(screen.getByLabelText("İşlemler"));
@@ -147,13 +154,25 @@ describe("StudentsPage", () => {
     expect(screen.getByRole("menuitem", { name: "Tamamen sil" })).toBeInTheDocument();
   });
 
+  it("asistan rolünde pasif öğrencide bile 'Tamamen sil' gösterilmez", async () => {
+    getStudents.mockResolvedValue(oneStudent({ is_active: false }));
+    renderWithUser(<StudentsPage onOpenStudent={() => {}} />, "assistant");
+    await screen.findByText(/Menü Kişi/i);
+
+    fireEvent.click(screen.getByLabelText("İşlemler"));
+
+    // Pasife alma/aktifleştirme açık (update yetkisi), ama kalıcı silme yok.
+    expect(screen.getByRole("menuitem", { name: "Tekrar aktif et" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Tamamen sil" })).not.toBeInTheDocument();
+  });
+
   it("geçmişsiz öğrencide 'Kalıcı olarak sil' onay kutusu istemeden deleteStudent çağırır", async () => {
     getStudents.mockResolvedValue(oneStudent({ is_active: false }));
     getStudentLessons.mockResolvedValue([]);
     getStudentPackages.mockResolvedValue([]);
     getStudentProductSales.mockResolvedValue([]);
     deleteStudent.mockResolvedValue({ id: "1" });
-    render(<StudentsPage onOpenStudent={() => {}} />);
+    renderWithUser(<StudentsPage onOpenStudent={() => {}} />);
     await screen.findByText(/Menü Kişi/i);
 
     fireEvent.click(screen.getByLabelText("İşlemler"));
@@ -173,7 +192,7 @@ describe("StudentsPage", () => {
     getStudentPackages.mockResolvedValue([]);
     getStudentProductSales.mockResolvedValue([]);
     deleteStudent.mockResolvedValue({ id: "1" });
-    render(<StudentsPage onOpenStudent={() => {}} />);
+    renderWithUser(<StudentsPage onOpenStudent={() => {}} />);
     await screen.findByText(/Menü Kişi/i);
 
     fireEvent.click(screen.getByLabelText("İşlemler"));
@@ -193,7 +212,7 @@ describe("StudentsPage", () => {
 
   it("borçsuz aktif öğrencinin menüsünde 'Ödeme al' gösterilmez", async () => {
     getStudents.mockResolvedValue(oneStudent({ is_active: true, lesson_debt: "0", product_debt: "0" }));
-    render(<StudentsPage onOpenStudent={() => {}} />);
+    renderWithUser(<StudentsPage onOpenStudent={() => {}} />);
     await screen.findByText(/Menü Kişi/i);
 
     fireEvent.click(screen.getByLabelText("İşlemler"));
@@ -208,7 +227,7 @@ describe("StudentsPage", () => {
       birthday: null, joined_at: null, preferred_mode: null, note: null, is_active: true,
     });
     updateStudent.mockResolvedValue({ id: "1" });
-    render(<StudentsPage onOpenStudent={() => {}} />);
+    renderWithUser(<StudentsPage onOpenStudent={() => {}} />);
     await screen.findByText(/Menü Kişi/i);
 
     fireEvent.click(screen.getByLabelText("İşlemler"));

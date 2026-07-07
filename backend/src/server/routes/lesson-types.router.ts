@@ -9,8 +9,14 @@ import {
   removeLessonTypeStudentPrice,
 } from "../../services/lesson-types.service.js";
 import { parseId, sendError } from "../middleware/response.js";
+import { requireCan } from "../middleware/requireRole.js";
 
 export const lessonTypesRouter = Router();
+
+// GET /lesson-types açık (ders oluşturma dropdown'ı asistana gerekli). Ders türü
+// yazma ve öğrenci özel fiyat uçları (yalnız katalog yönetim ekranında kullanılır)
+// settings.manage ile kapılı — asistana kapalı. Özel fiyat ders oluşturmada
+// sunucu tarafında otomatik uygulanır, bu uçlar ders akışı için gerekmez.
 
 // GET /lesson-types
 lessonTypesRouter.get("/", async (_req, res) => {
@@ -23,7 +29,7 @@ lessonTypesRouter.get("/", async (_req, res) => {
 });
 
 // POST /lesson-types
-lessonTypesRouter.post("/", async (req, res) => {
+lessonTypesRouter.post("/", requireCan("settings.manage"), async (req, res) => {
   try {
     const { name, default_duration_minutes, default_price } = req.body as {
       name?: unknown;
@@ -58,7 +64,7 @@ lessonTypesRouter.post("/", async (req, res) => {
 });
 
 // PATCH /lesson-types/:id
-lessonTypesRouter.patch("/:id", async (req, res) => {
+lessonTypesRouter.patch("/:id", requireCan("settings.manage"), async (req, res) => {
   try {
     const id = parseId(req.params.id);
     const body = req.body as {
@@ -113,7 +119,7 @@ lessonTypesRouter.patch("/:id", async (req, res) => {
 });
 
 // GET /lesson-types/:id/prices — ders türüne özel fiyatlı öğrenciler
-lessonTypesRouter.get("/:id/prices", async (req, res) => {
+lessonTypesRouter.get("/:id/prices", requireCan("settings.manage"), async (req, res) => {
   try {
     const id = parseId(req.params.id);
     const data = await listLessonTypeStudentPrices(id);
@@ -125,7 +131,7 @@ lessonTypesRouter.get("/:id/prices", async (req, res) => {
 
 // PATCH /lesson-types/:id/prices/:studentId — öğrenciye özel fiyat ayarla (upsert)
 // (PATCH; CORS izinli metotlar GET/POST/PATCH/DELETE — PUT tarayıcıda bloke olur)
-lessonTypesRouter.patch("/:id/prices/:studentId", async (req, res) => {
+lessonTypesRouter.patch("/:id/prices/:studentId", requireCan("settings.manage"), async (req, res) => {
   try {
     const id = parseId(req.params.id);
     const studentId = parseId(req.params.studentId);
@@ -150,7 +156,7 @@ lessonTypesRouter.patch("/:id/prices/:studentId", async (req, res) => {
 });
 
 // DELETE /lesson-types/:id/prices/:studentId — özel fiyatı kaldır
-lessonTypesRouter.delete("/:id/prices/:studentId", async (req, res) => {
+lessonTypesRouter.delete("/:id/prices/:studentId", requireCan("settings.manage"), async (req, res) => {
   try {
     const id = parseId(req.params.id);
     const studentId = parseId(req.params.studentId);

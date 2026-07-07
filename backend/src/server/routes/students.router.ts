@@ -14,6 +14,7 @@ import {
 } from "../../services/students.service.js";
 import { ValidationError } from "../../services/errors.js";
 import { sendError, parseId } from "../middleware/response.js";
+import { requireCan } from "../middleware/requireRole.js";
 
 export const studentsRouter = Router();
 
@@ -183,7 +184,8 @@ studentsRouter.patch("/:id", async (req, res) => {
 // DELETE /students/:id
 // Kalıcı (hard) silme: öğrenci + tüm ders/ödeme/paket/satış kayıtları fiziksel
 // olarak silinir. Geri alınamaz; geçmişi olan öğrenciler de silinebilir.
-studentsRouter.delete("/:id", async (req, res) => {
+// Asistana kapalı (students.delete) — ekleme/düzenleme açık kalır.
+studentsRouter.delete("/:id", requireCan("students.delete"), async (req, res) => {
   try {
     const id = parseId(req.params.id);
     const data = await hardDeleteStudent(id, req.currentUser.id);

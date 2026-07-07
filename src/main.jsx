@@ -20,6 +20,8 @@ import { Toast } from './Toast';
 import { getSettings, getMe, logout as apiLogout } from './api';
 import { fmtTL } from './data';
 import { queryKeys } from './hooks/queryKeys';
+import { canSeePage } from './permissions';
+import { CurrentUserProvider } from './currentUser';
 import { useIsMobile } from './mobile/useIsMobile';
 import { MobileApp } from './mobile/MobileApp';
 
@@ -48,6 +50,17 @@ function App({ currentUser, onLogout }) {
   React.useEffect(() => {
     localStorage.setItem("okaliptus-page", page);
   }, [page]);
+
+  // Rol koruması (web + mobil): asistanın erişemeyeceği bir sayfaya düşülürse
+  // (localStorage'dan restore, eski link vb.) ana sayfaya yönlendir. Güvenlik
+  // sunucuda; bu yalnız kırık 403 ekranını göstermemek için. Nav girişleri de
+  // ayrıca gizli, bu yüzden normal akışta buraya nadiren düşülür.
+  React.useEffect(() => {
+    if (!canSeePage(currentUser?.role, page)) {
+      setStudentDetailId(null);
+      setPage('home');
+    }
+  }, [page, currentUser]);
 
   React.useEffect(() => {
     getSettings()
@@ -199,7 +212,7 @@ function App({ currentUser, onLogout }) {
           {page === "mapping" && <MappingPage onNavigate={navigate} />}
           {page === "orders" && <OrdersPage onNavigate={navigate} />}
           {page === "movements" && <MovementsPage onOpenStudent={openStudent} />}
-          {page === "settings" && <SettingsPage />}
+          {page === "settings" && <SettingsPage currentUser={currentUser} />}
           {page === "product-sale" && (
             <ProductSalePage
               cart={productSaleCart}
@@ -305,7 +318,11 @@ function Root() {
 
   if (authState === 'loading') return null;
   if (authState === 'unauthenticated') return <LoginPage onLogin={handleLogin} />;
-  return <App currentUser={currentUser} onLogout={handleLogout} />;
+  return (
+    <CurrentUserProvider user={currentUser}>
+      <App currentUser={currentUser} onLogout={handleLogout} />
+    </CurrentUserProvider>
+  );
 }
 
 const root = ReactDOM.createRoot(document.getElementById("root"));

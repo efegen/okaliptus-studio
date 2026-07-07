@@ -18,6 +18,7 @@ import {
   getCalendarEvents, createCalendarEvent, updateCalendarEventApi, deleteCalendarEventApi,
 } from './api';
 import { ReceivePaymentModal } from './students';
+import { useCan } from './currentUser';
 import { useLessonActions } from './mobile/shared/useLessonActions';
 import {
   COMPLETE_AVAILABLE_AFTER_MINUTES,
@@ -2712,6 +2713,10 @@ function QuickActions({ onNavigate }) {
 }
 
 export function HomePage({ layout, onNavigate }) {
+  // Asistan finansal KPI kartlarını görmez (backend bu alanları zaten soyuyor,
+  // 0 göstermek yerine kartı tümden gizliyoruz). Operasyonel kartlar (öğrenci
+  // sayısı, doluluk), takvim, hızlı aksiyonlar ve tahsilat listesi kalır.
+  const canSeeFinance = useCan('finance.read');
   const weeklyKpiState = useWeeklyKpiState();
   const studioSettings = useStudioSettings();
   const weeklyKpiData = weeklyKpiState.data;
@@ -2756,18 +2761,22 @@ export function HomePage({ layout, onNavigate }) {
           </div>
           <div className="head-actions">
             <div className="head-stats" style={{display:"flex",gap:32}}>
+              {canSeeFinance && (
               <div>
                 <div style={{fontFamily:"var(--f-serif)",fontSize:26,fontWeight:500,lineHeight:1,fontVariantNumeric:"tabular-nums"}}>{fmtTL(cashInflowTotal)}</div>
                 <div style={{fontSize:11,color:"var(--ink-3)",textTransform:"uppercase",letterSpacing:"0.06em",fontWeight:600,marginTop:4}}>tahsil</div>
               </div>
+              )}
               <div>
                 <div style={{fontFamily:"var(--f-serif)",fontSize:26,fontWeight:500,lineHeight:1,fontVariantNumeric:"tabular-nums"}}>{lessonsPlanned}</div>
                 <div style={{fontSize:11,color:"var(--ink-3)",textTransform:"uppercase",letterSpacing:"0.06em",fontWeight:600,marginTop:4}}>ders</div>
               </div>
+              {canSeeFinance && (
               <div>
                 <div style={{fontFamily:"var(--f-serif)",fontSize:26,fontWeight:500,lineHeight:1,fontVariantNumeric:"tabular-nums",color:"var(--warn)"}}>{fmtTL(receivable)}</div>
                 <div style={{fontSize:11,color:"var(--ink-3)",textTransform:"uppercase",letterSpacing:"0.06em",fontWeight:600,marginTop:4}}>bekleyen</div>
               </div>
+              )}
             </div>
           </div>
         </div>
@@ -2827,6 +2836,7 @@ export function HomePage({ layout, onNavigate }) {
             </ul>
           </div>
 
+          {canSeeFinance && (
           <div className="card">
             <div className="card-head">
               <h3 className="card-title">Tahsilat <span style={{opacity:0.55, fontWeight:500, fontSize:"0.85em"}}>· {currentMonthLabel}</span></h3>
@@ -2839,6 +2849,7 @@ export function HomePage({ layout, onNavigate }) {
             <IncomeSparkline />
             <div className="sparkline-labels"><span>8 hafta önce</span><span>bu hafta</span></div>
           </div>
+          )}
 
           <DebtActionCard />
         </div>
@@ -2866,6 +2877,7 @@ export function HomePage({ layout, onNavigate }) {
       </div>
 
       <div className="kpi-row">
+        {canSeeFinance && (<>
         <div className="kpi-card">
           <div className="kpi-card-label">Tahsilat / Ciro <span style={{opacity:0.55, fontWeight:500}}>· {currentMonthLabel}</span></div>
           <div className="kpi-card-main">
@@ -2893,6 +2905,7 @@ export function HomePage({ layout, onNavigate }) {
             <strong>{debtorStudentCount ?? 0}</strong> öğrencinin borcu var
           </div>
         </div>
+        </>)}
 
         <div className="kpi-card">
           <div className="kpi-card-label">Toplam öğrenci</div>

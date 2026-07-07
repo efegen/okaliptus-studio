@@ -2,11 +2,14 @@ import { Router } from "express";
 
 import { getSettings, updateSettings } from "../../services/settings.service.js";
 import { sendError } from "../middleware/response.js";
+import { requireCan } from "../middleware/requireRole.js";
 import { ValidationError } from "../../services/errors.js";
 
 export const settingsRouter = Router();
 
-// GET /settings
+// GET /settings — okuma açık: takvim saatleri, haftalık kapasite, renk doygunluğu
+// ve pazaryeri bayrakları istemcinin ekran render'ı için gerekli (asistan da
+// takvimi kullanır). Yalnız yazma (PATCH) settings.manage ile kapılı.
 settingsRouter.get("/", async (_req, res) => {
   try {
     const data = await getSettings();
@@ -16,8 +19,8 @@ settingsRouter.get("/", async (_req, res) => {
   }
 });
 
-// PATCH /settings
-settingsRouter.patch("/", async (req, res) => {
+// PATCH /settings — asistana kapalı (ayar değiştirme yönetim işi).
+settingsRouter.patch("/", requireCan("settings.manage"), async (req, res) => {
   try {
     const body = req.body as Record<string, unknown>;
 

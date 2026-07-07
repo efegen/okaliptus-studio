@@ -6,6 +6,7 @@ import { useWeeklyKpi, parseNumericValue } from './shared/useWeeklyKpi';
 import { useWeekLessons } from './shared/useWeekLessons';
 import { getSettings, getTrendyolOrdersList } from '../api';
 import { queryKeys } from '../hooks/queryKeys';
+import { can } from '../permissions';
 
 const ORDERS_WINDOW_DAYS = 90;
 
@@ -44,6 +45,11 @@ function formatDateLabel(date) {
 }
 
 export function MobileHome({ user, onLogout, onOpenFinance, onOpenOccupancy, onOpenOrders }) {
+  // Rol-bazlı görünürlük: asistan finansal kartları (hero + bekleyen tahsilat)
+  // ve pazaryeri siparişlerini görmez. Doluluk kartı herkese açık kalır.
+  const canSeeFinance = can(user?.role, 'finance.read');
+  const canSeeOrders = can(user?.role, 'marketplace.manage');
+
   const { data: kpi, isLoading: kpiLoading } = useWeeklyKpi();
   const { data: studioSettings } = useQuery({
     queryKey: queryKeys.settings(),
@@ -52,10 +58,12 @@ export function MobileHome({ user, onLogout, onOpenFinance, onOpenOccupancy, onO
   });
 
   // Sipariş sorgusu — MobileOrders ile aynı query key → önbellek paylaşılır.
+  // Asistanda /trendyol 403 döneceği için sorgu hiç çalıştırılmaz (enabled).
   const { data: ordersData } = useQuery({
     queryKey: ['trendyolOrders', null, null, ORDERS_WINDOW_DAYS],
     queryFn: () => getTrendyolOrdersList({ windowDays: ORDERS_WINDOW_DAYS }),
     staleTime: 30 * 1000,
+    enabled: canSeeOrders,
   });
   const tabCounts = ordersData?.tabCounts ?? {};
   const ordersPending = (tabCounts.yeni ?? 0) + (tabCounts.isleme ?? 0);
@@ -114,6 +122,8 @@ export function MobileHome({ user, onLogout, onOpenFinance, onOpenOccupancy, onO
         kpiLoading={kpiLoading}
         ordersPending={ordersPending}
         ordersUrgent={ordersUrgent}
+        canSeeFinance={canSeeFinance}
+        canSeeOrders={canSeeOrders}
       />
       <MobileAgenda />
     </>

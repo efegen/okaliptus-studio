@@ -16,6 +16,7 @@ import {
 import { MobileEditStudentPage } from './MobileEditStudentPage';
 import { buildModelFromSale } from '../receipt/buildReceiptModel.js';
 import { ReceiptPreviewButton } from '../receipt/ReceiptPreviewButton.jsx';
+import { useCan } from '../currentUser';
 
 // Mobil öğrenci profili — "design_handoff_ogrenci_profili" v16 yeniden tasarımı.
 // Tek-uzun-scroll ekran yerine: durum renkli sabit başlık + sayfa içi sekme barı
@@ -664,6 +665,7 @@ function MovementsTab({ timeline, student }) {
 function ProfileBody({ student, lessons, sales, onClose, onOpenPayment, onOpenSale, onEdit }) {
   const updateMutation = useUpdateStudent(student.id);
   const deleteMutation = useDeleteStudent(student.id);
+  const canHardDelete = useCan('students.delete'); // asistan öğrenci silemez
   const [tab, setTab] = React.useState('overview');
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [busy, setBusy] = React.useState(null);
@@ -766,13 +768,15 @@ function ProfileBody({ student, lessons, sales, onClose, onOpenPayment, onOpenSa
                 >
                   {student.is_active ? 'Pasifleştir' : 'Aktifleştir'}
                 </button>
-                <button
-                  type="button" className="mobile-msp-menu-item is-danger" role="menuitem"
-                  onClick={handleDelete} disabled={!canDelete}
-                  title={!canDelete ? 'Bağlı borç var' : undefined}
-                >
-                  Sil
-                </button>
+                {canHardDelete && (
+                  <button
+                    type="button" className="mobile-msp-menu-item is-danger" role="menuitem"
+                    onClick={handleDelete} disabled={!canDelete}
+                    title={!canDelete ? 'Bağlı borç var' : undefined}
+                  >
+                    Sil
+                  </button>
+                )}
               </div>
             )}
           </div>

@@ -16,6 +16,7 @@ import {
   updateStudent,
   deleteStudent,
 } from './api';
+import { useCan } from './currentUser';
 
 export function fmtDate(iso) {
   if (!iso) return '—';
@@ -878,6 +879,7 @@ function RowActionsMenu({ student, hasDebt, onPayment, onEdit, onSetActive, onDe
   const [pos, setPos] = React.useState(null);
   const btnRef = React.useRef(null);
   const isActive = student.is_active;
+  const canHardDelete = useCan('students.delete'); // asistan öğrenci silemez
 
   React.useEffect(() => {
     if (!open) return undefined;
@@ -974,7 +976,7 @@ function RowActionsMenu({ student, hasDebt, onPayment, onEdit, onSetActive, onDe
               Tekrar aktif et
             </button>
           )}
-          {!isActive && (
+          {!isActive && canHardDelete && (
             <button
               type="button"
               className="stu-row-menu-item stu-row-menu-item-danger"

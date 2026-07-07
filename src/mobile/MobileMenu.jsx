@@ -1,6 +1,7 @@
 import React from 'react';
 import { Icon } from '../layout';
 import { initials } from '../data';
+import { canSeePage, roleLabel } from '../permissions';
 
 // Mobil "Menü" sayfası — Yaklaşım A (Gruplu ayarlar). Üstte tıklanamaz profil
 // kartı (yalnız kimlik), altında iOS tarzı bölümlü liste: renkli ikon karosu +
@@ -33,6 +34,13 @@ const SECTIONS = [
 export function MobileMenu({ user, onNavigate, onLogout }) {
   const displayName = user?.displayName || 'Operatör';
   const avatarText = user?.displayName ? initials(user.displayName) : '·';
+  const role = user?.role;
+
+  // Rol-bazlı süzme: erişilemeyen menü kalemleri (ör. asistan için Finans /
+  // Hareketler / Ayarlar / Katalog) hiç gösterilmez; boşalan bölüm de düşer.
+  const sections = SECTIONS
+    .map(sec => ({ ...sec, items: sec.items.filter(it => canSeePage(role, it.id)) }))
+    .filter(sec => sec.items.length > 0);
 
   return (
     <div className="mobile-menu">
@@ -42,11 +50,11 @@ export function MobileMenu({ user, onNavigate, onLogout }) {
         <span className="mobile-menu-avatar" aria-hidden="true">{avatarText}</span>
         <span className="mobile-menu-profile-tx">
           <span className="mobile-menu-profile-name">{displayName}</span>
-          <span className="mobile-menu-profile-sub">Okaliptus Studio · Yönetici</span>
+          <span className="mobile-menu-profile-sub">Okaliptus Studio · {roleLabel(role)}</span>
         </span>
       </div>
 
-      {SECTIONS.map(sec => (
+      {sections.map(sec => (
         <div className="mobile-menu-group" key={sec.label}>
           <p className="mobile-menu-group-lbl">{sec.label}</p>
           <div className="mobile-menu-card" role="list">

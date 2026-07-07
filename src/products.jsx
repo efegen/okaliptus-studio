@@ -1,5 +1,6 @@
 import React from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useCan } from './currentUser';
 import {
   getProducts,
   getProductCategories,
@@ -2073,6 +2074,9 @@ export function ProductsPage({ onNavigate }) {
   });
   const stockEnabled = settingsQuery.data?.stockTrackingEnabled === true;
   const marketplaceEnabled = settingsQuery.data?.marketplaceSyncEnabled === true;
+  // Asistan ürün kataloğunu yönetir ama pazaryeri (eşleştirme + kanal linkleri)
+  // görmez; marketplace.manage yoksa bu bölümler kapanır.
+  const canSeeMarketplace = useCan('marketplace.manage');
 
   const allProducts = productsQuery.data ?? [];
   const categories = categoriesQuery.data ?? [];
@@ -2205,7 +2209,7 @@ export function ProductsPage({ onNavigate }) {
           </div>
         </div>
         <div className="head-actions">
-          {marketplaceEnabled && (
+          {marketplaceEnabled && canSeeMarketplace && (
             <button className="btn btn-ghost" onClick={() => onNavigate?.('mapping')}>
               <Icon.Link width="14" height="14" />
               Eşleştirme
@@ -2422,7 +2426,7 @@ export function ProductsPage({ onNavigate }) {
           initial={modal === 'new' ? null : modal}
           knownCategories={mergedCategories}
           stockEnabled={stockEnabled}
-          marketplaceEnabled={marketplaceEnabled}
+          marketplaceEnabled={marketplaceEnabled && canSeeMarketplace}
           onStockSaved={() => queryClient.invalidateQueries({ queryKey: ['products'] })}
           onClose={() => setModal(null)}
           onSaved={(saved) => {

@@ -8,8 +8,12 @@ import {
   deleteInstructor,
 } from "../../services/instructors.service.js";
 import { parseId, sendError } from "../middleware/response.js";
+import { requireCan } from "../middleware/requireRole.js";
 
 export const instructorsRouter = Router();
+
+// GET açık (ders oluşturma dropdown'ları asistana gerekli); yazma (POST/PATCH/
+// DELETE) katalog yönetimi → settings.manage ile kapılı (asistana kapalı).
 
 // GET /instructors           → aktif eğitmenler (modal/dropdown'lar için)
 // GET /instructors?include=all → silinmemiş tüm eğitmenler (yönetim sayfası için)
@@ -26,7 +30,7 @@ instructorsRouter.get("/", async (req, res) => {
 });
 
 // POST /instructors
-instructorsRouter.post("/", async (req, res) => {
+instructorsRouter.post("/", requireCan("settings.manage"), async (req, res) => {
   try {
     const { full_name } = req.body as { full_name?: unknown };
 
@@ -46,7 +50,7 @@ instructorsRouter.post("/", async (req, res) => {
 });
 
 // PATCH /instructors/:id
-instructorsRouter.patch("/:id", async (req, res) => {
+instructorsRouter.patch("/:id", requireCan("settings.manage"), async (req, res) => {
   try {
     const id = parseId(req.params.id);
     const body = req.body as { full_name?: unknown; is_active?: unknown };
@@ -85,7 +89,7 @@ instructorsRouter.patch("/:id", async (req, res) => {
 });
 
 // DELETE /instructors/:id (soft delete)
-instructorsRouter.delete("/:id", async (req, res) => {
+instructorsRouter.delete("/:id", requireCan("settings.manage"), async (req, res) => {
   try {
     const id = parseId(req.params.id);
     const removed = await deleteInstructor(id, req.currentUser.id);

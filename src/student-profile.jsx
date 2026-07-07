@@ -15,6 +15,7 @@ import {
   deleteStudent,
 } from './api';
 import { ReceivePaymentModal, ConfirmDeleteStudentModal, StudentFormModal } from './students';
+import { useCan } from './currentUser';
 import { buildModelFromSale } from './receipt/buildReceiptModel.js';
 import { ReceiptPreviewButton } from './receipt/ReceiptPreviewButton.jsx';
 
@@ -480,6 +481,7 @@ function lessonTone(l) {
 // ─── Durum renkli başlık bandı (A11) ──────────────────────────────────────────
 function BandHeader({ student, fin, onPayment, onOpenSale, onEdit, onSetActive, onDelete }) {
   const isDebt = fin.totalDebt > 0.01;
+  const canHardDelete = useCan('students.delete'); // asistan öğrenci silemez
   const breakdown = isDebt
     ? [
         fin.lessonDebt > 0.01  ? `${fmtTL(fin.lessonDebt)} ders` : null,
@@ -524,7 +526,7 @@ function BandHeader({ student, fin, onPayment, onOpenSale, onEdit, onSetActive, 
             >
               {student.is_active ? 'Pasife al' : 'Tekrar aktif et'}
             </button>
-            {!student.is_active && (
+            {!student.is_active && canHardDelete && (
               <button type="button" className="sp-more-item sp-more-item-warn" onClick={onDelete}>
                 Tamamen sil
               </button>
