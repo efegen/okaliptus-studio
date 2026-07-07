@@ -1,6 +1,6 @@
-# CLAUDE.md — Okaliptus Studio Dashboard
+# AGENTS.md — Okaliptus Studio Dashboard
 
-Bu dosya Claude ajanlarının her oturumda okuyacağı kısa proje sözleşmesidir. Detay için **birinci kaynak `yoga-studio-dashboard-v1-spec.md`**'dir; çelişki olursa spec kazanır.
+Bu dosya Codex ajanlarının her oturumda okuyacağı kısa proje sözleşmesidir. Detay için **birinci kaynak `yoga-studio-dashboard-v1-spec.md`**'dir; çelişki olursa spec kazanır.
 
 ## Proje
 
@@ -70,9 +70,7 @@ UI metinleri, hata mesajları, kullanıcıya görünen tüm string'ler **Türkç
 - Login → `crypto.randomBytes(32).toString('hex')` opaque token → `session` httpOnly cookie. JWT yok.
 - 30 gün sliding TTL, server-side revokable.
 - Middleware: `backend/src/server/middleware/requireAuth.ts`.
-- **Rol sistemi (v1.7)**: `users.role` — 4 sabit rol: `owner` (Geliştirici), `admin` (Yönetici), `instructor` (Yönetici-Eğitmen), `assistant` (Asistan). Rol her istekte `users` satırından canlı okunur (yeniden giriş gerekmez). Yetki kontrolü `backend/src/auth/permissions.ts` (`can(role, capability)`) + `backend/src/server/middleware/requireRole.ts` (`requireRole`/`requireCan`). Kullanıcı yönetimi (`/users` API, yalnız owner) Ayarlar → Kullanıcılar sekmesinden yapılır — Railway'de elle SQL/env işlemi gerekmez. İlk owner `BOOTSTRAP_OWNER_USERNAME` ile terfi eder.
-- **Asistan kısıtları (kodlandı)**: owner/admin/instructor aynı erişime sahip; yalnız `assistant` kısıtlı. `assistant` GÖRMEZ: finansal KPI/ciro (`/kpi/finance-flow` blok; `/kpi/weekly` + `/kpi/occupancy-flow` finansal alanları soyulur), stüdyo hareketleri (`/movements`), pazaryeri (`/channels`,`/trendyol`,`/mapping`), ayarlar+katalog yazma (PATCH `/settings`, eğitmen/ders türü yazma), öğrenci kalıcı silme (`DELETE /students/:id`), denetim (`/audit-logs`), kullanıcı yönetimi. YAPAR: ders CRUD+yoklama, öğrenci ekle/düzenle, ödeme alma, ürün satışı+kataloğu, takvim, doluluk (ciro gizli). Frontend aynası `src/permissions.js` (`can`/`canSeePage`) + `src/currentUser.jsx` (`useCan`); nav/kart/aksiyon gizleme kozmetik, güvenlik sunucuda. Smoke: `backend/scripts/smoke/38-assistant-restrictions.ts`.
-- **Bildirim modülü (config-driven)**: Web Push bildirimleri (ders başlıyor / bayat ders / yeni sipariş) sabit kod DEĞİL — `notification_settings` tablosundan (migration 0258) okunur. `backend/src/services/notification-scheduler.ts` in-process setInterval (`NOTIFICATION_SCHEDULER_MS`, VAPID yoksa başlamaz); config `notification-settings.service.ts`. Ayarlanabilir (Ayarlar → **Bildirimler**, owner-only `notifications.manage`): aç/kapa, KİŞİ-bazlı alıcılar, zamanlama, metin şablonu ({student}/{minutes}/{time}/{customer}/{order}), test-gönder, sessiz saatler. Smoke: `37-notification-scheduler.ts` (davranış), `39-notification-settings.ts` (config).
+- **Rol sistemi (v1.7)**: `users.role` — 4 sabit rol: `owner` (Geliştirici), `admin` (Yönetici), `instructor` (Yönetici-Eğitmen), `assistant` (Asistan, kısıtları henüz kodlanmadı). Rol her istekte `users` satırından canlı okunur (yeniden giriş gerekmez). Yetki kontrolü `backend/src/auth/permissions.ts` (`can(role, capability)`) + `backend/src/server/middleware/requireRole.ts` (`requireRole`/`requireCan`). Kullanıcı yönetimi (`/users` API, yalnız owner) Ayarlar → Kullanıcılar sekmesinden yapılır — Railway'de elle SQL/env işlemi gerekmez. İlk owner `BOOTSTRAP_OWNER_USERNAME` ile terfi eder.
 - Spec v1.4–v1.7 uyumu: rate limit **var**, audit logging UI/akışı **v1 dışı**, MFA/passkey/SSO **v1 dışı**.
 
 ## Test
@@ -88,6 +86,7 @@ Conventional commits. Örnek scope'lar (ingilizce ve açıklamalı): `feat(mobil
 ## v1 kapsamı dışında (önerme)
 
 - Multi-instructor CRUD UI (instructor read-only, seed ile yönetilir).
+- Asistan rolünün UI kısıtları (backend altyapısı var — bkz. Auth özeti — ama arayüz henüz genel ekranları gösteriyor; ayrı tasarım fazı bekliyor).
 - Self-service şifre reset (owner panelden başkasının şifresini sıfırlar), email altyapısı.
 - WebAuthn/passkey, MFA, SSO/OAuth.
 - Öğrenci-bazlı veya mode-bazlı fiyatlandırma.

@@ -207,7 +207,7 @@ V1'de bir dersin fiyatından indirim yapma gereksinimi için `lessons.discount_a
 
 ### 2.14 Kimlik doğrulama (Authentication, v1.3 → v1.4)
 
-V1.3'ten itibaren sistem birden fazla admin user ile çalışır (deploy seed'i 3 user; üst sınır yok). Tek rol seviyesi: `admin`. Hepsi tüm kaynaklara erişir; rol-bazlı kısıtlama yoktur (gelecekte gerekirse genişletilir, §9).
+V1.3'ten itibaren sistem birden fazla admin user ile çalışır (deploy seed'i 3 user; üst sınır yok). **v1.7'de 4 sabit role genişletildi** (`users.role`, migration 0255): `owner` (Geliştirici), `admin` (Yönetici), `instructor` (Yönetici-Eğitmen), `assistant` (Asistan). Faz 1'de owner/admin/instructor **aynı veri erişimine** sahiptir — fark yalnız kullanıcı yönetimi ekranı + deploy-test özelliklerinin (push test) owner'a kilitli olmasıdır. Asistan rolünün veri/UI kısıtları henüz kodlanmadı (ayrı tasarım fazı, §9). v1.3'teki "tek rol seviyesi: admin, hepsi her yere erişir" ifadesi geçersizdir (§11 v1.7).
 
 **Kapsam ve kurallar (v1.4 kod realitesine göre):**
 
@@ -218,13 +218,13 @@ V1.3'ten itibaren sistem birden fazla admin user ile çalışır (deploy seed'i 
 | Session TTL | Sliding 30 gün: her korumalı request `last_seen_at = now()` ve `expires_at = now() + 30d` günceller. 30 gün hareketsizlik = session ölü. |
 | Password kuralı | bcrypt cost 12, **min 6 char**, max 100 char. Plaintext hiçbir log/audit'e düşmez. **Min 6 kararı:** kapalı admin sistemi + bcrypt cost 12 birleşimi 6-haneli PIN'i pratik olarak kırılamaz yapar; mobil klavyede hızlı girilir. Validation `auth.service.ts` ve bootstrap script'inde. |
 | Rate limit | **v1.5'te eklendi.** `POST /auth/login` `express-rate-limit` ile korunur: 5 başarısız deneme / 15 dk / IP, başarılı login sayaçtan düşmez (`skipSuccessfulRequests: true`), hata kodu `RATE_LIMITED` (HTTP 429). Store in-memory (process-local); horizontal scale gerekirse Redis. v1.4'teki "rate limit yok" ifadesi geçersizdir (§11 v1.5). |
-| Şifre değişimi (UI) | **v1 dışı.** Settings → Hesap bölümü v1.4'te yok (§8.5, §9). Şifre reset gerekirse sysadmin DB'den manuel günceller (`bcrypt.hash($pw, 12)` + `UPDATE users SET password_hash = ...`). |
+| Şifre değişimi (UI) | **Self-service hâlâ yok** (kullanıcı kendi şifresini değiştiremez). *(v1.7: owner, Ayarlar → Kullanıcılar panelinden **başka bir kullanıcının** şifresini `POST /users/:id/password` ile sıfırlayabilir — manuel DB güncellemesi yerine geçti. Kendi şifresini sıfırlarken mevcut oturumu düşmez; başkasınınkini sıfırlarken hedefin tüm oturumları kapanır.)* |
 | Logout | Tek session: `DELETE FROM sessions WHERE token = ?`. "Tüm cihazlardan çık" endpoint'i v1.4'te yok (§9). |
 | Auth audit | **Login/logout v1.6'da yazılır (migration 0236).** Başarılı login → `audit_logs` (`action='user_login'`, `entity_type='user'`, `entity_id=actor_user_id=<user id>`, `note='Başarılı giriş — IP: …'`); logout → `action='user_logout'` aynı şekilde. IP yalnız `note` alanında tutulur (sessions tablosunda ip/user_agent kolonu **yok**, §3.13). Audit insert hatası login/logout akışını bozmaz (`.catch` ile yutulur). **`password_changed` hâlâ kapsam dışı** (şifre değişimi UI'sı yok, §5.11/§9). v1.4'teki "auth audit yazılmaz / kapsam dışı" ifadesi geçersizdir (§11 v1.6). Mutating *iş* işlemleri ayrıca `actor_user_id` taşımaya devam eder. |
 | Audit aktör | Her mutating *iş servisi* çağrısı `actorUserId` parametresi alır ve `audit_logs.actor_user_id` kolonuna yazar. NULL yalnızca v1.3 öncesi legacy satırlar için. |
 | Hesap deaktive | `users.is_active = false` → mevcut session'lar bir sonraki request'te 401 alır; yeni login imkânsız. (`users.deleted_at` kolonu **yok** — soft delete v1'de gerekmedi.) |
 | Self-service password reset | **Yok** (§9). |
-| Hesap oluşturma UI | **Yok** (§9). Admin'ler bootstrap script ile (§10) `.env`'den seed edilir. Yeni user gerekirse aynı bootstrap'a satır eklenip yeniden çalıştırılır (idempotent: `ON CONFLICT (username) DO NOTHING`). |
+| Hesap oluşturma UI | *(v1.7: owner, Ayarlar → Kullanıcılar panelinden `POST /users` ile yeni kullanıcı oluşturur — rol seçimi dahil.)* İlk owner hâlâ bootstrap script ile (§10) `.env`'den (`BOOTSTRAP_OWNER_USERNAME`) terfi eder; self-signup endpoint'i yoktur. |
 | Face/Touch ID UX | iOS/macOS Keychain'in varsayılan şifre kaydet → Face/Touch ID ile autofill akışı kullanılır; uygulama tarafında özel implementasyon gerekmiyor. WebAuthn/passkey v1 kapsamı dışı (§9). |
 
 **Why:** Kapalı admin senaryosunda Clerk gibi external auth provider'a bağımlı olmak vendor lock-in + maliyet getirisi düşük. Kendi auth'umuz: opaque session + bcrypt, ihtiyaç doğarsa Lucia/Better-Auth gibi kütüphanelere göç ederken DB şeması korunur.
@@ -1745,7 +1745,9 @@ Tek session silme. **`user_logout` artık audit'a yazılır** (v1.6, migration 0
 
 ### 5.11 Auth: Password değişimi
 
-**v1.4 dışı (§9).** Settings → Hesap UI bölümü v1 kapsamına alınmadı; `PATCH /auth/password` endpoint'i de yok. Şifre değişimi gerekirse sysadmin DB'den manuel UPDATE yapar:
+**Self-service hâlâ v1 dışı** (§9) — kullanıcı kendi şifresini bir "Hesabım" ekranından değiştiremez; `PATCH /auth/password` yoktur.
+
+**v1.7'de eklendi:** owner, Ayarlar → Kullanıcılar panelinden `POST /users/:id/password` ile **başka bir kullanıcının** şifresini sıfırlayabilir (`backend/src/services/users.service.ts` `setUserPassword`). Bcrypt cost 12, min 6/max 100 char aynı validasyon (`normalizePassword`). Hedef kendisi değilse tüm oturumları anında düşer; owner kendi şifresini sıfırlıyorsa (aynı kullanıcı) mevcut oturum düşmez. Manuel DB UPDATE artık gerekmez; yalnızca panel erişimi tamamen kaybedilirse (owner hesabı kilitlendiyse) aşağıdaki elle müdahale son çare olarak kalır:
 
 ```
 node -e "console.log(require('bcryptjs').hashSync(process.argv[1], 12))" '<yeni-sifre>'
@@ -1753,8 +1755,6 @@ node -e "console.log(require('bcryptjs').hashSync(process.argv[1], 12))" '<yeni-
 UPDATE users SET password_hash = '<bcrypt-hash>' WHERE username = '<username>';
 DELETE FROM sessions WHERE user_id = (SELECT id FROM users WHERE username = '<username>');
 ```
-
-Bcrypt cost 12, min 6 char invariant'ı şu an yalnızca bootstrap script ve `auth.service.ts` `login` validation'ında zorlanır; manuel UPDATE'te operatörün dikkatli olması gerekir.
 
 ### 5.12 RequireAuth middleware (v1.4 kod realitesi)
 
@@ -2048,10 +2048,10 @@ Takvim, ana sayfada `WeekCalendar` bileşeni ile gösterilir. Ayrı bir "Program
 V1 kapsamı dışında kalan özellikler:
 
 - **Eğitmen ileri alanları** — eğitmen CRUD UI'sı **v1.6'da eklendi** (§2.13, §3.10, §10); v1.2'deki "read-only / CRUD yok" kuralı geçersizdir. Kapsam dışı kalan: `email` / `phone` / uzmanlık / renk / öğrenci-bazlı oran gibi ileri alanlar ve eğitmen-bazlı KPI ayrıştırması.
-- **Rol bazlı yetkilendirme (RBAC)** — v1.3'te 3 admin user var (§2.14), tek seviye, hepsi her yere erişir. Scheduler/viewer gibi kısıtlı roller v1 kapsamı dışı. Gerekirse `users.role` kolonu + `requireRole(...)` middleware ile genişletilir.
-- **Self-service password reset** — "şifremi unuttum" email akışı yoktur (§2.14). 3 user için sysadmin DB'den manuel reset eder. Email gönderimi altyapısı (SMTP, Resend, SendGrid vb.) v1 kapsamında değildir.
-- **Hesap oluşturma / kayıt UI'sı** — yeni user bootstrap script + `.env` ile yaratılır. Self-signup endpoint yoktur; account provisioning operatöre bağlıdır.
-- **Settings → Hesap UI bölümü** (v1.4'te kapsam dışı) — şifre değiştir + tüm cihazlardan çıkış UI'sı yok; karşılık gelen `PATCH /auth/password` ve `POST /auth/logout-everywhere` endpoint'leri de yok. Sysadmin DB'den manuel halleder (§5.11).
+- ~~Rol bazlı yetkilendirme (RBAC)~~ — **v1.7'de eklendi** (`users.role` + `requireRole`/`requireCan`, §2.14, §11 v1.7): 4 sabit rol (owner/admin/instructor/assistant). **Asistan rolünün veri/UI kısıtları da kodlandı** (Faz 2 backend + Faz 3 frontend, 2026-07-07 — bkz. §11 v1.7 "Asistan kısıtları"): finansal KPI/ciro, hareketler, pazaryeri, ayarlar+katalog yazma, öğrenci silme asistana kapalı. Kapsam dışı kalan: DB-tabanlı/özelleştirilebilir rol-izin sistemi (4 rol sabit, kod içinde tanımlı).
+- **Self-service password reset** — "şifremi unuttum" email akışı yoktur (§2.14). *(v1.7: owner panelden başka bir kullanıcının şifresini sıfırlayabilir; kullanıcı **kendi** şifresini kendi değiştiremez.)* Email gönderimi altyapısı (SMTP, Resend, SendGrid vb.) v1 kapsamında değildir.
+- ~~Hesap oluşturma / kayıt UI'sı~~ — **v1.7'de eklendi** (owner, Ayarlar → Kullanıcılar panelinden `POST /users`, §2.14, §11 v1.7). İlk owner hâlâ bootstrap script + `.env` (`BOOTSTRAP_OWNER_USERNAME`) ile terfi eder; self-signup endpoint'i (yetkisiz/anonim kayıt) yoktur.
+- **Settings → Hesap UI bölümü (self-service)** — kullanıcının **kendi** şifresini değiştirdiği veya tüm cihazlardan çıkış yaptığı bir ekran hâlâ yok; karşılık gelen `PATCH /auth/password` ve `POST /auth/logout-everywhere` endpoint'leri de yok (§5.11). *(v1.7: owner panelden başkasının şifresini sıfırlayabiliyor — bkz. §2.14/§5.11 — ama bu self-service değildir.)*
 - **Şifre değişimi audit'ı (`password_changed`)** — login/logout audit **v1.6'da eklendi** (§2.14, §3.7, migration 0236), ama `password_changed` action'ı yoktur çünkü self-service şifre değişimi UI/endpoint'i v1 dışı (§5.11). "Auth audit tümüyle kapsam dışı" ifadesi geçersizdir.
 - **Login rate limit** — `POST /auth/login` rate limit'i **v1.5'te eklendi** (5 başarısız/15dk/IP, `RATE_LIMITED` 429, §2.14). "rate limit yok" ifadesi geçersizdir. Kapsam dışı kalan: per-user / dağıtık (Redis) rate limit store.
 - **Session IP/UA kaydı** (v1.4'te kapsam dışı) — `sessions` tablosunda `user_agent`/`ip` kolonu yok (§3.13). Audit + rate limit gereksinimleri olmadığı için eklenmedi.
@@ -2110,6 +2110,12 @@ V1 kapsamı dışında kalan özellikler:
      - `UnauthorizedError` — geçersiz/expired session veya cookie yok (HTTP 401)
      - `InvalidCredentialsError` — yanlış username/şifre (HTTP 401, message generic — username enumeration koruması)
      - Rate limit — **v1.5'te eklendi**: `POST /auth/login` 5 başarısız/15dk/IP, kod `RATE_LIMITED` (HTTP 429). `express-rate-limit` middleware'i (ayrı AppError sınıfı değil, middleware doğrudan 429 döner). v1.4'teki "kapsam dışı" notu geçersizdir (§2.14, §11 v1.5).
+   - **Kullanıcı yönetimi (v1.7, §2.14/§11 v1.7, yalnız owner):**
+     - `FORBIDDEN` (HTTP 403) — `requireRole`/`requireCan` middleware'i (ayrı AppError sınıfı değil, middleware doğrudan döner); rolün ilgili capability'ye sahip olmaması
+     - `UserNotFoundError` (`USER_NOT_FOUND`, 404)
+     - `UsernameTakenError` (`USERNAME_TAKEN`, 409) — pg unique violation `users_username_key`'den türetilir
+     - `SelfUpdateForbiddenError` (`SELF_UPDATE_FORBIDDEN`, 409) — kendi hesabını pasifleştirme/düşürme denemesi
+     - `LastOwnerError` (`LAST_OWNER`, 409) — son aktif owner'ı pasifleştirme/düşürme denemesi (servis katmanı savunması)
 9. **API disiplini — endpoint listesi:**
 
    **Lessons:**
@@ -2236,7 +2242,41 @@ V1 kapsamı dışında kalan özellikler:
 
 ## 11. Spec ile kod tabanı arasındaki sürüm notları
 
-### v1.6 (mevcut) — Ürün katalogu + operasyonel sertleştirme
+### v1.7 (mevcut) — Rol sistemi (RBAC) Faz 1 + panelden kullanıcı yönetimi
+
+v1.7, §2.14'ün v1.3'ten beri geçerli "tek rol seviyesi: admin" kararını kapatır. `users.role` kolonu (migration 0255) 4 sabit rol tanımlar: `owner` (Geliştirici), `admin` (Yönetici), `instructor` (Yönetici-Eğitmen), `assistant` (Asistan). Bu Faz 1'de owner/admin/instructor **aynı veri erişimine** sahiptir — tek fark kullanıcı yönetimi ekranının ve deploy-test özelliklerinin (push test) owner'a kilitli olması. Asistan rolünün backend/UI kısıtları (finansal KPI, hareketler, pazaryeri, ayarlar gizlenmesi) başta ayrı faza bırakılmıştı; **sonradan (2026-07-07) kodlandı** — bkz. aşağıdaki "Asistan kısıtları (Faz 2 + 3)" bölümü.
+
+**Şema değişiklikleri (migration 0255–0256):**
+- `users.role` (0255, `users_role_check` CHECK, DEFAULT `'admin'` — mevcut kullanıcılar otomatik admin olur).
+- Audit CHECK genişlemesi (0256): `user_created`, `user_updated`, `user_role_changed`, `user_password_reset`, `user_deactivated`, `user_reactivated` — 0252'deki listeyi korur + genişletir.
+
+**Kod değişiklikleri:**
+- `backend/src/auth/permissions.ts` — `Role` tipi + `can(role, capability)` capability haritası. `backend/src/server/middleware/requireRole.ts` — `requireRole(...)`/`requireCan(...)` middleware.
+- `AuthUser.role` her istekte `users` satırından **canlı** okunur (`validateSession`) — panelden rol değişikliği yeniden girişsiz, bir sonraki istekte geçerli olur. `GET /auth/me` yanıtına `role` eklendi.
+- Yeni `backend/src/services/users.service.ts` + `POST/GET/PATCH /users`, `POST /users/:id/password` (owner-only). Korkuluklar: kendi hesabını devre dışı bırakma/düşürme yasak (`SELF_UPDATE_FORBIDDEN`), son aktif owner'ı düşürme/pasifleştirme yasak (`LAST_OWNER`, servis katmanı savunması), pasifleştirme oturumları anında düşürür.
+- Web Push test kapısı (`PUSH_TEST_USERNAME` env) kaldırıldı; yerine `requireCan("push.test")` (owner-only) geçti — §9'daki "push notification kapsam dışı" maddesi kısmen güncellendi (altyapı zaten vardı, sadece env-tabanlı kapı role-tabanlıya döndü).
+- Owner terfisi `BOOTSTRAP_OWNER_USERNAME` env'i ile bootstrap script'inde yapılır (idempotent `UPDATE ... WHERE role <> 'owner'`, asla düşürmez); Railway'de elle SQL çalıştırma gerekmez.
+- Frontend: Ayarlar → **Kullanıcılar** sekmesi (yalnız owner'a görünür, web+mobil ortak `settings.jsx`) — kullanıcı listesi, yeni kullanıcı, rol değiştirme, aktif/pasif, şifre sıfırlama.
+
+**Spec değişiklikleri (kod kapsama alındı):**
+- §2.14 satır 210: "Tek rol seviyesi: admin" kaldırıldı → 4 sabit rol.
+- §2.14 "Şifre değişimi (UI)" satırı: sysadmin DB'den manuel yerine **owner panelden** `POST /users/:id/password` ile sıfırlar (self-service hâlâ yok).
+- §2.14 "Hesap oluşturma UI" satırı: bootstrap script yerine **owner panelden** `POST /users` ile oluşturur (ilk owner hâlâ bootstrap'tan gelir).
+- §9: "Rol bazlı yetkilendirme (RBAC)" maddesi kaldırıldı → yerine "Asistan rolünün UI/backend kısıtları" maddesi eklendi (bkz. altta).
+
+**Why:** Stüdyoyu owner ve iki Yönetici seviyesindeki kullanıcı (biri Yönetici, biri Yönetici-Eğitmen) birlikte yönetiyor; gelecekte bir asistan işe alınacak. Railway'e her kullanıcı işlemi için manuel müdahale sürdürülebilir değildi — panelden kullanıcı yönetimi + rol altyapısı bu ihtiyacı kapatır. Asistan kısıtları önce ayrı faza bırakıldı, sonra bildirim zamanlayıcısının (Faz 4) ardından kodlandı (bkz. altta).
+
+#### Asistan kısıtları (Faz 2 + 3, 2026-07-07)
+
+Faz 1'in bıraktığı asistan kısıtları tamamlandı. owner/admin/instructor davranışı **değişmedi** (hepsi aynı erişim); yalnız `assistant` kısıtlanır.
+
+**Faz 2 — backend (capability haritası + kapılar):** `permissions.ts` CAPABILITIES'e 6 yetki eklendi, hepsi `['owner','admin','instructor']` (assistant hariç): `finance.read`, `movements.read`, `marketplace.manage`, `settings.manage`, `students.delete`, `audit.read`. Yerleşim: mount-seviyesi `requireCan` (`/movements`, `/channels`, `/trendyol`, `/mapping`, `/audit-logs` — tamamen bloklu); route-seviyesi (PATCH `/settings`, eğitmen/ders türü yazma + `/lesson-types/:id/prices`, `DELETE /students/:id`, `GET /kpi/finance-flow`). **Field-stripping:** `GET /kpi/weekly` finansal alanları (ciro/tahsilat/alacak/aktif kredi/aylık-30g) soyar, operasyonel (ders sayısı/doluluk/öğrenci sayıları) kalır; `GET /kpi/occupancy-flow` kova başına ders cirosunu (`revenue`) soyar, doluluk %/iptal/roster kalır. GET `/settings`, `/instructors`, `/lesson-types` açık (takvim saatleri + ders oluşturma dropdown'ları asistana gerekli). Smoke: `38-assistant-restrictions.ts`.
+
+**Faz 3 — frontend (kozmetik gizleme, güvenlik sunucuda):** capability aynası `src/permissions.js` (`can`/`canSeePage`/`PAGE_CAPABILITY`) + `src/currentUser.jsx` React context (`useCan`). Sayfa koruması: kısıtlı sayfaya düşülürse ana sayfaya yönlendirilir (`main.jsx`, web+mobil). Gizlenenler — **web:** Sidebar (katalog/siparişler/hareketler/ayarlar), ana sayfa finansal KPI kartları (3 düzen), öğrenci "Tamamen sil", Ürünler'de pazaryeri (Eşleştirme + modal kanal linkleri). **Mobil:** Menü (Finans/Hareketler/Ayarlar/Katalog), ana sayfa finans hero + bekleyen tahsilat + sipariş modülü, öğrenci "Sil", Doluluk ekranında "Ders cirosu" KPI'si. Asistanın gördüğü: ders/yoklama, öğrenci liste-profil (silme hariç), ödeme alma, ürün satışı+kataloğu, takvim, doluluk (ciro gizli).
+
+**Kullanıcı kararları:** Doluluk·Yoklama asistana **açık** (ciro gizli); ürün kataloğu yönetimi **açık**; öğrenci kalıcı silme **kapalı**.
+
+### v1.6 (önceki) — Ürün katalogu + operasyonel sertleştirme
 
 v1.6, en büyük tek revizyon: ürün satışını "serbest tutar" modelinden **kalemli (cart) + kalıcı ürün katalogu** modeline taşıdı ve aynı pakette birikmiş operasyonel borçları kapattı (eğitmen CRUD, hareketler akışı, öğrenci hard-delete, auth audit, ayar temizliği, profil A11). Spec gövdesinde 0233 için zaten "v1.6" deniyordu ama §11 girişi yoktu — bu sürüm notu o boşluğu da kapatır.
 
