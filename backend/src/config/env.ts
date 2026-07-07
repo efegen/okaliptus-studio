@@ -43,12 +43,11 @@ export const env = {
   timeZone: process.env.TZ ?? "Europe/Istanbul",
   allowedOrigins,
 
-  // Web Push (PWA bildirimleri) — yalnız test amaçlı. Anahtarlar yoksa özellik
-  // kapalı kalır. pushTestUsername boş ise /push/* uçları herkese 403 döner.
+  // Web Push (PWA bildirimleri) — yalnız test amaçlı, owner rolüne kilitli
+  // (requireCan("push.test")). Anahtarlar yoksa özellik tamamen kapalı.
   vapidPublicKey: process.env.VAPID_PUBLIC_KEY ?? "",
   vapidPrivateKey: process.env.VAPID_PRIVATE_KEY ?? "",
-  vapidSubject: process.env.VAPID_SUBJECT ?? "mailto:froxefe@gmail.com",
-  pushTestUsername: (process.env.PUSH_TEST_USERNAME ?? "").trim(),
+  vapidSubject: process.env.VAPID_SUBJECT ?? "mailto:you@example.com",
 
   // Trendyol Marketplace (yalnız sipariş OKUMA, read-only). Anahtarlar yoksa
   // özellik kapalı kalır (preview ucu "yapılandırılmamış" hatası döner).
@@ -68,4 +67,9 @@ export const env = {
   // sınırı YOK — PROD'da doğrulandı). İadeler siparişten haftalar sonra açılabildiği
   // için orders penceresinden geniştir; her tick yeniden görülür (idempotent).
   trendyolClaimWindowDays: Math.min(180, Math.max(1, Number.parseInt(process.env.TRENDYOL_CLAIM_WINDOW_DAYS ?? "60", 10) || 60)),
+
+  // Etap 4 — bildirim zamanlayıcısı (ders hatırlatma + durum dürtmesi + yeni
+  // sipariş). 0 → zamanlayıcı hiç başlamaz. VAPID anahtarları yoksa da başlamaz
+  // (bkz. notification-scheduler.ts).
+  notificationSchedulerMs: Math.max(0, Number.parseInt(process.env.NOTIFICATION_SCHEDULER_MS ?? "60000", 10) || 0),
 } as const;

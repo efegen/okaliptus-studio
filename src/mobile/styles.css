@@ -458,6 +458,8 @@
 
   /* iki mini pill: bekleyen tahsilat + haftalık doluluk */
   .mh-pills { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 12px 0 8px; }
+  /* Finansal kart gizliyken (asistan) doluluk kartı tek başına tam genişlik. */
+  .mh-pills-solo { grid-template-columns: 1fr; }
   .mh-pill {
     background: var(--surface); border: 1px solid var(--line);
     border-radius: 20px; padding: 13px 15px;
@@ -6584,6 +6586,8 @@
 .fax-hero-sub { font-size: 12px; color: var(--ink-3); margin-top: 5px; display: block; }
 
 .fax-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+/* Asistanda ders cirosu kartı gizli → iptal kartı tek başına tam genişlik. */
+.fax-pair-solo { grid-template-columns: 1fr; }
 .fax-mini { background: var(--surface); border: 1px solid var(--line-2); border-radius: 14px; padding: 13px 14px; display: flex; flex-direction: column; gap: 2px; position: relative; overflow: hidden; }
 .fax-mini::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: var(--accent); }
 .fax-mini-blue::before { background: var(--blue); }

@@ -4,6 +4,7 @@ import { env } from "./config/env.js";
 import { closeDatabaseConnection, verifyDatabaseConnection } from "./db/connection.js";
 import { createApp } from "./server/app.js";
 import { startOrderPoller, stopOrderPoller } from "./services/trendyol/order-poller.js";
+import { startNotificationScheduler, stopNotificationScheduler } from "./services/notification-scheduler.js";
 
 async function main(): Promise<void> {
   await verifyDatabaseConnection();
@@ -22,10 +23,15 @@ async function main(): Promise<void> {
   // içinde kontrol edilir; gerekmiyorsa sessizce başlamaz).
   startOrderPoller();
 
+  // Etap 4: bildirim zamanlayıcısı (ders hatırlatma + durum dürtmesi + yeni
+  // sipariş). VAPID + interval kendi içinde kontrol edilir.
+  startNotificationScheduler();
+
   const shutdown = async (signal: string) => {
     console.log(`${signal} received, shutting down.`);
 
     stopOrderPoller();
+    stopNotificationScheduler();
     server.close(async () => {
       await closeDatabaseConnection();
       process.exit(0);

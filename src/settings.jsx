@@ -3,6 +3,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { getSettings, updateSettings, getPushConfig } from './api';
 import { queryKeys } from './hooks/queryKeys';
 import { ActivityPanel } from './settings-activity';
+import { UsersPanel } from './settings-users';
+import { NotificationsPanel } from './settings-notifications';
 import { enablePush, disablePush, sendTest, getCurrentSubscription } from './push';
 
 const HOUR_OPTIONS = Array.from({ length: 25 }, (_, i) => i);
@@ -40,7 +42,7 @@ function NumInput({ value, onChange, min = 0, max, unit }) {
   );
 }
 
-function Toggle({ checked, onChange, label, disabled }) {
+export function Toggle({ checked, onChange, label, disabled }) {
   return (
     <button
       type="button"
@@ -122,9 +124,13 @@ function SatSlider({ value, onChange, onReset }) {
   );
 }
 
-// Web Push test kartı — yalnız PUSH_TEST_USERNAME hesabına render edilir.
-// getPushConfig() 403 dönerse (yetkisiz hesap) kart hiç gösterilmez.
-function PushTestCard() {
+// Web Push kartı — Etap 4: /push/config artık her role açık (yalnız /push/test
+// owner'a kilitli), bu yüzden abone ol/çık kısmı HERKESE görünür (instructor
+// rolü ders hatırlatmalarını almak için burada abone olur); "test bildirimi
+// gönder" butonları yalnız owner'a (deploy-test özelliği). getPushConfig()
+// 503 dönerse (VAPID yapılandırılmamış) kart tamamen gizlenir.
+function PushTestCard({ currentUser }) {
+  const isOwner = currentUser?.role === 'owner';
   const [allowed, setAllowed] = React.useState(null); // null=kontrol ediliyor, false=gizli, true=görünür
   const [subscribed, setSubscribed] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
@@ -200,18 +206,19 @@ function PushTestCard() {
   }
 
   return (
-    <Section title="Bildirim Testi">
+    <Section title={isOwner ? 'Bildirim Testi' : 'Bildirimler'}>
       <div className="stg-push">
         <p className="stg-push-note">
-          Bu test bildirimi yalnızca <strong>bu hesaba ait bu cihaza</strong> gönderilir;
-          diğer kullanıcılara gitmez.
+          {isOwner
+            ? <>Bu test bildirimi yalnızca <strong>bu hesaba ait bu cihaza</strong> gönderilir; diğer kullanıcılara gitmez.</>
+            : 'Ders hatırlatmalarını ve durum bildirimlerini bu cihazda almak için aç.'}
         </p>
         <div className="stg-push-btns">
           {!subscribed ? (
             <button type="button" className="btn btn-primary" disabled={busy} onClick={handleEnable}>
               Bu cihazda bildirimleri aç
             </button>
-          ) : (
+          ) : isOwner ? (
             <>
               <button type="button" className="btn btn-primary" disabled={busy} onClick={() => handleSend(0)}>
                 Hemen test bildirimi gönder
@@ -219,6 +226,13 @@ function PushTestCard() {
               <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => handleSend(10)}>
                 10 sn sonra gönder (uygulamayı kapat)
               </button>
+              <button type="button" className="btn btn-danger" disabled={busy} onClick={handleDisable}>
+                Bildirimleri kapat
+              </button>
+            </>
+          ) : (
+            <>
+              <span className="stg-push-status">Bildirimler bu cihazda açık.</span>
               <button type="button" className="btn btn-danger" disabled={busy} onClick={handleDisable}>
                 Bildirimleri kapat
               </button>
@@ -240,8 +254,15 @@ function PushTestCard() {
 //  (orders.jsx) gerçek veriyle bunun işini görüyor; ayarlardaki önizleme butonu gereksizdi.
 //  api.js previewTrendyolOrders export'u + backend /trendyol/orders/preview ucu uykuda kaldı.)
 
-export function SettingsPage() {
+export function SettingsPage({ currentUser }) {
+  const isOwner = currentUser?.role === 'owner';
   const [tab, setTab] = React.useState('general');
+
+  // Savunmacı: owner olmayan bir hesap (örn. rolü panelden düşürüldükten
+  // sonra) owner-only sekmelerde takılı kalmasın.
+  React.useEffect(() => {
+    if ((tab === 'users' || tab === 'notifications') && !isOwner) setTab('general');
+  }, [tab, isOwner]);
   const [loading, setLoading] = React.useState(true);
   const [loadError, setLoadError] = React.useState(null);
   const [saved, setSaved] = React.useState(null); // baseline from server
@@ -384,9 +405,29 @@ export function SettingsPage() {
         >
           Aktivite
         </button>
+        {isOwner && (
+          <button
+            type="button"
+            className={'stg-tab' + (tab === 'users' ? ' is-active' : '')}
+            onClick={() => setTab('users')}
+          >
+            Kullanıcılar
+          </button>
+        )}
+        {isOwner && (
+          <button
+            type="button"
+            className={'stg-tab' + (tab === 'notifications' ? ' is-active' : '')}
+            onClick={() => setTab('notifications')}
+          >
+            Bildirimler
+          </button>
+        )}
       </div>
 
       {tab === 'activity' && <ActivityPanel />}
+      {tab === 'users' && isOwner && <UsersPanel currentUser={currentUser} />}
+      {tab === 'notifications' && isOwner && <NotificationsPanel />}
 
       {tab === 'general' && <form onSubmit={handleSave} className="stg-form">
 
@@ -515,7 +556,7 @@ export function SettingsPage() {
 
       </form>}
 
-      {tab === 'general' && <PushTestCard />}
+      {tab === 'general' && <PushTestCard currentUser={currentUser} />}
 
     </div>
   );

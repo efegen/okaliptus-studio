@@ -26,7 +26,10 @@ import { auditRouter } from "./routes/audit.router.js";
 import { calendarEventsRouter } from "./routes/calendar-events.router.js";
 import { movementsRouter } from "./routes/movements.router.js";
 import { pushRouter } from "./routes/push.router.js";
+import { usersRouter } from "./routes/users.router.js";
+import { notificationSettingsRouter } from "./routes/notification-settings.router.js";
 import { requireAuth } from "./middleware/requireAuth.js";
+import { requireCan } from "./middleware/requireRole.js";
 
 export function createApp() {
   const app = express();
@@ -92,21 +95,44 @@ export function createApp() {
   app.use(requireAuth);
 
   // ── Protected resource routers ────────────────────────────────────────────
+  // Asistana AÇIK olanlar (yalnız requireAuth): ders/ödeme/paket/ürün satışı,
+  // ürün kataloğu, takvim, öğrenci (silme hariç), push abonelik.
   app.use("/lessons", lessonsRouter);
   app.use("/payments", paymentsRouter);
   app.use("/packages", packagesRouter);
   app.use("/product-sales", productSalesRouter);
   app.use("/products", productsRouter);
-  app.use("/channels", channelsRouter);
-  app.use("/trendyol", trendyolRouter);
-  app.use("/mapping", mappingRouter);
+
+  // Pazaryeri — asistana tamamen kapalı (okuma dahil). Mount-seviyesi kapı.
+  app.use("/channels", requireCan("marketplace.manage"), channelsRouter);
+  app.use("/trendyol", requireCan("marketplace.manage"), trendyolRouter);
+  app.use("/mapping", requireCan("marketplace.manage"), mappingRouter);
+
+  // KPI — karışık: /weekly + /occupancy-flow rol-bazlı alan soyar,
+  // /finance-flow router içinde requireCan ile sert bloklu (asistan finansal görmez).
   app.use("/kpi", kpiRouter);
+
+  // Ayarlar + katalog — GET açık (takvim saatleri, dropdown'lar), yazma router
+  // içinde settings.manage ile kapılı.
   app.use("/settings", settingsRouter);
   app.use("/instructors", instructorsRouter);
   app.use("/lesson-types", lessonTypesRouter);
-  app.use("/audit-logs", auditRouter);
+
+  // Denetim/etkinlik kayıtları — asistana kapalı (Ayarlar → Etkinlik).
+  app.use("/audit-logs", requireCan("audit.read"), auditRouter);
+
+  app.use("/users", usersRouter);
+
+  // Bildirim ayar modülü — yalnız owner (kim ne bildirim alır, zamanlama, metin,
+  // sessiz saatler). Scheduler bu tablodan okur.
+  app.use("/notification-settings", requireCan("notifications.manage"), notificationSettingsRouter);
+
   app.use("/calendar-events", calendarEventsRouter);
-  app.use("/movements", movementsRouter);
+
+  // Stüdyo geneli hareket akışı (finansal genel bakış) — asistana kapalı.
+  // Öğrenci-bazlı hareketler (/students/:id/movements) ayrı handler, açık kalır.
+  app.use("/movements", requireCan("movements.read"), movementsRouter);
+
   app.use("/push", pushRouter);
   app.use("/students", studentsRouter);
 

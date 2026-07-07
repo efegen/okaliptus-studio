@@ -1,7 +1,7 @@
 import { Router } from "express";
 
 import { env } from "../../config/env.js";
-import { requirePushTester } from "../middleware/requirePushTester.js";
+import { requireCan } from "../middleware/requireRole.js";
 import { sendError } from "../middleware/response.js";
 import { ValidationError } from "../../services/errors.js";
 import {
@@ -13,12 +13,21 @@ import {
 
 export const pushRouter = Router();
 
-// Tüm /push uçları test-kullanıcısı kilidinin arkasında (izolasyon 1. katman).
-pushRouter.use(requirePushTester);
+// /config, /subscribe, /unsubscribe HER ROLE açık (yalnız requireAuth, app.ts'te
+// zaten global) — Etap 4: instructor/admin de kendi cihazında abone olabilmeli ki
+// notification-scheduler'ın gönderdiği bildirimler onlara ulaşsın. Her uç zaten
+// yalnız req.currentUser.id ile scope'lu (saveSubscription/removeSubscription/
+// sendToUser) — çapraz kullanıcı riski yok. Yalnız /test (deploy-test özelliği)
+// owner'a kilitli kalır.
 
 // GET /push/config — frontend'in subscribe için ihtiyaç duyduğu VAPID public key.
-// Aynı zamanda gate görevi görür: 200 dönerse istemci kartı gösterir, 403 ise gizler.
+// Aynı zamanda gate görevi görür: 200 dönerse istemci kartı gösterir, 403/503 ise
+// gizler. VAPID anahtarı yoksa özellik tamamen kapalı (503).
 pushRouter.get("/config", (_req, res) => {
+  if (!env.vapidPublicKey) {
+    res.status(503).json({ error: { code: "PUSH_NOT_CONFIGURED", message: "Push yapılandırılmamış." } });
+    return;
+  }
   res.json({ data: { vapidPublicKey: env.vapidPublicKey } });
 });
 
@@ -61,10 +70,11 @@ pushRouter.post("/unsubscribe", async (req, res) => {
   }
 });
 
-// POST /push/test — İZOLASYON 2. katman: body'de HEDEF YOK. Yalnız çağıranın
-// kendi cihazlarına gönderir. uid istek anında senkron yakalanır; gecikmeli
-// gönderimde bile sabittir → başka kullanıcıya sapma imkânsız.
-pushRouter.post("/test", async (req, res) => {
+// POST /push/test — deploy-test özelliği, owner-only (requireCan). İZOLASYON
+// 2. katman: body'de HEDEF YOK. Yalnız çağıranın kendi cihazlarına gönderir.
+// uid istek anında senkron yakalanır; gecikmeli gönderimde bile sabittir →
+// başka kullanıcıya sapma imkânsız.
+pushRouter.post("/test", requireCan("push.test"), async (req, res) => {
   try {
     const raw = Number((req.body as { delaySeconds?: unknown })?.delaySeconds ?? 0);
     const delaySeconds = Number.isFinite(raw) ? Math.min(60, Math.max(0, Math.trunc(raw))) : 0;
