@@ -82,6 +82,7 @@ export function MobileApp({
   // "Ödeme al" tam sayfası nereden açıldıysa (profil / hareketler) geri/onay
   // sonrası oraya dönsün diye kaynağı tutuyoruz.
   const [paymentReturnPage, setPaymentReturnPage] = React.useState('students');
+  const [calendarNavNonce, setCalendarNavNonce] = React.useState(0);
 
   function openFinance(from) {
     setFinanceFrom(from);
@@ -108,6 +109,9 @@ export function MobileApp({
   }
 
   function handleNavigate(nextPage) {
+    if (nextPage === 'calendar' && page === 'calendar') {
+      setCalendarNavNonce(n => n + 1);
+    }
     setStudentDetailId(null);
     setPage(nextPage);
   }
@@ -286,7 +290,7 @@ export function MobileApp({
       />
     );
   } else if (page === 'calendar') {
-    body = <MobileCalendar />;
+    body = <MobileCalendar navNonce={calendarNavNonce} />;
   } else if (page === 'menu') {
     body = (
       <MobileMenu

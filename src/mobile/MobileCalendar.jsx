@@ -174,7 +174,7 @@ function PlanBlock({ event, onSelect }) {
   );
 }
 
-export function MobileCalendar() {
+export function MobileCalendar({ navNonce = 0 }) {
   const [weekStart, setWeekStart] = React.useState(() => getCurrentMonday());
   const [selectedSession, setSelectedSession] = React.useState(null);
   const [selectedPlan, setSelectedPlan] = React.useState(null);
@@ -336,6 +336,12 @@ export function MobileCalendar() {
     queryClient.invalidateQueries({ queryKey: queryKeys.calendarEvents() });
     if (message) setToast(message);
   }
+
+  React.useEffect(() => {
+    setSelectedSession(null);
+    setSelectedPlan(null);
+    setSlotInfo(null);
+  }, [navNonce]);
 
   const sessionsByDay = React.useMemo(() => {
     const map = Array.from({ length: 7 }, () => []);
