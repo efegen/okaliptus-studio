@@ -41,6 +41,35 @@ async function main() {
     console.log(r.rowCount ? `User created: ${username}` : `User skipped (exists): ${username}`);
   }
 
+  // Owner terfisi: BOOTSTRAP_ADMINS'teki bu kullanıcı adı 'owner' rolüne
+  // yükseltilir. UPDATE idempotent ve tek yönlü (role <> 'owner' koşulu) —
+  // panelden yapılan rol değişikliklerini her bootstrap çalıştığında ezmez,
+  // ve tekrar çalıştırmak owner'ı asla düşürmez.
+  const ownerUsername = process.env.BOOTSTRAP_OWNER_USERNAME?.trim();
+  if (ownerUsername) {
+    const r = await pool.query(
+      `UPDATE users SET role = 'owner' WHERE username = $1 AND role <> 'owner' RETURNING id`,
+      [ownerUsername],
+    );
+    console.log(
+      r.rowCount
+        ? `User promoted to owner: ${ownerUsername}`
+        : `Owner promotion skipped (already owner or not found): ${ownerUsername}`,
+    );
+  } else {
+    console.warn(
+      'Warning: BOOTSTRAP_OWNER_USERNAME is not set — no owner assigned. ' +
+        'The user management panel will have no one able to sign in to it.',
+    );
+  }
+
+  const activeOwners = await pool.query<{ count: string }>(
+    `SELECT count(*)::text AS count FROM users WHERE role = 'owner' AND is_active = true`,
+  );
+  if (Number(activeOwners.rows[0].count) === 0) {
+    console.warn('Warning: no active owner exists. Set BOOTSTRAP_OWNER_USERNAME and re-run bootstrap.');
+  }
+
   // Başlangıç eğitmeni: tek eğitmenli stüdyo için ilk eğitmeni .env'den oku.
   // İsim PII olduğu için koda gömülmez; yalnızca BOOTSTRAP_INSTRUCTOR_NAME'den
   // gelir. Idempotent: aktif bir eğitmen zaten varsa (örn. UI'dan eklenmişse)

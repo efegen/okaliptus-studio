@@ -136,6 +136,32 @@ export class DiscountWouldExceedNetError extends AppError {
   }
 }
 
+export class UserNotFoundError extends AppError {
+  constructor(message = "Kullanıcı bulunamadı.") {
+    super("USER_NOT_FOUND", message, 404);
+  }
+}
+
+export class UsernameTakenError extends AppError {
+  constructor(message = "Bu kullanıcı adı zaten kullanılıyor.") {
+    super("USERNAME_TAKEN", message, 409);
+  }
+}
+
+export class SelfUpdateForbiddenError extends AppError {
+  constructor(message = "Kendi hesabını devre dışı bırakamaz veya rolünü düşüremezsin.") {
+    super("SELF_UPDATE_FORBIDDEN", message, 409);
+  }
+}
+
+export class LastOwnerError extends AppError {
+  constructor(
+    message = "Son aktif Geliştirici hesabı devre dışı bırakılamaz veya rolü değiştirilemez.",
+  ) {
+    super("LAST_OWNER", message, 409);
+  }
+}
+
 type PgLikeError = {
   code?: string;
   constraint?: string;
@@ -186,6 +212,8 @@ export function toServiceError(error: unknown): Error {
       return new DiscountNotAllowedError(
         "Discount cannot be applied to a lesson covered by a prepaid package.",
       );
+    case "users_username_key":
+      return new UsernameTakenError();
     default:
       break;
   }

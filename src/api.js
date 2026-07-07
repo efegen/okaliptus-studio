@@ -628,6 +628,62 @@ export async function getAuditUsers() {
   return payload.data;
 }
 
+// ─── Kullanıcı yönetimi (yalnız owner rolü — 403 diğerlerinde) ───────────────
+
+export async function getUsers() {
+  const payload = await apiGet("/users");
+  if (!Array.isArray(payload?.data)) throw new Error("Kullanıcı listesi alınamadı.");
+  return payload.data;
+}
+
+export async function createUserApi({ username, displayName, password, role }) {
+  const payload = await apiRequest("/users", {
+    method: "POST",
+    body: JSON.stringify({ username, displayName, password, role }),
+  });
+  return ensureMutationResult(payload, "Kullanıcı oluşturulamadı.");
+}
+
+export async function updateUserApi(userId, patch) {
+  const payload = await apiRequest(`/users/${encodeURIComponent(userId)}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+  return ensureMutationResult(payload, "Kullanıcı güncellenemedi.");
+}
+
+export async function resetUserPasswordApi(userId, password) {
+  const payload = await apiRequest(`/users/${encodeURIComponent(userId)}/password`, {
+    method: "POST",
+    body: JSON.stringify({ password }),
+  });
+  return ensureMutationResult(payload, "Şifre sıfırlanamadı.");
+}
+
+// ─── Bildirim ayar modülü (owner-only) ───────────────────────────────────────
+export async function getNotificationSettings() {
+  const payload = await apiGet("/notification-settings");
+  if (!Array.isArray(payload?.data)) throw new Error("Bildirim ayarları alınamadı.");
+  return payload.data;
+}
+
+export async function updateNotificationSettingApi(key, patch) {
+  const payload = await apiRequest(`/notification-settings/${encodeURIComponent(key)}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+  return ensureMutationResult(payload, "Bildirim ayarı kaydedilemedi.");
+}
+
+// Çağıran kullanıcıya (owner) örnek bir test bildirimi gönderir; { sent } döner.
+export async function sendTestNotificationApi(key) {
+  const payload = await apiRequest(`/notification-settings/${encodeURIComponent(key)}/test`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+  return ensureMutationResult(payload, "Test bildirimi gönderilemedi.");
+}
+
 // ─── Movements (stüdyo geneli hareket akışı) ─────────────────────────────────
 
 export async function getMovements({ from, to, type, q, page = 1, limit = 50 } = {}) {

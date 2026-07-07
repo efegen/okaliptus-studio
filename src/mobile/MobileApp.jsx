@@ -303,7 +303,7 @@ export function MobileApp({
       />
     );
   } else if (page === 'settings') {
-    body = <SettingsPage />;
+    body = <SettingsPage currentUser={currentUser} />;
   } else if (page === 'catalog') {
     body = <CatalogPage />;
   } else if (page === 'products') {

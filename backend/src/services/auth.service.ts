@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { pool } from '../db/connection.js';
+import type { Role } from '../auth/permissions.js';
 
 const SESSION_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -11,6 +12,7 @@ export type AuthUser = {
   id: string;
   username: string;
   displayName: string;
+  role: Role;
 };
 
 export async function login(username: string, password: string, ip?: string): Promise<string | null> {
@@ -45,8 +47,11 @@ export async function login(username: string, password: string, ip?: string): Pr
 }
 
 export async function validateSession(token: string): Promise<AuthUser | null> {
+  // role users satırından her istekte canlı okunur — panelden yapılan rol
+  // değişikliği kullanıcının bir sonraki isteğinde geçerli olur, yeniden giriş
+  // gerekmez.
   const result = await pool.query(
-    `SELECT u.id, u.username, u.display_name
+    `SELECT u.id, u.username, u.display_name, u.role
      FROM sessions s
      JOIN users u ON u.id = s.user_id
      WHERE s.token = $1
@@ -71,6 +76,7 @@ export async function validateSession(token: string): Promise<AuthUser | null> {
     id: String(row.id),
     username: row.username as string,
     displayName: row.display_name as string,
+    role: row.role as Role,
   };
 }
 

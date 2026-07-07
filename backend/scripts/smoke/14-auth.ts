@@ -23,6 +23,7 @@
  */
 
 import { login, logout, validateSession } from "../../src/services/auth.service.js";
+import { isRole } from "../../src/auth/permissions.js";
 import { pool } from "../../src/db/connection.js";
 import {
   section,
@@ -73,6 +74,7 @@ async function run(): Promise<void> {
       assertEqual(typeof userA.id, "string", "A: AuthUser.id string");
       assertEqual(userA.username, admin.username, "A: AuthUser.username eşleşiyor");
       assert(typeof userA.displayName === "string", "A: AuthUser.displayName string");
+      assert(isRole(userA.role), `A: AuthUser.role geçerli bir rol (got "${userA.role}")`);
     }
 
     // ─────────────────────────────────────────────────────────────────────────

@@ -78,6 +78,6 @@ authRouter.post('/logout', requireAuth, (req, res) => {
 
 // GET /auth/me
 authRouter.get('/me', requireAuth, (req, res) => {
-  const { id, username, displayName } = req.currentUser;
-  res.json({ data: { id, username, displayName } });
+  const { id, username, displayName, role } = req.currentUser;
+  res.json({ data: { id, username, displayName, role } });
 });
