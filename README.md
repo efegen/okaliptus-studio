@@ -23,22 +23,43 @@ mobile PWA.
 
 ## 📸 Screenshots
 
-> _Drop screenshots into [`docs/screenshots/`](docs/screenshots/) and they'll render here._
-> _Core set — these shells rarely change shape, so keep them current regardless_
-> _of what else is in flux: web home calendar, web student profile, mobile home_
-> _calendar. The rest is a bonus; refresh opportunistically, not on a schedule._
+### Web
 
-**Core**
+<table>
+<tr>
+<td align="center" width="33%">
+<img src="docs/screenshots/home.png" width="100%" alt="Home — weekly calendar">
+<br><sub><b>Home</b> — weekly calendar, KPIs, quick actions</sub>
+</td>
+<td align="center" width="33%">
+<img src="docs/screenshots/student-profile.png" width="100%" alt="Student profile">
+<br><sub><b>Student profile</b> — debt, activity timeline, quick actions</sub>
+</td>
+<td align="center" width="33%">
+<img src="docs/screenshots/mapping.png" width="100%" alt="Marketplace mapping board">
+<br><sub><b>Marketplace mapping</b> — Trendyol ↔ internal catalog wiring</sub>
+</td>
+</tr>
+</table>
 
-| Home (weekly calendar) | Student profile | Mobile home (calendar) |
-|:---:|:---:|:---:|
-| ![Home](docs/screenshots/home.png) | ![Student profile](docs/screenshots/student-profile.png) | ![Mobile home](docs/screenshots/mobile-home.png) |
+### Mobile
 
-**Additional** _(optional — update whenever convenient)_
-
-| Marketplace mapping | Mobile orders | Finance · Flow |
-|:---:|:---:|:---:|
-| ![Mapping](docs/screenshots/mapping.png) | ![Mobile orders](docs/screenshots/mobile-orders.png) | ![Finance flow](docs/screenshots/finance-flow.png) |
+<table>
+<tr>
+<td align="center" width="33%">
+<img src="docs/screenshots/mobile-home.png" width="100%" alt="Mobile home">
+<br><sub><b>Home</b> — today's lessons, pending collections, occupancy</sub>
+</td>
+<td align="center" width="33%">
+<img src="docs/screenshots/finance-flow.png" width="100%" alt="Mobile Finance · Flow screen">
+<br><sub><b>Finance · Flow</b> — weekly/monthly income by source</sub>
+</td>
+<td align="center" width="33%">
+<img src="docs/screenshots/mobile-orders.png" width="100%" alt="Mobile marketplace orders">
+<br><sub><b>Marketplace orders</b> — live Trendyol/Hepsiburada order list</sub>
+</td>
+</tr>
+</table>
 
 ---
 
