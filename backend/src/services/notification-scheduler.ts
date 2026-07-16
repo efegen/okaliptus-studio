@@ -178,11 +178,17 @@ export async function checkStaleLessonStatus(preloaded?: LoadedNotificationConfi
 }
 
 // ─── Yeni Trendyol siparişi (sipariş bazlı dedup, satır bazlı değil) ───────
-// Kaynak channel_order_sightings (migration 0259) — salt-okunur sipariş listesi
-// akışından (orders.service.ts, marketplace_sync_enabled) beslenir. BİLEREK
-// channel_order_lines KULLANILMIYOR: o yalnız stok senkronu (marketplace_orders_enabled,
-// varsayılan kapalı + UI'dan gizli) açıkken dolar — ona bağlı kalsaydı stok fazı
-// kapalıyken "yeni sipariş" bildirimi hiç tetiklenmezdi.
+// Kaynak channel_order_sightings (migration 0259/0260) — salt-okunur sipariş
+// listesi akışından (orders.service.ts, marketplace_sync_enabled) beslenir.
+// BİLEREK channel_order_lines KULLANILMIYOR: o yalnız stok senkronu
+// (marketplace_orders_enabled, varsayılan kapalı + UI'dan gizli) açıkken dolar —
+// ona bağlı kalsaydı stok fazı kapalıyken "yeni sipariş" bildirimi hiç tetiklenmezdi.
+//
+// order_date (siparişin GERÇEK Trendyol tarihi) filtrelenir — first_seen_at
+// (bizim ne zaman gördüğümüz) DEĞİL. İlk sürümde first_seen_at kullanılmıştı ve
+// tablo ilk dolduğunda (veya ileride geniş/eski bir pencere ilk kez çekildiğinde)
+// TÜM geçmiş siparişler tek seferde "yeni" sayılıp gerçek kullanıcılara bildirim
+// denendi — bu olaydan sonra düzeltildi (bkz. 0260 migration notu).
 export async function checkNewChannelOrders(preloaded?: LoadedNotificationConfig): Promise<void> {
   try {
     const cfg = preloaded ?? (await loadNotificationConfig());
@@ -192,12 +198,15 @@ export async function checkNewChannelOrders(preloaded?: LoadedNotificationConfig
     // Atomik claim: yalnız DAHA ÖNCE notified_channel_orders'ta olmayan
     // (channel, order_number) çiftleri INSERT edilir ve RETURNING ile geri
     // gelir — tam olarak "yeni bildirilecek sipariş" kümesi, race-safe.
+    // order_date IS NULL olan satırlar (nadir/savunma) asla claim edilmez —
+    // gerçekten yeni olduğu doğrulanamayan bir siparişi bildirmemek, yanlışlıkla
+    // eskiyi bildirmekten daha güvenli.
     const { rows: claimed } = await pool.query<{ channel: string; order_number: string }>(
       `INSERT INTO notified_channel_orders (channel, order_number)
        SELECT DISTINCT channel, order_number
          FROM channel_order_sightings
         WHERE channel = 'trendyol'
-          AND first_seen_at > now() - interval '1 day'
+          AND order_date > now() - interval '1 day'
        ON CONFLICT (channel, order_number) DO NOTHING
        RETURNING channel, order_number`,
     );

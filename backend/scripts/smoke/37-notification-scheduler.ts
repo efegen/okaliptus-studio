@@ -23,6 +23,8 @@
  *      salt-okunur sipariş listesi defteri — migration 0259) sipariş eklenince
  *      → 1 notified_channel_orders kaydı; tekrar çağrıda hâlâ 1 (dedup);
  *      farklı order_number eklenince 2. kayıt oluşur.
+ *   E. Regresyon: order_date 30 gün önce olan ama şimdi görülen (first_seen_at
+ *      yeni) sipariş bildirilMEZ — 0260 migration'ın düzelttiği canlı olay.
  *
  * ÇALIŞTIRMA:
  *   cd backend && npx tsx scripts/smoke/37-notification-scheduler.ts
@@ -164,8 +166,8 @@ async function run(): Promise<void> {
     const orderNumber1 = `SMOKE37-${Date.now()}-1`;
     orderNumbers.push(orderNumber1);
     await pool.query(
-      `INSERT INTO channel_order_sightings (channel, order_number, customer_name, first_seen_at)
-       VALUES ('trendyol', $1, 'Test Müşteri', now())`,
+      `INSERT INTO channel_order_sightings (channel, order_number, customer_name, first_seen_at, order_date)
+       VALUES ('trendyol', $1, 'Test Müşteri', now(), now())`,
       [orderNumber1],
     );
 
@@ -186,8 +188,8 @@ async function run(): Promise<void> {
     const orderNumber2 = `SMOKE37-${Date.now()}-2`;
     orderNumbers.push(orderNumber2);
     await pool.query(
-      `INSERT INTO channel_order_sightings (channel, order_number, customer_name, first_seen_at)
-       VALUES ('trendyol', $1, 'Başka Müşteri', now())`,
+      `INSERT INTO channel_order_sightings (channel, order_number, customer_name, first_seen_at, order_date)
+       VALUES ('trendyol', $1, 'Başka Müşteri', now(), now())`,
       [orderNumber2],
     );
     await checkNewChannelOrders();
@@ -197,6 +199,29 @@ async function run(): Promise<void> {
       [orderNumbers],
     );
     assertEqual(countAll.rows[0].c, "2", "D: farklı sipariş için ayrı kayıt oluştu (global kilit yok)");
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // E. Regresyon — REGRESYON (2026-07-16 canlı olay): first_seen_at YENİ ama
+    // order_date ESKİ (ör. geniş bir pencere ilk kez çekildiğinde geçmiş
+    // siparişler first_seen_at=now() alır) → BİLDİRİLMEMELİ. İlk sürüm bunu
+    // first_seen_at'e göre filtrelediği için 55 eski sipariş tek seferde 3 gerçek
+    // kullanıcıya bildirilmeye çalışılmıştı.
+    // ─────────────────────────────────────────────────────────────────────────
+    section("E — Regresyon: yeni görülen ama ESKİ tarihli sipariş bildirilmez");
+
+    const orderNumberOld = `SMOKE37-${Date.now()}-old`;
+    orderNumbers.push(orderNumberOld);
+    await pool.query(
+      `INSERT INTO channel_order_sightings (channel, order_number, customer_name, first_seen_at, order_date)
+       VALUES ('trendyol', $1, 'Eski Müşteri', now(), now() - interval '30 days')`,
+      [orderNumberOld],
+    );
+    await checkNewChannelOrders();
+    const countOld = await pool.query<{ c: string }>(
+      `SELECT COUNT(*)::text AS c FROM notified_channel_orders WHERE channel = 'trendyol' AND order_number = $1`,
+      [orderNumberOld],
+    );
+    assertEqual(countOld.rows[0].c, "0", "E: 30 gün önce verilmiş sipariş, yeni görülse bile bildirilmedi");
 
     ok("\nSMOKE 37 — BİLDİRİM ZAMANLAYICISI TÜM ADIMLAR BAŞARILI ✓");
   } finally {

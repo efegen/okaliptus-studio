@@ -419,6 +419,12 @@ function storeSnapshot(key: string, result: OrdersListResult): void {
 // besler — stok senkronundan (channel_order_lines, marketplace_orders_enabled)
 // BAĞIMSIZ: bu ekran zaten salt-okunur canlı sipariş verisini çekmiş durumda,
 // onu ayrıca "gördük" diye damgalıyoruz. Hata sızmaz (bildirim gecikir, ekran etkilenmez).
+//
+// order_date = Trendyol'un GERÇEK sipariş tarihi (bizim ne zaman gördüğümüz değil).
+// checkNewChannelOrders BUNA göre filtreler — first_seen_at'e göre değil — çünkü
+// first_seen_at yalnız "defterimiz ilk kez ne zaman doldu"yu yansıtır: geniş/eski
+// bir pencere ilk kez çekildiğinde tüm geçmiş siparişler first_seen_at=now() alır
+// ve YANLIŞLIKLA "yeni" sayılır (bkz. 0260 migration notu — canlı olayda yaşandı).
 async function recordOrderSightings(result: OrdersListResult): Promise<void> {
   if (result.orders.length === 0) return;
   try {
@@ -426,11 +432,11 @@ async function recordOrderSightings(result: OrdersListResult): Promise<void> {
     const rows: string[] = [];
     let i = 1;
     for (const o of result.orders) {
-      params.push("trendyol", o.orderNumber, o.buyerName);
-      rows.push(`($${i++}, $${i++}, $${i++})`);
+      params.push("trendyol", o.orderNumber, o.buyerName, o.orderDate !== null ? new Date(o.orderDate) : null);
+      rows.push(`($${i++}, $${i++}, $${i++}, $${i++})`);
     }
     await pool.query(
-      `INSERT INTO channel_order_sightings (channel, order_number, customer_name)
+      `INSERT INTO channel_order_sightings (channel, order_number, customer_name, order_date)
        VALUES ${rows.join(", ")}
        ON CONFLICT (channel, order_number) DO NOTHING`,
       params,
