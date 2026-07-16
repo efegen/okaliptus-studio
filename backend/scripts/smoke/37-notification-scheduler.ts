@@ -19,9 +19,10 @@
  *      çakışma durumunda) için 10dk hatırlatması HİÇ bastırılmadan claim edilir.
  *   C. Bayat ders durumu: starts_at=-3saat, status='scheduled' → tek seferlik
  *      dürtme; ikinci çağrıda değişmez.
- *   D. Yeni sipariş: aynı order_number'da 2 satır (farklı line_id) → yalnız
- *      1 notified_channel_orders kaydı (sipariş-bazlı, satır-bazlı değil);
- *      tekrar çağrıda hâlâ 1; farklı order_number eklenince 2. kayıt oluşur.
+ *   D. Yeni sipariş: channel_order_sightings'e (stok senkronundan BAĞIMSIZ,
+ *      salt-okunur sipariş listesi defteri — migration 0259) sipariş eklenince
+ *      → 1 notified_channel_orders kaydı; tekrar çağrıda hâlâ 1 (dedup);
+ *      farklı order_number eklenince 2. kayıt oluşur.
  *
  * ÇALIŞTIRMA:
  *   cd backend && npx tsx scripts/smoke/37-notification-scheduler.ts
@@ -156,18 +157,15 @@ async function run(): Promise<void> {
     assertEqual(afterC2.rows[0].status_nudge_sent_at, stampC1, "C: ikinci çağrıda değişmedi (tek seferlik)");
 
     // ─────────────────────────────────────────────────────────────────────────
-    // D. Yeni sipariş — sipariş bazlı dedup (satır bazlı değil)
+    // D. Yeni sipariş — stok senkronundan bağımsız, sightings kaynaklı dedup
     // ─────────────────────────────────────────────────────────────────────────
-    section("D — Yeni sipariş: 2 satırlı tek sipariş → yalnız 1 bildirim kaydı");
+    section("D — Yeni sipariş: sightings kaydı → 1 bildirim kaydı (stoktan bağımsız)");
 
     const orderNumber1 = `SMOKE37-${Date.now()}-1`;
     orderNumbers.push(orderNumber1);
     await pool.query(
-      `INSERT INTO channel_order_lines
-         (channel, order_number, line_id, quantity, state, customer_name, order_date, first_seen_at)
-       VALUES
-         ('trendyol', $1, '1', 1, 'counted', 'Test Müşteri', now(), now()),
-         ('trendyol', $1, '2', 1, 'counted', 'Test Müşteri', now(), now())`,
+      `INSERT INTO channel_order_sightings (channel, order_number, customer_name, first_seen_at)
+       VALUES ('trendyol', $1, 'Test Müşteri', now())`,
       [orderNumber1],
     );
 
@@ -176,7 +174,7 @@ async function run(): Promise<void> {
       `SELECT COUNT(*)::text AS c FROM notified_channel_orders WHERE channel = 'trendyol' AND order_number = $1`,
       [orderNumber1],
     );
-    assertEqual(countD1.rows[0].c, "1", "D: 2 satırlı sipariş için yalnız 1 bildirim kaydı");
+    assertEqual(countD1.rows[0].c, "1", "D: görülen sipariş için 1 bildirim kaydı");
 
     await checkNewChannelOrders();
     const countD2 = await pool.query<{ c: string }>(
@@ -188,9 +186,8 @@ async function run(): Promise<void> {
     const orderNumber2 = `SMOKE37-${Date.now()}-2`;
     orderNumbers.push(orderNumber2);
     await pool.query(
-      `INSERT INTO channel_order_lines
-         (channel, order_number, line_id, quantity, state, customer_name, order_date, first_seen_at)
-       VALUES ('trendyol', $1, '1', 1, 'counted', 'Başka Müşteri', now(), now())`,
+      `INSERT INTO channel_order_sightings (channel, order_number, customer_name, first_seen_at)
+       VALUES ('trendyol', $1, 'Başka Müşteri', now())`,
       [orderNumber2],
     );
     await checkNewChannelOrders();
@@ -208,7 +205,7 @@ async function run(): Promise<void> {
         .query(`DELETE FROM notified_channel_orders WHERE channel = 'trendyol' AND order_number = ANY($1::text[])`, [orderNumbers])
         .catch(() => undefined);
       await pool
-        .query(`DELETE FROM channel_order_lines WHERE channel = 'trendyol' AND order_number = ANY($1::text[])`, [orderNumbers])
+        .query(`DELETE FROM channel_order_sightings WHERE channel = 'trendyol' AND order_number = ANY($1::text[])`, [orderNumbers])
         .catch(() => undefined);
     }
     // cleanupSmoke, studentIds'e bağlı TÜM lessons satırlarını (A/B/C senaryolarında

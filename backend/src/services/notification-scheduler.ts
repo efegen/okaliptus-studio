@@ -178,6 +178,11 @@ export async function checkStaleLessonStatus(preloaded?: LoadedNotificationConfi
 }
 
 // ─── Yeni Trendyol siparişi (sipariş bazlı dedup, satır bazlı değil) ───────
+// Kaynak channel_order_sightings (migration 0259) — salt-okunur sipariş listesi
+// akışından (orders.service.ts, marketplace_sync_enabled) beslenir. BİLEREK
+// channel_order_lines KULLANILMIYOR: o yalnız stok senkronu (marketplace_orders_enabled,
+// varsayılan kapalı + UI'dan gizli) açıkken dolar — ona bağlı kalsaydı stok fazı
+// kapalıyken "yeni sipariş" bildirimi hiç tetiklenmezdi.
 export async function checkNewChannelOrders(preloaded?: LoadedNotificationConfig): Promise<void> {
   try {
     const cfg = preloaded ?? (await loadNotificationConfig());
@@ -190,7 +195,7 @@ export async function checkNewChannelOrders(preloaded?: LoadedNotificationConfig
     const { rows: claimed } = await pool.query<{ channel: string; order_number: string }>(
       `INSERT INTO notified_channel_orders (channel, order_number)
        SELECT DISTINCT channel, order_number
-         FROM channel_order_lines
+         FROM channel_order_sightings
         WHERE channel = 'trendyol'
           AND first_seen_at > now() - interval '1 day'
        ON CONFLICT (channel, order_number) DO NOTHING
@@ -203,9 +208,7 @@ export async function checkNewChannelOrders(preloaded?: LoadedNotificationConfig
 
     for (const { channel, order_number } of claimed) {
       const detail = await pool.query<{ customer_name: string | null }>(
-        `SELECT MIN(customer_name) AS customer_name
-           FROM channel_order_lines
-          WHERE channel = $1 AND order_number = $2`,
+        `SELECT customer_name FROM channel_order_sightings WHERE channel = $1 AND order_number = $2`,
         [channel, order_number],
       );
       const customerName = detail.rows[0]?.customer_name ?? "Bilinmeyen müşteri";

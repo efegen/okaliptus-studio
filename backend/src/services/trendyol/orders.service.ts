@@ -415,6 +415,31 @@ function storeSnapshot(key: string, result: OrdersListResult): void {
   }
 }
 
+// "Yeni sipariş" bildirimini (notification-scheduler.ts checkNewChannelOrders)
+// besler — stok senkronundan (channel_order_lines, marketplace_orders_enabled)
+// BAĞIMSIZ: bu ekran zaten salt-okunur canlı sipariş verisini çekmiş durumda,
+// onu ayrıca "gördük" diye damgalıyoruz. Hata sızmaz (bildirim gecikir, ekran etkilenmez).
+async function recordOrderSightings(result: OrdersListResult): Promise<void> {
+  if (result.orders.length === 0) return;
+  try {
+    const params: unknown[] = [];
+    const rows: string[] = [];
+    let i = 1;
+    for (const o of result.orders) {
+      params.push("trendyol", o.orderNumber, o.buyerName);
+      rows.push(`($${i++}, $${i++}, $${i++})`);
+    }
+    await pool.query(
+      `INSERT INTO channel_order_sightings (channel, order_number, customer_name)
+       VALUES ${rows.join(", ")}
+       ON CONFLICT (channel, order_number) DO NOTHING`,
+      params,
+    );
+  } catch (err) {
+    console.error("[trendyol-orders] sipariş görülme kaydı hatası:", err instanceof Error ? err.message : err);
+  }
+}
+
 async function collectPages(
   fetchOrders: (params: GetOrdersParams) => Promise<TrendyolOrdersResponse>,
   base: GetOrdersParams,
@@ -518,6 +543,7 @@ async function revalidateSnapshot(key: string, params: OrdersListParams): Promis
   try {
     const fresh = await fetchOrdersListLive(params, defaultGetOrders);
     storeSnapshot(key, fresh);
+    void recordOrderSightings(fresh);
   } catch (err) {
     if (cur) cur.refreshing = false; // eski snapshot kalsın (bayat ama veri)
     console.error("[trendyol-orders] snapshot tazeleme hatası:", err instanceof Error ? err.message : err);
@@ -568,6 +594,7 @@ export async function listTrendyolOrders(
   try {
     const fresh = await fetchOrdersListLive(params, defaultGetOrders);
     storeSnapshot(key, fresh);
+    void recordOrderSightings(fresh);
     return fresh;
   } catch (err) {
     // force tazeleme başarısız ama elde eski snapshot varsa onu göster (hata yerine veri).
