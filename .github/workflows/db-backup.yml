@@ -45,13 +45,28 @@ jobs:
           STAMP="$(date -u +%Y%m%d-%H%M%S)"
           echo "STAMP=$STAMP" >> "$GITHUB_ENV"
           FILE="okaliptus-$STAMP.dump"
-          # -e DATABASE_URL passes the host secret into the container env (not argv/logs).
-          docker run --rm -e DATABASE_URL postgres:18 \
-            sh -c 'pg_dump "$DATABASE_URL" --format=custom --no-owner --no-privileges' > "$FILE"
-          SIZE=$(stat -c%s "$FILE")
-          echo "Dump size: $SIZE bytes"
-          # Guard against a silent empty/failed dump getting encrypted + uploaded.
-          if [ "$SIZE" -lt 1024 ]; then echo "Dump suspiciously small — aborting."; exit 1; fi
+          # Railway Postgres occasionally drops the connection mid-COPY (a transient server-side
+          # restart/blip, first seen 2026-07-18 dumping the large product_images blob table). A
+          # single blip must not turn the nightly backup red, so retry the dump before giving up.
+          ATTEMPTS=4
+          for i in $(seq 1 "$ATTEMPTS"); do
+            # -e DATABASE_URL passes the host secret into the container env (not argv/logs).
+            if docker run --rm -e DATABASE_URL postgres:18 \
+                 sh -c 'pg_dump "$DATABASE_URL" --format=custom --no-owner --no-privileges' > "$FILE"; then
+              SIZE=$(stat -c%s "$FILE")
+              # Guard against a silent empty/partial dump getting encrypted + uploaded.
+              if [ "$SIZE" -ge 1024 ]; then
+                echo "Dump OK on attempt $i/$ATTEMPTS: $SIZE bytes"
+                break
+              fi
+              echo "Attempt $i/$ATTEMPTS: dump suspiciously small ($SIZE bytes)."
+            else
+              echo "Attempt $i/$ATTEMPTS: pg_dump failed (server likely dropped the connection)."
+            fi
+            if [ "$i" -eq "$ATTEMPTS" ]; then echo "All $ATTEMPTS dump attempts failed — aborting."; exit 1; fi
+            echo "Retrying in 20s..."
+            sleep 20
+          done
           # Encrypt with AES-256. Passphrase via stdin (fd 0) so it never lands in argv/process list.
           printf '%s' "$BACKUP_PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 \
             --symmetric --cipher-algo AES256 -o "$FILE.gpg" "$FILE"
