@@ -506,14 +506,16 @@ function ActionsMenu({ order, onChangeCargo }) {
           role="menu"
           style={{ top: pos.top, right: pos.right }}
         >
-          <button
-            type="button"
-            className="oo-actions-item"
-            role="menuitem"
-            onClick={() => { setOpen(false); if (onChangeCargo) onChangeCargo(order); }}
-          >
-            {I.truck(13)} Kargo Firması Değiştir
-          </button>
+          {order.tab !== 'teslim' ? (
+            <button
+              type="button"
+              className="oo-actions-item"
+              role="menuitem"
+              onClick={() => { setOpen(false); if (onChangeCargo) onChangeCargo(order); }}
+            >
+              {I.truck(13)} Kargo Firması Değiştir
+            </button>
+          ) : null}
           <button type="button" className="oo-actions-item" role="menuitem" disabled title="Yakında">
             {I.statusUpdate(13)} İşleme Al <span className="oo-soon">Yakında</span>
           </button>
