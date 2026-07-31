@@ -6,8 +6,8 @@ import {
   getProductSaleById,
   listProductSalesForStudent,
   softDeleteProductSale,
-  updateProductSale,
 } from "../../services/product-sales.service.js";
+import { requireCan } from "../middleware/requireRole.js";
 import { sendError, parseId } from "../middleware/response.js";
 
 export const productSalesRouter = Router();
@@ -79,25 +79,11 @@ productSalesRouter.get("/:id", async (req, res) => {
   }
 });
 
-// PATCH /product-sales/:id
-productSalesRouter.patch("/:id", async (req, res) => {
-  try {
-    const id = parseId(req.params.id);
-    const { soldAt, totalAmount, note } = req.body as Record<string, unknown>;
-
-    const data = await updateProductSale(id, {
-      ...(soldAt !== undefined && { soldAt: String(soldAt) }),
-      ...(totalAmount !== undefined && { totalAmount: totalAmount as string | number }),
-      ...(note !== undefined && { note: note != null ? String(note) : null }),
-    }, req.currentUser.id);
-    res.json({ data });
-  } catch (err) {
-    sendError(res, err);
-  }
-});
-
-// DELETE /product-sales/:id
-productSalesRouter.delete("/:id", async (req, res) => {
+// DELETE /product-sales/:id — düzeltme yolu, yalnız sales.delete (asistan hariç).
+// Satış silinince düşülen stok defterden geri okunup iade edilir (servis katmanı).
+// (PATCH /product-sales/:id kaldırıldı: kısmi düzenleme snapshot invariantını ve
+//  overpayment korumasını deliyordu; düzeltme modeli = sil + yeniden oluştur.)
+productSalesRouter.delete("/:id", requireCan("sales.delete"), async (req, res) => {
   try {
     const id = parseId(req.params.id);
     await softDeleteProductSale(id, req.currentUser.id);

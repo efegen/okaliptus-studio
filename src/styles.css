@@ -5659,6 +5659,7 @@ input, select { font-family: inherit; }
 
 /* Undo confirm */
 .act-undo-btn { font-size: 12px; align-self: flex-start; }
+.act-undo-reason { font-size: 12px; color: var(--ink-4); margin: 0; line-height: 1.45; }
 .act-confirm  { display: flex; flex-direction: column; gap: 8px; }
 .act-confirm-msg { font-size: 13px; color: var(--ink-2); margin: 0; }
 .act-confirm-btns { display: flex; gap: 8px; }

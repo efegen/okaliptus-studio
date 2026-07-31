@@ -7,6 +7,7 @@ import {
   getPaymentById,
 } from "../../services/payments.service.js";
 import type { PaymentTargetType } from "../../services/shared.js";
+import { requireCan } from "../middleware/requireRole.js";
 import { sendError, parseId } from "../middleware/response.js";
 
 export const paymentsRouter = Router();
@@ -43,8 +44,8 @@ paymentsRouter.get("/:id", async (req, res) => {
   }
 });
 
-// DELETE /payments/:id
-paymentsRouter.delete("/:id", async (req, res) => {
+// DELETE /payments/:id — düzeltme yolu, yalnız payments.delete (asistan hariç).
+paymentsRouter.delete("/:id", requireCan("payments.delete"), async (req, res) => {
   try {
     const id = parseId(req.params.id);
     const data = await deletePayment(id, req.currentUser.id);

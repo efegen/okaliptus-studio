@@ -536,6 +536,9 @@ export async function updateStudent(
 //   prepaid_packages → students.
 // (payments lessons/sales/packages'a; lessons packages'a; product_sales
 //  opsiyonel lessons'a referans verir — hepsi bu sırayla çözülür.)
+// stock_movements.related_sale_id product_sales'e referans verir ama FK'si
+//  ON DELETE SET NULL (migration 0261) → product_sales silinince hareket defterde
+//  kalır, bağ null'lanır; on_hand değişmez. Bu yüzden burada ayrı adım gerekmez.
 //
 // Tek kalan iz audit_logs olduğundan, silinen kayıtların özetini note'a yazarız.
 export async function hardDeleteStudent(

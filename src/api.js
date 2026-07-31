@@ -429,6 +429,17 @@ export async function deletePayment(paymentId) {
   return ensureMutationResult(payload, "Ödeme silinemedi.");
 }
 
+// Yanlış girilen bir ürün satışını geri alır (soft-delete; kayıt audit'te kalır).
+// Stok takibi açıksa düşülen stok defterden geri okunup iade edilir (backend).
+// Tahsil edilmiş satış silinemez (backend 409 DELETE_CONFLICT → önce ödemeyi sil).
+// NOT: bu uç `{ data: null }` döndürür; ensureMutationResult null'da throw ettiği
+// için KULLANILMAZ — hata zaten apiRequest içinden err.message/err.code ile fırlar.
+export async function deleteProductSale(saleId) {
+  await apiRequest(`/product-sales/${encodeURIComponent(saleId)}`, {
+    method: "DELETE",
+  });
+}
+
 export async function createLesson({
   studentId,
   startsAt,

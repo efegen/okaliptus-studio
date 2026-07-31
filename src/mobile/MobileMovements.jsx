@@ -8,7 +8,7 @@ import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { Drawer } from 'vaul';
 import { Icon, Avatar } from '../layout';
 import { fmtTL } from '../data';
-import { getMovements, getProductSale } from '../api';
+import { getMovements, getProductSale, deletePayment, deleteProductSale } from '../api';
 import { queryKeys } from '../hooks/queryKeys';
 import {
   money,
@@ -29,7 +29,7 @@ function getMobilePaletteRoot() {
   return document.getElementById('mobile-palette-root');
 }
 
-export function MobileMovements({ onOpenStudent, onOpenPayment }) {
+export function MobileMovements({ onOpenStudent, onOpenPayment, onDeleted }) {
   const [type, setType] = React.useState('all');
   const [datePreset, setDatePreset] = React.useState('month');
   const [search, setSearch] = React.useState('');
@@ -162,6 +162,7 @@ export function MobileMovements({ onOpenStudent, onOpenPayment }) {
         onClose={() => setDetailRow(null)}
         onOpenStudent={(id) => { setDetailRow(null); onOpenStudent(String(id)); }}
         onOpenPayment={(student) => { setDetailRow(null); onOpenPayment(student); }}
+        onDeleted={(kind, saleId) => { setDetailRow(null); onDeleted?.(kind, saleId); }}
       />
     </div>
   );
@@ -243,7 +244,7 @@ function MobileMvSkeleton() {
   );
 }
 
-function MobileMovementDetailSheet({ row, onClose, onOpenStudent, onOpenPayment }) {
+function MobileMovementDetailSheet({ row, onClose, onOpenStudent, onOpenPayment, onDeleted }) {
   const portalContainer = React.useMemo(getMobilePaletteRoot, []);
   return (
     <Drawer.Root
@@ -260,6 +261,7 @@ function MobileMovementDetailSheet({ row, onClose, onOpenStudent, onOpenPayment 
               row={row}
               onOpenStudent={onOpenStudent}
               onOpenPayment={onOpenPayment}
+              onDeleted={onDeleted}
             />
           ) : (
             <Drawer.Title className="mobile-mvd-sronly">İşlem detayı</Drawer.Title>
@@ -270,7 +272,7 @@ function MobileMovementDetailSheet({ row, onClose, onOpenStudent, onOpenPayment 
   );
 }
 
-function MobileMovementDetailBody({ row, onOpenStudent, onOpenPayment }) {
+function MobileMovementDetailBody({ row, onOpenStudent, onOpenPayment, onDeleted }) {
   const m = describeMovement(row);
   const d = row.details || {};
   const { date, time } = fmtDateParts(row.occurred_at);
@@ -293,6 +295,43 @@ function MobileMovementDetailBody({ row, onOpenStudent, onOpenPayment }) {
   const [showAllItems, setShowAllItems] = React.useState(false);
   const collapsible = items.length > 5;
   const visibleItems = collapsible && !showAllItems ? items.slice(0, 4) : items;
+
+  // Düzeltme (silme): web movements.jsx ile aynı guard'lar.
+  // Ödeme: pakete bağlı olmayan tahsilatlar. Satış: yalnız tahsil edilmemiş
+  // (ödenmişse backend 409 → butonu gizle). confirm: null | 'payment' | 'sale'.
+  const canDeletePayment =
+    row.kind === 'payment' && d.target !== 'package' &&
+    typeof row.id === 'string' && row.id.startsWith('pay-');
+  const paymentId = canDeletePayment ? row.id.slice(4) : null;
+  const canDeleteSale = row.kind === 'product_sale' && !!saleId && money(d.paid_amount) < 0.01;
+
+  const [confirm, setConfirm] = React.useState(null);
+  const [deleting, setDeleting] = React.useState(false);
+  const [deleteError, setDeleteError] = React.useState(null);
+
+  async function handleDeletePayment() {
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await deletePayment(paymentId);
+      onDeleted?.('payment');
+    } catch (e) {
+      setDeleteError(e?.message || 'Ödeme silinemedi.');
+      setDeleting(false);
+    }
+  }
+
+  async function handleDeleteSale() {
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await deleteProductSale(saleId);
+      onDeleted?.('sale', saleId);
+    } catch (e) {
+      setDeleteError(e?.message || 'Ürün satışı silinemedi.');
+      setDeleting(false);
+    }
+  }
 
   return (
     <div className="mobile-mvd-body">
@@ -394,6 +433,45 @@ function MobileMovementDetailBody({ row, onOpenStudent, onOpenPayment }) {
         >
           Tahsilat al · {fmtTL(remaining)}
         </button>
+      )}
+
+      {(canDeletePayment || canDeleteSale) && confirm === null && (
+        <button
+          type="button"
+          className="mobile-mvd-danger"
+          onClick={() => setConfirm(canDeletePayment ? 'payment' : 'sale')}
+        >
+          {canDeletePayment ? 'Bu tahsilatı sil' : 'Bu satışı sil'}
+        </button>
+      )}
+
+      {confirm !== null && (
+        <div className="mobile-mvd-del-confirm">
+          <p className="mobile-mvd-del-warn">
+            {confirm === 'payment'
+              ? 'Bu tahsilat kaydı geri alınacak. Öğrencinin borcu bu tutar kadar yeniden açılır. Nakit iadesi gerekiyorsa elden yapılır. Sonra doğru tutarı yeni bir tahsilat olarak girebilirsiniz.'
+              : 'Bu ürün satışı geri alınacak. Öğrencinin borcu düşer ve stok takibi açıksa düşülen stok iade edilir. Yanlış öğrenci/ürün girildiyse silip yeniden ekleyin.'}
+          </p>
+          {deleteError && <div className="mobile-mvd-error" role="alert">{deleteError}</div>}
+          <div className="mobile-mvd-del-actions">
+            <button
+              type="button"
+              className="mobile-mvd-del-ghost"
+              onClick={() => { setConfirm(null); setDeleteError(null); }}
+              disabled={deleting}
+            >
+              Vazgeç
+            </button>
+            <button
+              type="button"
+              className="mobile-mvd-del-danger"
+              onClick={confirm === 'payment' ? handleDeletePayment : handleDeleteSale}
+              disabled={deleting}
+            >
+              {deleting ? 'Siliniyor…' : 'Evet, sil'}
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

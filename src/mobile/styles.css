@@ -6515,6 +6515,34 @@
 }
 .mobile-mvd-collect:active { filter: brightness(0.95); }
 
+/* Düzeltme (silme) — ödeme/satış geri alma; movements detay sheet'i içinde */
+.mobile-mvd-danger {
+  width: 100%; min-height: 48px; border: 1px solid oklch(0.65 0.20 20);
+  border-radius: 14px; background: transparent; color: oklch(0.50 0.22 20);
+  font-size: 15px; font-weight: 700; cursor: pointer; margin-top: 2px;
+}
+.mobile-mvd-danger:active { background: color-mix(in oklch, oklch(0.65 0.20 20) 10%, transparent); }
+.mobile-mvd-del-confirm {
+  display: flex; flex-direction: column; gap: 10px; margin-top: 2px;
+  padding: 13px; border: 1px solid var(--line); border-radius: 14px; background: var(--bg-2);
+}
+.mobile-mvd-del-warn { font-size: 13.5px; line-height: 1.45; color: var(--ink-2); margin: 0; }
+.mobile-mvd-error {
+  padding: 10px 12px; border-radius: 10px; font-size: 13px;
+  background: color-mix(in oklch, var(--warn, #c44) 12%, transparent); color: var(--warn, #c44);
+}
+.mobile-mvd-del-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.mobile-mvd-del-ghost,
+.mobile-mvd-del-danger {
+  min-height: 48px; border-radius: 12px; font-size: 15px; font-weight: 700; cursor: pointer;
+}
+.mobile-mvd-del-ghost { border: 1px solid var(--ink-4); background: transparent; color: var(--ink); }
+.mobile-mvd-del-ghost:active { background: var(--surface-2); }
+.mobile-mvd-del-danger { border: 0; background: oklch(0.55 0.22 20); color: #fff; }
+.mobile-mvd-del-danger:active { filter: brightness(0.95); }
+.mobile-mvd-del-ghost:disabled,
+.mobile-mvd-del-danger:disabled { opacity: 0.5; cursor: not-allowed; }
+
 /* Ödeme alıcısı seçici — mobil dokunma boyutları (sheet'ler #mobile-palette-root içine render olur) */
 #mobile-palette-root .rbp { gap: 12px; }
 #mobile-palette-root .rbp-select {

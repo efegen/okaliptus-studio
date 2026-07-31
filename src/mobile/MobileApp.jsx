@@ -304,6 +304,13 @@ export function MobileApp({
       <MobileMovements
         onOpenStudent={(id) => { setStudentDetailId(id); setPage('students'); }}
         onOpenPayment={handleProfilePayment}
+        onDeleted={(kind, saleId) => {
+          invalidateAfterMutation(kind);
+          // Satış silme stok da değiştirir; satışın kalem cache'ini de düşür.
+          queryClient.invalidateQueries({ queryKey: ['products'] });
+          queryClient.invalidateQueries({ queryKey: ['product'] });
+          if (saleId) queryClient.removeQueries({ queryKey: ['productSale', saleId] });
+        }}
       />
     );
   } else if (page === 'settings') {

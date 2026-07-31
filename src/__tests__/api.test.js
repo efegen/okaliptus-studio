@@ -74,4 +74,21 @@ describe("apiRequest", () => {
     fetch.mockResolvedValueOnce(jsonResponse({}));
     await expect(api.getMe()).rejects.toThrow(/kullanıcı bilgisi/i);
   });
+
+  // deleteProductSale, backend'in { data: null } yanıtına RAĞMEN başarılı olmalı.
+  // ensureMutationResult kullanılsaydı null'da throw ederdi (regresyon koruması).
+  it("deleteProductSale resolves on { data: null } (no ensureMutationResult trap)", async () => {
+    fetch.mockResolvedValueOnce(jsonResponse({ data: null }));
+    await expect(api.deleteProductSale("42")).resolves.toBeUndefined();
+    expect(fetch.mock.calls[0][0]).toMatch(/\/product-sales\/42$/);
+    expect(fetch.mock.calls[0][1]?.method).toBe("DELETE");
+  });
+
+  // 409 DELETE_CONFLICT (tahsil edilmiş satış) → err.code taşınmalı.
+  it("deleteProductSale rejects with code on 409 DELETE_CONFLICT", async () => {
+    fetch.mockResolvedValueOnce(
+      jsonResponse({ error: { code: "DELETE_CONFLICT", message: "Bağlı ödeme var." } }, 409),
+    );
+    await expect(api.deleteProductSale("42")).rejects.toMatchObject({ code: "DELETE_CONFLICT" });
+  });
 });

@@ -8,6 +8,7 @@ import {
   listStudentPackageStatuses,
 } from "../../services/packages.service.js";
 import type { PaymentSource } from "../../services/shared.js";
+import { requireCan } from "../middleware/requireRole.js";
 import { sendError, parseId } from "../middleware/response.js";
 
 export const packagesRouter = Router();
@@ -46,8 +47,8 @@ packagesRouter.get("/:id", async (req, res) => {
   }
 });
 
-// DELETE /packages/:id
-packagesRouter.delete("/:id", async (req, res) => {
+// DELETE /packages/:id — düzeltme yolu, yalnız packages.delete (asistan hariç).
+packagesRouter.delete("/:id", requireCan("packages.delete"), async (req, res) => {
   try {
     const id = parseId(req.params.id);
     const data = await deletePrepaidPackage(id, req.currentUser.id);

@@ -14,6 +14,9 @@ const CAPABILITIES = {
   'settings.manage': ['owner', 'admin', 'instructor'],
   'students.delete': ['owner', 'admin', 'instructor'],
   'audit.read': ['owner', 'admin', 'instructor'],
+  'payments.delete': ['owner', 'admin', 'instructor'],
+  'sales.delete': ['owner', 'admin', 'instructor'],
+  'packages.delete': ['owner', 'admin', 'instructor'],
 };
 
 // Rol verilen yetkiye sahip mi? Rol tanımsız/bilinmeyense false (en kısıtlı).

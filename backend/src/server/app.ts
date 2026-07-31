@@ -97,6 +97,8 @@ export function createApp() {
   // ── Protected resource routers ────────────────────────────────────────────
   // Asistana AÇIK olanlar (yalnız requireAuth): ders/ödeme/paket/ürün satışı,
   // ürün kataloğu, takvim, öğrenci (silme hariç), push abonelik.
+  // İSTİSNA: bu router'ların DELETE'leri (payments/packages/product-sales) düzeltme
+  // yolu → route-seviyesi requireCan("*.delete") ile asistana kapalı; POST/GET açık.
   app.use("/lessons", lessonsRouter);
   app.use("/payments", paymentsRouter);
   app.use("/packages", packagesRouter);

@@ -8,7 +8,7 @@ import React from 'react';
 import { useInfiniteQuery, useQueryClient, useQuery } from '@tanstack/react-query';
 import { fmtTL } from './data';
 import { Icon, Avatar } from './layout';
-import { getMovements, getStudentLessons, getStudentProductSales, getProductSale, deletePayment } from './api';
+import { getMovements, getStudentLessons, getStudentProductSales, getProductSale, deletePayment, deleteProductSale } from './api';
 import { ReceivePaymentModal } from './students';
 import { queryKeys } from './hooks/queryKeys';
 
@@ -323,6 +323,21 @@ export function MovementsPage({ onOpenStudent }) {
     qc.invalidateQueries({ queryKey: ['student'] });
   }
 
+  // Ürün satışı silindi → borç düşer + (stok takibi açıksa) stok iade edilir.
+  // Ödeme silmenin aynı seti + stok (products/product) + silinen satışın kalem
+  // cache'ini düşür.
+  function handleSaleDeleted(saleId) {
+    closeDetail();
+    qc.invalidateQueries({ queryKey: ['movements'] });
+    qc.invalidateQueries({ queryKey: queryKeys.weeklyKpi() });
+    qc.invalidateQueries({ queryKey: queryKeys.debtors() });
+    qc.invalidateQueries({ queryKey: queryKeys.studentsKpi() });
+    qc.invalidateQueries({ queryKey: ['student'] });
+    qc.invalidateQueries({ queryKey: ['products'] });
+    qc.invalidateQueries({ queryKey: ['product'] });
+    if (saleId) qc.removeQueries({ queryKey: ['productSale', saleId] });
+  }
+
   return (
     <div className="mv-page">
       <div className="mv-head">
@@ -453,6 +468,7 @@ export function MovementsPage({ onOpenStudent }) {
           onOpenStudent={goToStudent}
           onCollect={() => startCollect(detailRow)}
           onDeleted={handlePaymentDeleted}
+          onSaleDeleted={handleSaleDeleted}
         />
       )}
 
@@ -519,7 +535,7 @@ function MovementRow({ row, onSelect }) {
   );
 }
 
-function MovementDetailModal({ row, collecting, collectError, onClose, onOpenStudent, onCollect, onDeleted }) {
+function MovementDetailModal({ row, collecting, collectError, onClose, onOpenStudent, onCollect, onDeleted, onSaleDeleted }) {
   React.useEffect(() => {
     function onKey(e) { if (e.key === 'Escape') onClose(); }
     document.addEventListener('keydown', onKey);
@@ -564,6 +580,24 @@ function MovementDetailModal({ row, collecting, collectError, onClose, onOpenStu
   const saleId = row.kind === 'product_sale'
     ? (d.sale_id ?? (typeof row.id === 'string' && row.id.startsWith('sale-') ? row.id.slice(5) : null))
     : null;
+
+  // Satış silme: yalnız TAHSİL EDİLMEMİŞ satışlarda. Tahsil edilmişse backend 409
+  // atar (önce ödemeyi sil) — o yüzden butonu da gizleriz (ödeme silmedeki
+  // "backend'de korumalı → UI'da da gizle" felsefesi). Aynı satırda "Tahsilat al"
+  // da çıkabilir (ödenmemiş satış hem tahsil edilebilir hem düzeltme için silinebilir).
+  const canDeleteSale = row.kind === 'product_sale' && !!saleId && money(d.paid_amount) < 0.01;
+
+  async function handleDeleteSale() {
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await deleteProductSale(saleId);
+      onSaleDeleted(saleId);
+    } catch (e) {
+      setDeleteError(e?.message || 'Ürün satışı silinemedi.');
+      setDeleting(false);
+    }
+  }
   const saleQuery = useQuery({
     queryKey: ['productSale', saleId],
     queryFn: () => getProductSale(saleId),
@@ -680,7 +714,7 @@ function MovementDetailModal({ row, collecting, collectError, onClose, onOpenStu
           )}
         </div>
 
-        {(canCollect || collectError || canDeletePayment) && (
+        {(canCollect || collectError || canDeletePayment || canDeleteSale) && (
           <div className="mvd-actions">
             {collectError && <div className="mvd-error">{collectError}</div>}
             {canCollect && (
@@ -719,6 +753,44 @@ function MovementDetailModal({ row, collecting, collectError, onClose, onOpenStu
                     type="button"
                     className="btn btn-primary lm-btn-danger"
                     onClick={handleDelete}
+                    disabled={deleting}
+                  >
+                    {deleting ? 'Siliniyor…' : 'Evet, sil'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {canDeleteSale && !confirmDelete && (
+              <button
+                type="button"
+                className="btn btn-ghost lm-btn-danger btn-block"
+                onClick={() => setConfirmDelete(true)}
+              >
+                Bu satışı sil
+              </button>
+            )}
+
+            {canDeleteSale && confirmDelete && (
+              <div className="mvd-del-confirm">
+                <p className="mvd-del-warn">
+                  Bu ürün satışı geri alınacak. Öğrencinin borcu düşer ve stok takibi açıksa
+                  düşülen stok iade edilir. Yanlış öğrenci/ürün girildiyse silip yeniden ekleyin.
+                </p>
+                {deleteError && <div className="mvd-error">{deleteError}</div>}
+                <div className="mvd-del-actions">
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    onClick={() => { setConfirmDelete(false); setDeleteError(null); }}
+                    disabled={deleting}
+                  >
+                    Vazgeç
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary lm-btn-danger"
+                    onClick={handleDeleteSale}
                     disabled={deleting}
                   >
                     {deleting ? 'Siliniyor…' : 'Evet, sil'}

@@ -31,7 +31,7 @@ import {
   type EntityId,
   type MoneyInput,
 } from "./shared.js";
-import { isStockTrackingEnabled, recordSaleStockMovements } from "./stock.service.js";
+import { isStockTrackingEnabled, recordSaleStockMovements, reverseSaleStockMovements } from "./stock.service.js";
 
 type ProductSaleRow = {
   id: string;
@@ -112,12 +112,6 @@ export type CreateProductSaleInput = {
   // NULL bırakılırsa standalone (ders dışı) satıştır.
   lessonId?: EntityId | null;
   actorUserId?: number | string | null;
-};
-
-export type UpdateProductSaleInput = {
-  soldAt?: string;
-  totalAmount?: MoneyInput;
-  note?: string | null;
 };
 
 export async function getProductSaleById(
@@ -395,74 +389,11 @@ export async function createProductSale(
   }
 }
 
-export async function updateProductSale(
-  productSaleId: EntityId,
-  input: UpdateProductSaleInput,
-  actorUserId?: number | string | null,
-): Promise<ProductSaleRow> {
-  const client = await pool.connect();
-
-  try {
-    if (Object.keys(input).length === 0) {
-      throw new ValidationError("At least one field is required.");
-    }
-
-    await client.query("BEGIN");
-
-    const currentResult = await client.query<ProductSaleRow>(
-      `SELECT * FROM product_sales WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`,
-      [productSaleId],
-    );
-    const current = currentResult.rows[0];
-    if (!current) throw new ProductSaleNotFoundError();
-
-    const before = { ...current };
-    const sets: string[] = [];
-    const values: unknown[] = [];
-
-    if (input.soldAt !== undefined) {
-      values.push(input.soldAt);
-      sets.push(`sold_at = $${values.length}`);
-    }
-    if (input.totalAmount !== undefined) {
-      values.push(normalizeMoneyInput(input.totalAmount, "totalAmount"));
-      sets.push(`total_amount = $${values.length}`);
-    }
-    if (input.note !== undefined) {
-      values.push(normalizeOptionalText(input.note));
-      sets.push(`note = $${values.length}`);
-    }
-
-    if (sets.length === 0) {
-      await client.query("COMMIT");
-      return current;
-    }
-
-    values.push(String(productSaleId));
-    const updateResult = await client.query<ProductSaleRow>(
-      `UPDATE product_sales SET ${sets.join(", ")} WHERE id = $${values.length} RETURNING *`,
-      values,
-    );
-    const updated = updateResult.rows[0];
-
-    await insertAuditLog(client, {
-      action: "product_sale_updated",
-      entityType: "product_sale",
-      entityId: updated.id,
-      before,
-      after: updated,
-      actorUserId: actorUserId ?? null,
-    });
-
-    await client.query("COMMIT");
-    return updated;
-  } catch (error) {
-    await rollbackQuietly(client);
-    throw toServiceError(error);
-  } finally {
-    client.release();
-  }
-}
+// Not: updateProductSale kaldırıldı (v1.7). Kısmi düzenleme (soldAt/totalAmount/
+// note) tahsil edilmiş satışın tutarını düşürünce fazla ödemeyi sessizce yutuyordu
+// (remaining_debt GREATEST(0, ...) ile klemp) ve student_id/items[] değiştirilemediği
+// için "yanlış öğrenci/ürün" senaryolarını zaten çözmüyordu. Düzeltme modeli tek:
+// sil (softDeleteProductSale) + yeniden oluştur. Frontend'de hiç çağıranı yoktu.
 
 export async function softDeleteProductSale(productSaleId: EntityId, actorUserId?: number | string | null): Promise<void> {
   const client = await pool.connect();
@@ -495,6 +426,15 @@ export async function softDeleteProductSale(productSaleId: EntityId, actorUserId
       `UPDATE product_sales SET deleted_at = now() WHERE id = $1`,
       [productSaleId],
     );
+
+    // Stok iadesi: satışta düşülen deltaları defterden geri okuyup telafi et.
+    // Flag'e bağlanmaz; hareket yoksa (flag kapalıydı / serbest kalem) no-op.
+    // Ödeme guard'ı (yukarıda) tahsil edilmiş satışı zaten reddettiği için burada
+    // yalnız ödenmemiş satışlar geçer — dar ve güvenli yüzey.
+    await reverseSaleStockMovements(client, {
+      saleId: productSaleId,
+      actorUserId: actorUserId ?? null,
+    });
 
     await insertAuditLog(client, {
       action: "product_sale_deleted",

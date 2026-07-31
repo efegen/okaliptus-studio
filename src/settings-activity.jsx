@@ -130,11 +130,25 @@ function DiffView({ before, after }) {
   );
 }
 
-function canUncomplete(entry) {
-  if (entry.action !== 'lesson_status_change') return false;
-  const after = entry.after;
-  if (!after || typeof after !== 'object' || after.status !== 'completed') return false;
-  return new Date(entry.created_at) > new Date(Date.now() - 24 * 60 * 60 * 1000);
+// Bir denetim kaydının "düzeltme" durumu:
+//   { available: true }                 → satır içi "Geri al" butonu (ders uncomplete)
+//   { available: false, reason: '...' } → geri alınamaz; NEDENİNİ göster
+//   null                                → düzeltilebilir bir kayıt değil (bir şey gösterme)
+// Amaç: eskiden geri alınamayan kayıtlarda HİÇBİR şey görünmüyordu → sistem
+// bozukmuş gibi duruyordu. Artık ya buton ya da açıklayıcı yönlendirme çıkar.
+function undoState(entry) {
+  if (entry.action === 'lesson_status_change') {
+    const after = entry.after;
+    if (!after || typeof after !== 'object' || after.status !== 'completed') return null;
+    const within24h = new Date(entry.created_at) > new Date(Date.now() - 24 * 60 * 60 * 1000);
+    return within24h
+      ? { available: true }
+      : { available: false, reason: '24 saatten eski tamamlamalar buradan geri alınamaz. Öğrenci profilinden ödemeyi silip dersi yeniden oluşturun.' };
+  }
+  if (entry.action === 'payment_created' || entry.action === 'product_sale_created') {
+    return { available: false, reason: 'Bu kaydı düzeltmek için Hareketler ekranını kullanın: kaydı silip doğrusunu yeniden girebilirsiniz.' };
+  }
+  return null;
 }
 
 function SkeletonRows() {
@@ -164,7 +178,8 @@ function AuditRow({ entry, onUncompleted }) {
   const [confirming, setConfirming] = React.useState(false);
   const [reverting, setReverting] = React.useState(false);
   const [revertError, setRevertError] = React.useState(null);
-  const showUndo = canUncomplete(entry);
+  const undo = undoState(entry);
+  const showUndo = undo?.available === true;
 
   async function handleUndo() {
     setReverting(true);
@@ -202,6 +217,10 @@ function AuditRow({ entry, onUncompleted }) {
       {expanded && (
         <div className="act-row-detail">
           <DiffView before={entry.before} after={entry.after} />
+
+          {undo && !undo.available && (
+            <p className="act-undo-reason">{undo.reason}</p>
+          )}
 
           {showUndo && !confirming && (
             <button

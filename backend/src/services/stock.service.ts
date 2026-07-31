@@ -136,6 +136,51 @@ export async function recordSaleStockMovements(
   }
 }
 
+// Satış silmede stok iadesi (Faz 1.5+). softDeleteProductSale içinden, mevcut
+// transaction ile çağrılır. recordSaleStockMovements'in tersi.
+//
+// Defteri GERİ OKUR, yeniden patlatmaz: satış anındaki gerçek bileşen deltaları
+// (bundle → bileşen granülerliğinde) related_sale_id ile birlikte zaten kayıtlı.
+// explodeStockDeltas yeniden çağrılsa, satıştan SONRA bundle bileşimi değişmişse
+// yanlış sonuç verirdi — geri okuma bu senaryodan bağışıktır.
+//
+// Flag KONTROLÜ YOK (bilinçli): flag açıkken satış → flag kapatıldı → satış silindi
+// senaryosunda flag'e bağlansaydı defter kalıcı dengesiz kalırdı. Geri okuma zaten
+// flag kapalıyken yapılmış satışta (hiç 'sale' satırı yok) doğal no-op olur.
+//
+// Deadlock önleme: kilitler yazımdan ÖNCE, hedef product_id'lere göre ARTAN SIRADA
+// (recordSaleStockMovements ile aynı sıra; POS + TY senkronu aynı stockLockKey'i
+// kullanır). Ayrı audit YAZILMAZ — satışın product_sale_deleted audit'i kapsar.
+//
+// İnvariant: tam geri alınmış satış için SUM(delta) WHERE related_sale_id = saleId
+// = 0 (order-sync'in applied_delta = 0 "reversed" invariantının ikizi).
+export async function reverseSaleStockMovements(
+  client: PoolClient,
+  input: { saleId: EntityId; actorUserId?: number | string | null },
+): Promise<void> {
+  const originals = await client.query<{ product_id: string; delta: number }>(
+    `SELECT product_id, delta FROM stock_movements
+     WHERE related_sale_id = $1 AND type = 'sale'`,
+    [input.saleId],
+  );
+  if (originals.rows.length === 0) return;
+
+  // Benzersiz hedef product_id'ler, deadlock önleme için artan sırada kilitle.
+  const uniqueIds = Array.from(new Set(originals.rows.map(r => String(r.product_id)))).sort();
+  for (const id of uniqueIds) {
+    await withAdvisoryLock(client, stockLockKey(id));
+  }
+
+  for (const row of originals.rows) {
+    if (Number(row.delta) === 0) continue;
+    await client.query(
+      `INSERT INTO stock_movements (product_id, delta, type, related_sale_id, actor_user_id)
+       VALUES ($1, $2, 'sale_cancel', $3, $4)`,
+      [row.product_id, -Number(row.delta), input.saleId, input.actorUserId ?? null],
+    );
+  }
+}
+
 export type SetStockInput = {
   productId: EntityId;
   newOnHand: number;

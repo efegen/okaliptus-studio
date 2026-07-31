@@ -24,6 +24,12 @@ const CAPABILITIES = {
   'settings.manage': ['owner', 'admin', 'instructor'], // ayarlar + katalog (eğitmen/ders türü) yazma
   'students.delete': ['owner', 'admin', 'instructor'], // öğrenci kalıcı silme
   'audit.read': ['owner', 'admin', 'instructor'], // etkinlik/denetim kayıtları
+  // Düzeltme (yanlış giriş) = sil + yeniden oluştur; yalnız Hareketler ekranından.
+  // movements.read ile aynı roller: "Hareketler'i gören düzeltebilir". Asistan
+  // ödeme ALIR ama silemez (hatasını yöneticiye söyler).
+  'payments.delete': ['owner', 'admin', 'instructor'], // ödeme silme
+  'sales.delete': ['owner', 'admin', 'instructor'], // ürün satışı silme (stok iade edilir)
+  'packages.delete': ['owner', 'admin', 'instructor'], // ön ödemeli paket silme
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Capability = keyof typeof CAPABILITIES;
