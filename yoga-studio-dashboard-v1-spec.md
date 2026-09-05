@@ -2276,6 +2276,15 @@ Faz 1'in bıraktığı asistan kısıtları tamamlandı. owner/admin/instructor 
 
 **Kullanıcı kararları:** Doluluk·Yoklama asistana **açık** (ciro gizli); ürün kataloğu yönetimi **açık**; öğrenci kalıcı silme **kapalı**.
 
+#### Notlar akışı genişletmesi (2026-09-05)
+
+Mobil ana sayfa ve etkinlik detayındaki **Notlar** kısayolları aynı stüdyo geneli akışı açar (0268 → 0270 → 0273). Her rol görebilir ve not/yanıt ekleyebilir; yalnız yazar kendi kaydını düzenleyip soft-delete edebilir. Yanıtlar tek seviyedir. İstemci, bir üst nota birden fazla yanıt geldiğinde yalnız en yeni yanıtı açık gösterir; toplamı belirten düğmeyle tüm yanıtlar genişletilip tekrar daraltılabilir.
+
+- Öğrenci bahsi yazarken `@` ile aranır ve gövdede `@Ad Soyad` biçiminde saklanır; okuma görünümünde `@` gizlenir. Ad tıklanabilir bir profil bağlantısıdır ve geri dönüş Notlar akışına yapılır.
+- Migration `0275_note_reactions_and_images.sql`: `note_reactions` kullanıcı+emoji bazlı toggle kayıtlarını, `note_images` ise not başına tek fotoğrafı ayrı `bytea` satırında tutar. Desteklenen tepkiler `👍 ❤️ 🙌 😂 😮 😢`; aynı tepkiye ikinci dokunuş kaldırır. Görseller WebP/JPEG/PNG ve en fazla 5 MB'dır; istemci en-boy oranını koruyarak en fazla 1600×1600'e sıkıştırır.
+- Liste yanıtı bytes taşımaz; her notta `reactions`, `has_image` ve `image_updated_at` döner. Ek uçlar: `POST /notes/:noteId/reactions` (body `{ emoji }`), `POST /notes/:noteId/image` (ham image body), `GET /notes/:noteId/image` (oturum gerekli, private immutable cache).
+- Reaksiyon sayaçları içerik durumu olarak yalnız mevcutsa gövdenin altında kompakt bir şeritte görünür; `Yanıtla` ve ikon + `Tepki` sabit eylem satırındadır. Not sahibinin `Düzenle`/`Sil` eylemleri sağdaki `•••` menüsündedir. Emoji seçici ve işlem menüsü dışarı dokunma veya Escape ile kapanır. Yeni not composer'ında mobil hatırlatıcı UI prototipi vardır: alt panelde hızlı zamanlar, özel tarih/saat ve çoklu ekip alıcısı; seçim form üzerinde özetlenip düzenlenebilir/kaldırılabilir. Hatırlatıcı kalıcılığı, bildirim zamanlayıcısı ve alıcı API'si bu aşamada bilinçli olarak yoktur; frontend seçimleri not oluşturma isteğine eklemez.
+
 ### v1.6 (önceki) — Ürün katalogu + operasyonel sertleştirme
 
 v1.6, en büyük tek revizyon: ürün satışını "serbest tutar" modelinden **kalemli (cart) + kalıcı ürün katalogu** modeline taşıdı ve aynı pakette birikmiş operasyonel borçları kapattı (eğitmen CRUD, hareketler akışı, öğrenci hard-delete, auth audit, ayar temizliği, profil A11). Spec gövdesinde 0233 için zaten "v1.6" deniyordu ama §11 girişi yoktu — bu sürüm notu o boşluğu da kapatır.
