@@ -28,6 +28,8 @@ import { movementsRouter } from "./routes/movements.router.js";
 import { pushRouter } from "./routes/push.router.js";
 import { usersRouter } from "./routes/users.router.js";
 import { notificationSettingsRouter } from "./routes/notification-settings.router.js";
+import { eventsRouter, listStudentEventBalancesHandler } from "./routes/events.router.js";
+import { notesRouter } from "./routes/notes.router.js";
 import { requireAuth } from "./middleware/requireAuth.js";
 import { requireCan } from "./middleware/requireRole.js";
 
@@ -103,6 +105,15 @@ export function createApp() {
   app.use("/product-sales", productSalesRouter);
   app.use("/products", productsRouter);
 
+  // Etkinlik (stüdyo etkinliği) takibi — tüm roller eşit erişir, gelirleri ana
+  // KPI'dan ayrı tutulur (bkz. events.service.ts başlığı).
+  app.use("/events", eventsRouter);
+
+  // Stüdyo geneli "Notlar" akışı — 0273'te etkinlikten koparıldı (tek genel not
+  // alanı, bkz. notes.service.ts). Tüm roller eşit erişir; düzenleme/silme
+  // yalnız notun yazarına açık (servis katmanında).
+  app.use("/notes", notesRouter);
+
   // Pazaryeri — asistana tamamen kapalı (okuma dahil). Mount-seviyesi kapı.
   app.use("/channels", requireCan("marketplace.manage"), channelsRouter);
   app.use("/trendyol", requireCan("marketplace.manage"), trendyolRouter);
@@ -141,6 +152,7 @@ export function createApp() {
   app.get("/students/:studentId/packages", listStudentPackagesHandler);
   app.get("/students/:studentId/product-sales", listStudentProductSalesHandler);
   app.get("/students/:studentId/movements", listStudentMovementsHandler);
+  app.get("/students/:studentId/events", listStudentEventBalancesHandler);
 
   // ── Catch-all 404 ─────────────────────────────────────────────────────────
   app.use((_req, res) => {

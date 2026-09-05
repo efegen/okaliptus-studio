@@ -104,6 +104,86 @@ export class CalendarEventNotFoundError extends AppError {
   }
 }
 
+export class EventNotFoundError extends AppError {
+  constructor(message = "Event not found.") {
+    super("EVENT_NOT_FOUND", message, 404);
+  }
+}
+
+export class EventParticipantNotFoundError extends AppError {
+  constructor(message = "Event participant not found.") {
+    super("EVENT_PARTICIPANT_NOT_FOUND", message, 404);
+  }
+}
+
+export class EventFeeItemNotFoundError extends AppError {
+  constructor(message = "Event fee item not found.") {
+    super("EVENT_FEE_ITEM_NOT_FOUND", message, 404);
+  }
+}
+
+export class EventVehicleNotFoundError extends AppError {
+  constructor(message = "Event vehicle not found.") {
+    super("EVENT_VEHICLE_NOT_FOUND", message, 404);
+  }
+}
+
+export class DuplicateParticipantError extends AppError {
+  constructor(message = "This student is already on the event's participant list.") {
+    super("DUPLICATE_PARTICIPANT", message, 409);
+  }
+}
+
+export class CompQuotaExceededError extends AppError {
+  constructor(message = "This fee item's complimentary quota is already used up.") {
+    super("COMP_QUOTA_EXCEEDED", message, 409);
+  }
+}
+
+export class VehicleFullError extends AppError {
+  constructor(message = "This vehicle has no free passenger seats left.") {
+    super("VEHICLE_FULL", message, 409);
+  }
+}
+
+export class EventHasPaymentsError extends AppError {
+  constructor(
+    message = "Bu etkinlikte tahsil edilmiş ödeme var; silmeden önce etkinliği iptal edin.",
+  ) {
+    super("EVENT_HAS_PAYMENTS", message, 409);
+  }
+}
+
+export class EventParticipantHasPaymentsError extends AppError {
+  constructor(
+    message = "Bu katılımcının tahsil edilmiş ödemesi var; kaldırılamaz.",
+  ) {
+    super("EVENT_PARTICIPANT_HAS_PAYMENTS", message, 409);
+  }
+}
+
+export class EventParticipantHasGuestsError extends AppError {
+  constructor(
+    message = "Bu kişinin misafirleri var; önce onları kaldırın ya da bağlantısını değiştirin.",
+  ) {
+    super("EVENT_PARTICIPANT_HAS_GUESTS", message, 409);
+  }
+}
+
+// Notlar 0273'te etkinlikten koparıldı (tek genel not alanı) — hata adları da
+// artık etkinlik önekini taşımaz; bkz. notes.service.ts.
+export class NoteNotFoundError extends AppError {
+  constructor(message = "Not bulunamadı.") {
+    super("NOTE_NOT_FOUND", message, 404);
+  }
+}
+
+export class NoteForbiddenError extends AppError {
+  constructor(message = "Yalnızca kendi notunuzu düzenleyebilir veya silebilirsiniz.") {
+    super("NOTE_FORBIDDEN", message, 403);
+  }
+}
+
 export class ValidationError extends AppError {
   constructor(message = "Invalid input.") {
     super("VALIDATION_ERROR", message, 400);
@@ -214,6 +294,8 @@ export function toServiceError(error: unknown): Error {
       );
     case "users_username_key":
       return new UsernameTakenError();
+    case "event_participants_event_id_student_id_key":
+      return new DuplicateParticipantError();
     default:
       break;
   }
