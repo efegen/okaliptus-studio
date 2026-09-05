@@ -35,6 +35,10 @@ function App({ currentUser, onLogout }) {
   const [page, setPage] = React.useState(() => {
     const stored = localStorage.getItem("okaliptus-page");
     if (stored === "instructors" || stored === "lesson-types") return "catalog";
+    // Notlar etkinlikten koparılıp stüdyo geneli tek ekrana dönüştü (bkz.
+    // MobileNotes.jsx); eski 'event-notes' anahtarıyla açık kalmış bir istemci
+    // "Bilinmeyen sayfa"ya düşmesin.
+    if (stored === "event-notes") return "notes";
     return stored || "home";
   });
   const [studentDetailId, setStudentDetailId] = React.useState(null);

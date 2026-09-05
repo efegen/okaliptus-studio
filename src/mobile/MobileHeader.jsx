@@ -10,6 +10,7 @@ const PAGE_TITLES = {
   products: 'Ürünler',
   movements: 'Hareketler',
   menu: 'Menü',
+  events: 'Etkinlikler',
 };
 
 // action (opsiyonel): sağ üstte tek bir ikon-buton render eder.

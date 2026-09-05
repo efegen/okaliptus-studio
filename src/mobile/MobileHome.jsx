@@ -4,7 +4,7 @@ import { MobileHomeView } from './home/MobileHomeView';
 import { MobileAgenda } from './home/MobileAgenda';
 import { useWeeklyKpi, parseNumericValue } from './shared/useWeeklyKpi';
 import { useWeekLessons } from './shared/useWeekLessons';
-import { getSettings, getTrendyolOrdersList } from '../api';
+import { getSettings, getTrendyolOrdersList, getUpcomingEvent } from '../api';
 import { queryKeys } from '../hooks/queryKeys';
 import { can } from '../permissions';
 
@@ -44,13 +44,18 @@ function formatDateLabel(date) {
   return `${wd}, ${rest}`;
 }
 
-export function MobileHome({ user, onLogout, onOpenFinance, onOpenOccupancy, onOpenOrders }) {
+export function MobileHome({ user, onLogout, onOpenFinance, onOpenOccupancy, onOpenOrders, onOpenNotes, onOpenEvent }) {
   // Rol-bazlı görünürlük: asistan finansal kartları (hero + bekleyen tahsilat)
   // ve pazaryeri siparişlerini görmez. Doluluk kartı herkese açık kalır.
   const canSeeFinance = can(user?.role, 'finance.read');
   const canSeeOrders = can(user?.role, 'marketplace.manage');
 
   const { data: kpi, isLoading: kpiLoading } = useWeeklyKpi();
+  const { data: upcomingEvent } = useQuery({
+    queryKey: queryKeys.upcomingEvent(),
+    queryFn: getUpcomingEvent,
+    staleTime: 30 * 1000,
+  });
   const { data: studioSettings } = useQuery({
     queryKey: queryKeys.settings(),
     queryFn: getSettings,
@@ -111,6 +116,7 @@ export function MobileHome({ user, onLogout, onOpenFinance, onOpenOccupancy, onO
         onOpenFinance={onOpenFinance}
         onOpenOccupancy={onOpenOccupancy}
         onOpenOrders={onOpenOrders}
+        onOpenNotes={onOpenNotes}
         collected={collected}
         revenue={revenue}
         collectionRate={collectionRate}
@@ -124,6 +130,8 @@ export function MobileHome({ user, onLogout, onOpenFinance, onOpenOccupancy, onO
         ordersUrgent={ordersUrgent}
         canSeeFinance={canSeeFinance}
         canSeeOrders={canSeeOrders}
+        event={upcomingEvent}
+        onOpenEvent={onOpenEvent}
       />
       <MobileAgenda />
     </>

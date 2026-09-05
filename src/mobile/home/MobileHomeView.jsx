@@ -2,6 +2,80 @@ import React from 'react';
 import { Avatar, Icon } from '../../layout';
 import { fmtTL } from '../../data';
 
+const MONTHS_TR = ['OCA', 'ŞUB', 'MAR', 'NİS', 'MAY', 'HAZ', 'TEM', 'AĞU', 'EYL', 'EKİ', 'KAS', 'ARA'];
+const WEEKDAY_LONG = new Intl.DateTimeFormat('tr-TR', { timeZone: 'Europe/Istanbul', weekday: 'long' });
+const MONTH_LONG = new Intl.DateTimeFormat('tr-TR', { timeZone: 'Europe/Istanbul', day: 'numeric', month: 'long' });
+const TIME_FMT = new Intl.DateTimeFormat('tr-TR', { timeZone: 'Europe/Istanbul', hour: '2-digit', minute: '2-digit' });
+
+function eventCountdownLabel(startsAt) {
+  const days = Math.ceil((new Date(startsAt).getTime() - Date.now()) / 86_400_000);
+  if (days <= 0) return 'BUGÜN';
+  if (days === 1) return 'YARIN';
+  return `${days} GÜN`;
+}
+
+/** Ana sayfa hero'sundaki yaklaşan etkinlik kartı (Canvas-2 "4d"). */
+function EventHeroCard({ event, onOpen }) {
+  const date = new Date(event.starts_at);
+  const day = date.getDate();
+  const month = MONTHS_TR[date.getMonth()];
+  const coming = event.coming;
+  const unsure = event.unsure;
+  const total = event.totalParticipants || 1;
+  const notCounted = Math.max(0, total - coming - unsure);
+
+  return (
+    <button type="button" className="mh-event-card" onClick={() => onOpen(event.id)}>
+      <span className="mh-event-card-bg" aria-hidden="true" />
+      <div className="mh-event-top">
+        <div className="mh-event-datebadge" aria-hidden="true">
+          <span className="mh-event-datebadge-day">{day}</span>
+          <span className="mh-event-datebadge-month">{month}</span>
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p className="mh-event-eyebrow">Yaklaşan etkinlik</p>
+          <p className="mh-event-name">{event.name}</p>
+        </div>
+        <span className="mh-event-countdown">{eventCountdownLabel(event.starts_at)}</span>
+      </div>
+      <p className="mh-event-meta">
+        {WEEKDAY_LONG.format(date)} · {TIME_FMT.format(date)}{event.location ? ` · ${event.location}` : ''}
+      </p>
+      <div className="mh-event-tear" aria-hidden="true">
+        <span className="mh-event-notch mh-event-notch-l" />
+        <span className="mh-event-notch mh-event-notch-r" />
+      </div>
+      <div className="mh-event-bottom">
+        <div className="mh-event-stat-row">
+          <span className="mh-event-stat-num">{coming}</span>
+          <span className="mh-event-stat-label">kişi geliyor</span>
+          <span style={{ flex: 1 }} />
+          {unsure > 0 && <span className="mh-event-stat-unsure">{unsure} belirsiz</span>}
+        </div>
+        <div className="mh-event-bar">
+          <span style={{ flexGrow: coming, flexBasis: 0, background: 'oklch(0.68 0.13 150)' }} />
+          <span style={{ flexGrow: unsure, flexBasis: 0, background: 'oklch(0.78 0.13 78)' }} />
+          <span style={{ flexGrow: notCounted, flexBasis: 0, background: 'oklch(1 0 0 / 0.12)' }} />
+        </div>
+        <div className="mh-event-foot">
+          <span>{event.registeredCount} kayıtlı{event.guestCount > 0 ? ` · +${event.guestCount} misafir` : ''}</span>
+          <span>≈ {fmtTL(event.potentialAmount)}</span>
+        </div>
+      </div>
+    </button>
+  );
+}
+
+function EventHeroEmpty({ onOpen }) {
+  return (
+    <button type="button" className="mh-event-empty" onClick={() => onOpen()}>
+      <Icon.Calendar width="22" height="22" aria-hidden="true" />
+      <span className="mh-event-empty-title">Yaklaşan etkinlik yok</span>
+      <span>Etkinlik oluşturmak için dokunun</span>
+    </button>
+  );
+}
+
 // Türkçe iyelik eki: "%53'ü", "%50'si", "%40'ı" ... Son okunan sözcüğün
 // ünlü uyumuna göre. 0–100 arası yüzdeler için doğru ek üretir.
 function percentSuffix(n) {
@@ -62,20 +136,38 @@ function ProfileMenu({ user, onLogout }) {
  * "B Temel" mobil ana sayfa üst kısmı — başlık + hero (son 30 gün tahsilat) + iki pill.
  * Bugünün dersleri ayrı bir bileşendir (MobileAgenda). Veri MobileHome'dan gelir.
  */
+function HeroScroller({ slideCount, children }) {
+  if (slideCount <= 1) return children;
+
+  return (
+    <div className="mh-hero-scroll">
+      {React.Children.map(children, (child) => <div className="mh-hero-slide">{child}</div>)}
+    </div>
+  );
+}
+
 export function MobileHomeView({
-  dateLabel, headline, user, onLogout, onOpenFinance, onOpenOccupancy, onOpenOrders,
+  dateLabel, headline, user, onLogout, onOpenFinance, onOpenOccupancy, onOpenOrders, onOpenNotes,
   collected = 0, revenue = 0, collectionRate = 0,
   receivable = 0, debtorCount = 0,
   occupancy = 0, plannedLessons = 0, capacity = null,
   kpiLoading = false,
   ordersPending = 0, ordersUrgent = 0,
   canSeeFinance = true, canSeeOrders = true,
+  event = null, onOpenEvent,
 }) {
   const barWidth = Math.max(0, Math.min(100, collectionRate));
   const occupancyTag = capacity != null
     ? `${plannedLessons}/${capacity} ders`
     : `${plannedLessons} ders`;
   const kpiDim = kpiLoading ? ' is-loading' : '';
+  const eventSlide = event
+    ? <EventHeroCard event={event} onOpen={onOpenEvent} />
+    : <EventHeroEmpty onOpen={onOpenEvent} />;
+  // Etkinlik kartı yalnızca yaklaşan/canlı bir etkinlik varken öne (1.
+  // sıraya) geçer; yoksa veya yalnız geçmiş etkinlik varsa (event=null)
+  // "son 30 gün tahsilat" hero'su öne alınır, etkinlik 2. sıraya düşer.
+  const eventFirst = Boolean(event);
 
   return (
     <div className="mobile-home mh-wrap">
@@ -86,6 +178,8 @@ export function MobileHomeView({
         </div>
         <ProfileMenu user={user} onLogout={onLogout} />
       </div>
+
+      {!canSeeFinance && eventSlide}
 
       {canSeeFinance && (() => {
         const heroInner = (
@@ -109,7 +203,7 @@ export function MobileHomeView({
             </div>
           </>
         );
-        return onOpenFinance ? (
+        const financeSlide = onOpenFinance ? (
           <button
             type="button"
             className={`mh-hero mh-hero-btn${kpiDim}`}
@@ -120,6 +214,12 @@ export function MobileHomeView({
           </button>
         ) : (
           <div className={`mh-hero${kpiDim}`}>{heroInner}</div>
+        );
+        return (
+          <HeroScroller slideCount={2}>
+            {eventFirst ? eventSlide : financeSlide}
+            {eventFirst ? financeSlide : eventSlide}
+          </HeroScroller>
         );
       })()}
 
@@ -162,36 +262,51 @@ export function MobileHomeView({
         })()}
       </div>
 
-      {/* Siparişler modülü — tasarım "V3·B · Aciliyet" (Trendyol pazaryeri).
-          KPI pill'lerinin hemen altı, ders akışının üstü. İkonda bildirim
-          noktası + sağda turuncu "bugün kargo" çipi aksiyon gerektiren işi
-          öne çıkarır. Dokununca Pazaryeri Siparişleri ekranını açar. Sayılar
-          şimdilik statik; gerçek sipariş verisine bağlanınca prop'a taşınacak. */}
-      {canSeeOrders && (
-      <div className="mod-wrap">
-        <button type="button" className="mod-row mod-rowu" onClick={onOpenOrders}>
-          <span className="mod-row-icon">
-            <Icon.Box width="19" height="19" aria-hidden="true" />
-            {ordersPending > 0 && <span className="mod-rowu-dot" />}
-          </span>
-          <span className="mod-row-body">
-            <span className="mod-row-title">Siparişler</span>
-            <span className="mod-row-sub">
-              {ordersPending > 0
-                ? `${ordersPending} bekleyen sipariş · Trendyol`
-                : 'Bekleyen sipariş yok · Trendyol'}
+      {/* Modül çifti — KPI pill'lerinin hemen altı, ders akışının üstü.
+          Siparişler tasarımı "V3·B · Aciliyet" (Trendyol pazaryeri): ikonda
+          bildirim noktası + alt metinde turuncu "N acil" vurgusu (24 saat içinde
+          kargoya verilmesi gereken sipariş) aksiyon gerektiren işi öne çıkarır.
+          Yan yana ikinci kutu "Notlar" eklenince tek satırlık geniş satır
+          yerine iki eşit, alçak kutuya (mod-tile) dönüştü. Alt metinler yarım
+          genişlikte tek satıra sığacak kadar kısa tutulmalı (~105px): aciliyet
+          ayrı bir çip rozetiyken metne taşındı, "Bekleyen sipariş yok" da
+          "Sipariş yok"a indi.
+          Siparişler asistana kapalı; o durumda Notlar tek başına tam genişlik
+          kaplar (flex: 1). */}
+      <div className="mod-wrap mod-pair">
+        {canSeeOrders && (
+          <button type="button" className="mod-tile mod-tileu" onClick={onOpenOrders}>
+            <span className="mod-tile-icon">
+              <Icon.Box width="16" height="16" aria-hidden="true" />
+              {ordersPending > 0 && <span className="mod-tileu-dot" />}
             </span>
-          </span>
-          {ordersUrgent > 0 && (
-            <span className="mod-rowu-chip">
-              <Icon.Truck width="13" height="13" aria-hidden="true" />
-              {ordersUrgent} bugün
+            <span className="mod-tile-body">
+              <span className="mod-tile-title">Siparişler</span>
+              <span className="mod-tile-sub">
+                {ordersUrgent > 0 ? (
+                  <>
+                    {ordersPending} bekleyen ·{' '}
+                    <span className="mod-tileu-urgent">{ordersUrgent} acil</span>
+                  </>
+                ) : ordersPending > 0 ? (
+                  `${ordersPending} bekleyen sipariş`
+                ) : (
+                  'Sipariş yok'
+                )}
+              </span>
             </span>
-          )}
-          <span className="mod-row-chev" aria-hidden="true">›</span>
+          </button>
+        )}
+        <button type="button" className="mod-tile" onClick={onOpenNotes}>
+          <span className="mod-tile-icon">
+            <Icon.Edit width="16" height="16" aria-hidden="true" />
+          </span>
+          <span className="mod-tile-body">
+            <span className="mod-tile-title">Notlar</span>
+            <span className="mod-tile-sub">Ekip notları</span>
+          </span>
         </button>
       </div>
-      )}
     </div>
   );
 }

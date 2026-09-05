@@ -87,3 +87,39 @@ export async function compressToSquareWebp(file, options = {}) {
     cleanup?.();
   }
 }
+
+// Not/mesaj fotoğraflarında katalogdaki kare kırpma istenmez. En-boy oranını
+// koruyup yalnız uzun kenarı sınırlar; böylece belge veya dikey telefon fotosu
+// kadraj kaybetmeden, yine küçük bir WebP/JPEG blob'u olarak yüklenir.
+export async function compressToBoundedWebp(file, options = {}) {
+  const maxWidth = options.maxWidth ?? 1600;
+  const maxHeight = options.maxHeight ?? 1600;
+  const quality = options.quality ?? 0.8;
+
+  const { source, width, height, cleanup } = await loadDrawable(file);
+  try {
+    if (!width || !height || !Number.isFinite(width) || !Number.isFinite(height)) {
+      throw new Error('Görsel boyutu okunamadı.');
+    }
+    const scale = Math.min(1, maxWidth / width, maxHeight / height);
+    const targetWidth = Math.max(1, Math.round(width * scale));
+    const targetHeight = Math.max(1, Math.round(height * scale));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Bu tarayıcı görsel sıkıştırmayı desteklemiyor.');
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, targetWidth, targetHeight);
+    ctx.drawImage(source, 0, 0, width, height, 0, 0, targetWidth, targetHeight);
+
+    let blob = await canvasToBlob(canvas, 'image/webp', quality);
+    if (!blob || blob.size === 0) blob = await canvasToBlob(canvas, 'image/jpeg', quality);
+    if (!blob || blob.size === 0) throw new Error('Görsel sıkıştırılamadı.');
+    return blob;
+  } finally {
+    cleanup?.();
+  }
+}

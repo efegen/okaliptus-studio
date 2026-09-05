@@ -12,6 +12,7 @@ const SECTIONS = [
   {
     label: 'Stüdyo',
     items: [
+      { id: 'events', label: 'Etkinlikler', icon: Icon.Calendar, tone: 'sage' },
       { id: 'catalog', label: 'Dersler ve Eğitmenler', icon: Icon.Layers, tone: 'sage' },
       { id: 'products', label: 'Ürünler', icon: Icon.Tag, tone: 'amber' },
     ],

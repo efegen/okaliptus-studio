@@ -1,4 +1,5 @@
 import React from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
   useStudent,
   useStudentLessons,
@@ -6,6 +7,8 @@ import {
   useUpdateStudent,
   useDeleteStudent,
 } from '../hooks/useStudent';
+import { getStudentEventBalances } from '../api';
+import { queryKeys } from '../hooks/queryKeys';
 import {
   fmtTL,
   parseMoney,
@@ -524,7 +527,31 @@ function StatementGroup({ group, children }) {
 
 // ─── Tab content ──────────────────────────────────────────────────────────────
 
-function OverviewTab({ student, lastLesson, months, recent, onOpenLessons }) {
+function EventBalancesCard({ balances }) {
+  const withDebt = balances.filter((b) => Number(b.total_due) - Number(b.total_paid) > 0.01);
+  if (withDebt.length === 0) return null;
+  return (
+    <>
+      <div className="mobile-msp-seclbl">Etkinlikler</div>
+      <div className="mobile-msp-mvlist">
+        {withDebt.map((b) => {
+          const remaining = Number(b.total_due) - Number(b.total_paid);
+          return (
+            <div className="mobile-msp-mvrow" key={b.event_id}>
+              <div className="mobile-msp-mvrow-body">
+                <span className="mobile-msp-mvrow-title">{b.event_name}</span>
+                <span className="mobile-msp-mvrow-meta">{fmtShortDate(b.starts_at)} · stüdyo borcundan ayrı</span>
+              </div>
+              <span className="mobile-msp-mvrow-amt open">{fmtTL(remaining)}</span>
+            </div>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+function OverviewTab({ student, lastLesson, months, recent, onOpenLessons, eventBalances = [] }) {
   const phone = student.phone ? formatPhoneTr(student.phone) : null;
   const birthday = student.birthday ? fmtShortDate(student.birthday) : null;
   const joined = fmtJoinedDate(student.joined_at);
@@ -560,6 +587,8 @@ function OverviewTab({ student, lastLesson, months, recent, onOpenLessons }) {
       ) : (
         <div className="mobile-msp-empty">Henüz hareket yok.</div>
       )}
+
+      <EventBalancesCard balances={eventBalances} />
 
       <div className="mobile-msp-seclbl">İletişim</div>
       <div className="mobile-msp-info">
@@ -662,7 +691,7 @@ function MovementsTab({ timeline, student }) {
 
 // ─── Main body ────────────────────────────────────────────────────────────────
 
-function ProfileBody({ student, lessons, sales, onClose, onOpenPayment, onOpenSale, onEdit }) {
+function ProfileBody({ student, lessons, sales, onClose, onOpenPayment, onOpenSale, onEdit, eventBalances }) {
   const updateMutation = useUpdateStudent(student.id);
   const deleteMutation = useDeleteStudent(student.id);
   const canHardDelete = useCan('students.delete'); // asistan öğrenci silemez
@@ -848,6 +877,7 @@ function ProfileBody({ student, lessons, sales, onClose, onOpenPayment, onOpenSa
             months={months}
             recent={recent}
             onOpenLessons={() => setTab('lessons')}
+            eventBalances={eventBalances}
           />
         )}
         {tab === 'lessons' && <LessonsTab lessons={lessons} />}
@@ -883,6 +913,11 @@ export function MobileStudentProfilePage({ studentId, onClose, onOpenPayment, on
   const studentQuery = useStudent(studentId);
   const lessonsQuery = useStudentLessons(studentId);
   const salesQuery = useStudentSales(studentId);
+  const eventBalancesQuery = useQuery({
+    queryKey: queryKeys.studentEventBalances(studentId),
+    queryFn: () => getStudentEventBalances(studentId),
+    enabled: !!studentId,
+  });
   const [editing, setEditing] = React.useState(false);
 
   if (studentQuery.isLoading) {
@@ -929,6 +964,7 @@ export function MobileStudentProfilePage({ studentId, onClose, onOpenPayment, on
         onOpenPayment={onOpenPayment}
         onOpenSale={onOpenSale}
         onEdit={() => setEditing(true)}
+        eventBalances={eventBalancesQuery.data ?? []}
       />
       {editing && (
         <MobileEditStudentPage

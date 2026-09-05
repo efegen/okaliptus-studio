@@ -20,6 +20,15 @@ import { MobileOrderDetail } from './MobileOrderDetail';
 import { MobileProductCatalogPage } from './MobileProductCatalogPage';
 import { MobileProductSalePage } from './MobileProductSalePage';
 import { MobileProductSaleCheckoutPage } from './MobileProductSaleCheckoutPage';
+import { MobileEvents } from './events/MobileEvents';
+import { MobileEventCreate } from './events/MobileEventCreate';
+import { MobileEventDetail } from './events/MobileEventDetail';
+import { MobileEventParticipantDetail } from './events/MobileEventParticipantDetail';
+import { MobileNotes } from './MobileNotes';
+import { MobileEventAddPerson } from './events/MobileEventAddPerson';
+import { MobileEventTransport } from './events/MobileEventTransport';
+import { MobileEventAddVehicle } from './events/MobileEventAddVehicle';
+import { MobileEventSettings } from './events/MobileEventSettings';
 import { SettingsPage } from '../settings';
 import { CatalogPage } from '../catalog';
 import { queryKeys } from '../hooks/queryKeys';
@@ -49,8 +58,16 @@ export function MobileApp({
 }) {
   const queryClient = useQueryClient();
   const onStudentsPage = page === 'students';
-  const onMenuChild = page === 'settings' || page === 'catalog' || page === 'products' || page === 'movements';
+  const onMenuChild = page === 'settings' || page === 'catalog' || page === 'products' || page === 'movements' || page === 'events';
   const onProductSale = page === 'product-sale' || page === 'product-sale-checkout';
+  const onEventSubPage =
+    page === 'event-create' ||
+    page === 'event-detail' ||
+    page === 'event-add-person' ||
+    page === 'event-transport' ||
+    page === 'event-add-vehicle' ||
+    page === 'event-settings' ||
+    page === 'event-participant';
   const showBack = (onStudentsPage && !!studentDetailId) || onMenuChild;
   const hideHeader =
     page === 'home' ||
@@ -62,7 +79,9 @@ export function MobileApp({
     page === 'orders' ||
     page === 'order-detail' ||
     page === 'collect-payment' ||
-    onProductSale;
+    page === 'notes' ||
+    onProductSale ||
+    onEventSubPage;
 
   // QuickAdd state — `quickAdd` is the entry sheet, `quickFlow` is the chosen
   // sub-sheet ('payment' | 'lesson' | null). 'sale' artık tam sayfa modülüne
@@ -83,6 +102,25 @@ export function MobileApp({
   // sonrası oraya dönsün diye kaynağı tutuyoruz.
   const [paymentReturnPage, setPaymentReturnPage] = React.useState('students');
   const [calendarNavNonce, setCalendarNavNonce] = React.useState(0);
+  // Etkinlik modülü: hangi etkinlik açık (5a/3d/7a/6a-c hepsi bunun üzerinde
+  // çalışır), ana sayfa kartından mı menüden mi açıldığı (geri tuşu için).
+  const [eventDetailId, setEventDetailId] = React.useState(null);
+  const [eventEntryPage, setEventEntryPage] = React.useState('events');
+  // Etkinliğe özel katılımcı profili (MobileEventParticipantDetail) hangi
+  // katılımcı için açık.
+  const [eventParticipantId, setEventParticipantId] = React.useState(null);
+  // Kişi ekle akışı nereden açıldı (liste "Ekle" mi, yoksa bir katılımcının
+  // profilindeki "+ Misafir ekle" mi) — ikincisinde akış "birinin misafiri"
+  // önceden seçili açılır ve geri/tamamlanınca profile döner.
+  const [eventAddPersonGuestOf, setEventAddPersonGuestOf] = React.useState(null);
+  const [eventAddPersonReturn, setEventAddPersonReturn] = React.useState('event-detail');
+  // Notlar stüdyo geneli tek bir ekran (bkz. MobileNotes.jsx) — ana sayfadaki
+  // "Notlar" kutusundan da etkinlik detayındaki kısayoldan da açılır; geri
+  // tuşu nereden gelindiyse oraya dönsün diye kaynağı tutuyoruz.
+  const [notesReturnPage, setNotesReturnPage] = React.useState('home');
+  // Not içindeki öğrenci etiketi profile götürür; profil geri tuşu öğrenci
+  // listesine değil, okunan not akışına dönsün.
+  const [studentProfileReturnPage, setStudentProfileReturnPage] = React.useState(null);
 
   function openFinance(from) {
     setFinanceFrom(from);
@@ -100,6 +138,34 @@ export function MobileApp({
   const [productSaleStudent, setProductSaleStudent] = React.useState(null);
   const [productSaleNote, setProductSaleNote] = React.useState('');
 
+  function openEventDetail(eventId, entryPage) {
+    setEventDetailId(eventId);
+    setEventEntryPage(entryPage);
+    setEventParticipantId(null);
+    setStudentDetailId(null);
+    setPage('event-detail');
+  }
+
+  function openEventParticipant(participantId) {
+    setEventParticipantId(participantId);
+    setPage('event-participant');
+  }
+
+  function openAddPersonForEvent() {
+    setEventAddPersonGuestOf(null);
+    setEventAddPersonReturn('event-detail');
+    setPage('event-add-person');
+  }
+
+  function openAddGuestFor(participant) {
+    setEventAddPersonGuestOf({
+      participantId: participant.id,
+      label: participant.student_nickname || participant.student_name,
+    });
+    setEventAddPersonReturn('event-participant');
+    setPage('event-add-person');
+  }
+
   function handleBack() {
     if (onMenuChild) {
       setPage('menu');
@@ -112,6 +178,7 @@ export function MobileApp({
     if (nextPage === 'calendar' && page === 'calendar') {
       setCalendarNavNonce(n => n + 1);
     }
+    setStudentProfileReturnPage(null);
     setStudentDetailId(null);
     setPage(nextPage);
   }
@@ -211,6 +278,21 @@ export function MobileApp({
     if (message) setToast(message);
   }
 
+  // `page` localStorage'dan restore edilir (bkz. main.jsx) ama eventDetailId
+  // edilmez — sayfa 'event-detail' vb. olarak açılıp id'siz kalırsa (yenileme
+  // sonrası) kırık bir hata ekranı yerine listeye düşer.
+  const eventDetailPages = ['event-detail', 'event-add-person', 'event-transport', 'event-add-vehicle', 'event-settings', 'event-participant'];
+  React.useEffect(() => {
+    if (eventDetailPages.includes(page) && !eventDetailId) {
+      setPage('events');
+      return;
+    }
+    if (page === 'event-participant' && !eventParticipantId) {
+      setPage('event-detail');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, eventDetailId, eventParticipantId]);
+
   // Track the iOS soft-keyboard inset on :root as `--mobile-kb-h`. iOS Safari
   // does not shrink dvh/100vh when the keyboard opens, so bottom-anchored
   // sheets need this to lift above the keyboard. (We disable vaul's built-in
@@ -244,6 +326,89 @@ export function MobileApp({
         onOpenFinance={() => openFinance('home')}
         onOpenOccupancy={() => { setStudentDetailId(null); setPage('occupancy'); }}
         onOpenOrders={() => { setStudentDetailId(null); setPage('orders'); }}
+        onOpenNotes={() => { setStudentDetailId(null); setNotesReturnPage('home'); setPage('notes'); }}
+        onOpenEvent={(eventId) => (eventId ? openEventDetail(eventId, 'home') : setPage('event-create'))}
+      />
+    );
+  } else if (page === 'events') {
+    body = (
+      <MobileEvents
+        onOpenEvent={(eventId) => openEventDetail(eventId, 'events')}
+        onOpenCreate={() => setPage('event-create')}
+      />
+    );
+  } else if (page === 'event-create') {
+    body = (
+      <MobileEventCreate
+        onClose={() => setPage(eventDetailId ? 'event-detail' : 'events')}
+        onCreated={(event) => openEventDetail(event.id, 'events')}
+      />
+    );
+  } else if (page === 'event-detail') {
+    body = (
+      <MobileEventDetail
+        eventId={eventDetailId}
+        onBack={() => setPage(eventEntryPage)}
+        onOpenAddPerson={openAddPersonForEvent}
+        onOpenTransport={() => setPage('event-transport')}
+        onOpenSettings={() => setPage('event-settings')}
+        onOpenParticipant={openEventParticipant}
+        onOpenNotes={() => { setNotesReturnPage('event-detail'); setPage('notes'); }}
+      />
+    );
+  } else if (page === 'notes') {
+    body = (
+      <MobileNotes
+        onBack={() => setPage(notesReturnPage)}
+        onOpenStudent={(studentId) => {
+          setStudentProfileReturnPage('notes');
+          setStudentDetailId(String(studentId));
+          setPage('students');
+        }}
+      />
+    );
+  } else if (page === 'event-participant') {
+    body = (
+      <MobileEventParticipantDetail
+        eventId={eventDetailId}
+        participantId={eventParticipantId}
+        onBack={() => setPage('event-detail')}
+        onRemoved={() => { setEventParticipantId(null); setPage('event-detail'); }}
+        onOpenParticipant={openEventParticipant}
+        onOpenTransport={() => setPage('event-transport')}
+        onOpenAddGuest={openAddGuestFor}
+      />
+    );
+  } else if (page === 'event-settings') {
+    body = (
+      <MobileEventSettings
+        eventId={eventDetailId}
+        onBack={() => setPage('event-detail')}
+        onDeleted={() => { setEventDetailId(null); setPage('events'); }}
+      />
+    );
+  } else if (page === 'event-add-person') {
+    body = (
+      <MobileEventAddPerson
+        eventId={eventDetailId}
+        presetGuestOf={eventAddPersonGuestOf}
+        onClose={() => setPage(eventAddPersonReturn)}
+        onAdded={() => setPage(eventAddPersonReturn)}
+      />
+    );
+  } else if (page === 'event-transport') {
+    body = (
+      <MobileEventTransport
+        eventId={eventDetailId}
+        onBack={() => setPage('event-detail')}
+        onOpenAddVehicle={() => setPage('event-add-vehicle')}
+      />
+    );
+  } else if (page === 'event-add-vehicle') {
+    body = (
+      <MobileEventAddVehicle
+        eventId={eventDetailId}
+        onBack={() => setPage('event-transport')}
       />
     );
   } else if (page === 'finance') {
@@ -272,12 +437,21 @@ export function MobileApp({
     body = studentDetailId ? (
       <MobileStudentProfilePage
         studentId={studentDetailId}
-        onClose={() => setStudentDetailId(null)}
+        onClose={() => {
+          setStudentDetailId(null);
+          if (studentProfileReturnPage) {
+            setPage(studentProfileReturnPage);
+            setStudentProfileReturnPage(null);
+          }
+        }}
         onOpenPayment={handleProfilePayment}
         onOpenSale={handleProfileSale}
       />
     ) : (
-      <MobileStudents onOpenStudent={setStudentDetailId} />
+      <MobileStudents onOpenStudent={(studentId) => {
+        setStudentProfileReturnPage(null);
+        setStudentDetailId(studentId);
+      }} />
     );
   } else if (page === 'collect-payment') {
     // "Ödeme al" tam-sayfa tahsilat ekranı (profil/hareketlerden push); alt sekme
@@ -302,7 +476,11 @@ export function MobileApp({
   } else if (page === 'movements') {
     body = (
       <MobileMovements
-        onOpenStudent={(id) => { setStudentDetailId(id); setPage('students'); }}
+        onOpenStudent={(id) => {
+          setStudentProfileReturnPage(null);
+          setStudentDetailId(id);
+          setPage('students');
+        }}
         onOpenPayment={handleProfilePayment}
       />
     );
@@ -353,7 +531,7 @@ export function MobileApp({
       <main className="mobile-main" data-screen-label={page}>
         {body}
       </main>
-      {page !== 'order-detail' && page !== 'collect-payment' && (
+      {page !== 'order-detail' && page !== 'collect-payment' && page !== 'notes' && !onEventSubPage && (
         <BottomTabBar
           page={page}
           onNavigate={handleNavigate}

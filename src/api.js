@@ -89,9 +89,11 @@ async function apiRequest(path, options = {}) {
     }
 
     const contentType = response.headers.get("content-type") || "";
-    const payload = contentType.includes("application/json")
-      ? await response.json()
-      : await response.text();
+    const payload = options.responseType === "blob" && response.ok
+      ? await response.blob()
+      : contentType.includes("application/json")
+        ? await response.json()
+        : await response.text();
 
     if (!response.ok) {
       const msg = getErrorMessage(payload);
@@ -1083,3 +1085,207 @@ export async function uncompleteLesson(lessonId) {
   return ensureMutationResult(payload, "Ders geri alınamadı.");
 }
 
+// ─── Events (etkinlik) ──────────────────────────────────────────────────────
+
+export async function getUpcomingEvent() {
+  const payload = await apiGet('/events/upcoming');
+  return payload?.data ?? null;
+}
+
+export async function getEvents(status) {
+  const payload = await apiGet(`/events${status ? `?status=${encodeURIComponent(status)}` : ''}`);
+  if (!Array.isArray(payload?.data)) throw new Error('Etkinlik listesi alınamadı.');
+  return payload.data;
+}
+
+export async function getEventById(eventId) {
+  const payload = await apiGet(`/events/${encodeURIComponent(eventId)}`);
+  if (typeof payload?.data !== 'object' || payload.data === null) {
+    throw new Error('Etkinlik bilgisi alınamadı.');
+  }
+  return payload.data;
+}
+
+export async function createEvent(input) {
+  const payload = await apiRequest('/events', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return ensureMutationResult(payload, 'Etkinlik oluşturulamadı.');
+}
+
+export async function updateEvent(eventId, input) {
+  const payload = await apiRequest(`/events/${encodeURIComponent(eventId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+  return ensureMutationResult(payload, 'Etkinlik güncellenemedi.');
+}
+
+// data: null döner — ensureMutationResult null'u reddedip her başarılı silmede
+// de hata fırlatırdı; apiRequest zaten HTTP hatasında fırlatıyor.
+export async function deleteEvent(eventId) {
+  await apiRequest(`/events/${encodeURIComponent(eventId)}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function addEventFeeItem(eventId, input) {
+  const payload = await apiRequest(`/events/${encodeURIComponent(eventId)}/fee-items`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return ensureMutationResult(payload, 'Ücret kalemi eklenemedi.');
+}
+
+export async function getEventParticipants(eventId) {
+  const payload = await apiGet(`/events/${encodeURIComponent(eventId)}/participants`);
+  if (!Array.isArray(payload?.data)) throw new Error('Katılımcı listesi alınamadı.');
+  return payload.data;
+}
+
+export async function searchEventStudents(eventId, q) {
+  const payload = await apiGet(`/events/${encodeURIComponent(eventId)}/participants/search?q=${encodeURIComponent(q)}`);
+  if (!Array.isArray(payload?.data)) throw new Error('Arama sonucu alınamadı.');
+  return payload.data;
+}
+
+export async function addEventParticipant(eventId, input) {
+  const payload = await apiRequest(`/events/${encodeURIComponent(eventId)}/participants`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return ensureMutationResult(payload, 'Katılımcı eklenemedi.');
+}
+
+export async function updateEventParticipant(participantId, input) {
+  const payload = await apiRequest(`/events/participants/${encodeURIComponent(participantId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+  return ensureMutationResult(payload, 'Katılımcı güncellenemedi.');
+}
+
+// data: null döner (deleteEvent gibi) — ensureMutationResult null'u reddeder,
+// o yüzden burada kullanılmıyor. apiRequest zaten HTTP hatasında fırlatıyor.
+export async function removeEventParticipant(participantId) {
+  await apiRequest(`/events/participants/${encodeURIComponent(participantId)}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function getEventParticipantFees(participantId) {
+  const payload = await apiGet(`/events/participants/${encodeURIComponent(participantId)}/fees`);
+  if (!Array.isArray(payload?.data)) throw new Error('Ücret kalemleri alınamadı.');
+  return payload.data;
+}
+
+// coverage: 'student' | 'studio' | 'comp' | 'external' | 'none' — bkz. 0263.
+// Nesne ile { amount } gönderilirse yalnız bu katılımcının ders ücreti güncellenir.
+export async function updateEventParticipantFee(participantId, feeItemId, input) {
+  const payload = await apiRequest(
+    `/events/participants/${encodeURIComponent(participantId)}/fees/${encodeURIComponent(feeItemId)}`,
+    { method: 'PATCH', body: JSON.stringify(typeof input === 'string' ? { coverage: input } : input) },
+  );
+  return payload;
+}
+
+export async function recordEventParticipantPayment(participantId, amount) {
+  const payload = await apiRequest(`/events/participants/${encodeURIComponent(participantId)}/payments`, {
+    method: 'POST',
+    body: JSON.stringify({ amount }),
+  });
+  return payload;
+}
+
+export async function getEventVehicles(eventId) {
+  const payload = await apiGet(`/events/${encodeURIComponent(eventId)}/vehicles`);
+  if (!Array.isArray(payload?.data)) throw new Error('Araç listesi alınamadı.');
+  return payload.data;
+}
+
+export async function createEventVehicle(eventId, input) {
+  const payload = await apiRequest(`/events/${encodeURIComponent(eventId)}/vehicles`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return ensureMutationResult(payload, 'Araç eklenemedi.');
+}
+
+export async function assignEventParticipantVehicle(participantId, vehicleId) {
+  const payload = await apiRequest(`/events/participants/${encodeURIComponent(participantId)}/vehicle`, {
+    method: 'POST',
+    body: JSON.stringify({ vehicleId }),
+  });
+  return payload;
+}
+
+export async function getStudentEventBalances(studentId) {
+  const payload = await apiGet(`/students/${encodeURIComponent(studentId)}/events`);
+  if (!Array.isArray(payload?.data)) throw new Error('Öğrencinin etkinlik bakiyesi alınamadı.');
+  return payload.data;
+}
+
+
+// ─── Notlar (stüdyo geneli) ─────────────────────────────────────────────────
+// Tek bir paylaşılan not akışı — etkinliğe bağlı değil. Mobil ana sayfadaki
+// "Notlar" butonu ve etkinlik detayındaki "Notlar" kısayolu aynı listeyi açar
+// (bkz. backend migration 0273_general_notes.sql).
+
+export async function getNotes() {
+  const payload = await apiGet('/notes');
+  if (!Array.isArray(payload?.data)) throw new Error('Notlar alınamadı.');
+  return payload.data;
+}
+
+// input: { body, parentNoteId?, mentionedStudentIds? } — parentNoteId doluysa
+// yanıt olarak eklenir (bkz. MobileNotes.jsx).
+export async function addNote(input) {
+  const payload = await apiRequest('/notes', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return ensureMutationResult(payload, 'Not eklenemedi.');
+}
+
+// input: { body, mentionedStudentIds? } — yalnız notun yazarı düzenleyebilir.
+export async function updateNote(noteId, input) {
+  const payload = await apiRequest(`/notes/${encodeURIComponent(noteId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+  return ensureMutationResult(payload, 'Not güncellenemedi.');
+}
+
+export async function deleteNote(noteId) {
+  await apiRequest(`/notes/${encodeURIComponent(noteId)}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function toggleNoteReaction(noteId, emoji) {
+  const payload = await apiRequest(`/notes/${encodeURIComponent(noteId)}/reactions`, {
+    method: 'POST',
+    body: JSON.stringify({ emoji }),
+  });
+  return ensureMutationResult(payload, 'Tepki güncellenemedi.');
+}
+
+export async function uploadNoteImage(noteId, blob) {
+  const payload = await apiRequest(`/notes/${encodeURIComponent(noteId)}/image`, {
+    method: 'POST',
+    body: blob,
+    headers: { 'Content-Type': blob.type || 'image/webp' },
+  });
+  return ensureMutationResult(payload, 'Fotoğraf yüklenemedi.');
+}
+
+export async function getNoteImage(noteId, version) {
+  const suffix = version ? `?v=${encodeURIComponent(version)}` : '';
+  const blob = await apiRequest(`/notes/${encodeURIComponent(noteId)}/image${suffix}`, {
+    headers: { Accept: 'image/*' },
+    responseType: 'blob',
+  });
+  if (!(blob instanceof Blob)) throw new Error('Not fotoğrafı alınamadı.');
+  return blob;
+}

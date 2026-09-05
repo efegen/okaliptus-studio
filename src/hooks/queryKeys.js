@@ -20,4 +20,15 @@ export const queryKeys = {
   auditLogs:          (params)=> ['auditLogs', params],
   auditUsers:         ()      => ['auditUsers'],
   studioMovements:    (params)=> params !== undefined ? ['movements', params] : ['movements'],
+  upcomingEvent:      ()      => ['upcomingEvent'],
+  events:             (status)=> status !== undefined ? ['events', status] : ['events'],
+  eventById:          (id)    => ['event', id],
+  eventParticipants:  (id)    => ['event', id, 'participants'],
+  // Notlar stüdyo geneli tek bir akış — etkinliğe bağlı değil (bkz. backend
+  // migration 0273_general_notes.sql).
+  notes:              ()      => ['notes'],
+  noteImage:          (id, version) => ['notes', String(id), 'image', version ?? null],
+  eventParticipantFees:(id)   => ['eventParticipant', id, 'fees'],
+  eventVehicles:      (id)    => ['event', id, 'vehicles'],
+  studentEventBalances:(id)   => ['student', id, 'events'],
 };
