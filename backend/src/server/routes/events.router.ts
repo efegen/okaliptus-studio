@@ -7,10 +7,12 @@ import {
   addExistingParticipant,
   addFeeItem,
   addNewParticipant,
+  addParticipantNote,
   assignParticipantToVehicle,
   cancelParticipantPayment,
   createEvent,
   createVehicle,
+  deleteParticipantNote,
   deleteVehicle,
   deleteEvent,
   getEventById,
@@ -18,15 +20,20 @@ import {
   listEventBalancesForStudent,
   listEvents,
   listParticipantFees,
+  listParticipantNotes,
   listParticipantPayments,
   listParticipants,
+  listEventActivity,
   listVehicles,
+  markParticipantContacted,
   recordParticipantPayment,
   removeParticipant,
+  revertEventActivity,
   searchStudentsForEvent,
   updateEvent,
   updateParticipant,
   updateParticipantFee,
+  updateParticipantNote,
   updateVehicle,
 } from "../../services/events.service.js";
 import { sendError, parseId } from "../middleware/response.js";
@@ -138,6 +145,33 @@ eventsRouter.delete("/:id", requireCan("events.delete"), async (req, res) => {
   }
 });
 
+// Etkinlik hareketleri (mobil "Hareketler" ekranı). Akış tahsilat tutarlarını da
+// içerdiğinden denetim yetkisiyle kapılanır — asistan rolü göremez, bkz.
+// permissions.ts 'audit.read'.
+eventsRouter.get("/:id/activity", requireCan("audit.read"), async (req, res) => {
+  try {
+    const id = parseId(req.params.id);
+    const limit = req.query.limit != null ? Number(req.query.limit) : undefined;
+    const data = await listEventActivity(id, limit);
+    res.json({ data });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+// Hatalı bir hareketi geri alır: telafi işlemi normal servis yolundan yapılır ve
+// kendi kaydını yazar; orijinal satır "geri alındı" damgası alır (silinmez).
+eventsRouter.post("/:id/activity/:activityId/revert", requireCan("audit.read"), async (req, res) => {
+  try {
+    const id = parseId(req.params.id);
+    const activityId = parseId(req.params.activityId);
+    const data = await revertEventActivity(id, activityId, req.currentUser.id);
+    res.json({ data });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
 eventsRouter.post("/:id/fee-items", async (req, res) => {
   try {
     const id = parseId(req.params.id);
@@ -224,7 +258,7 @@ eventsRouter.post("/:id/participants", async (req, res) => {
 eventsRouter.patch("/participants/:participantId", async (req, res) => {
   try {
     const participantId = parseId(req.params.participantId);
-    const { role, rsvpStatus, transportMode, attendanceStatus, note } =
+    const { role, rsvpStatus, transportMode, attendanceStatus, guestOfParticipantId } =
       req.body as Record<string, unknown>;
     const data = await updateParticipant(
       participantId,
@@ -233,8 +267,70 @@ eventsRouter.patch("/participants/:participantId", async (req, res) => {
         ...(rsvpStatus !== undefined && { rsvpStatus: rsvpStatus as never }),
         ...(transportMode !== undefined && { transportMode: transportMode as never }),
         ...(attendanceStatus !== undefined && { attendanceStatus: attendanceStatus as never }),
-        ...(note !== undefined && { note: note != null ? String(note) : null }),
+        ...(guestOfParticipantId !== undefined && {
+          guestOfParticipantId: (guestOfParticipantId === "" ? null : guestOfParticipantId) as never,
+        }),
       },
+      req.currentUser.id,
+    );
+    res.json({ data });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+// Katılımcı profili not akışı (0280): profil notlarına ek olarak arama
+// notlarını ve bu öğrencinin genel Notlar'da etiketlendiği kayıtları da
+// birleştirir. PATCH/DELETE yalnız profil notlarını hedefler.
+eventsRouter.get("/participants/:participantId/notes", async (req, res) => {
+  try {
+    const participantId = parseId(req.params.participantId);
+    const data = await listParticipantNotes(participantId);
+    res.json({ data });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+eventsRouter.post("/participants/:participantId/notes", async (req, res) => {
+  try {
+    const participantId = parseId(req.params.participantId);
+    const { body } = req.body as Record<string, unknown>;
+    const data = await addParticipantNote(participantId, String(body ?? ""), req.currentUser.id);
+    res.status(201).json({ data });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+eventsRouter.patch("/participant-notes/:noteId", async (req, res) => {
+  try {
+    const noteId = parseId(req.params.noteId);
+    const { body } = req.body as Record<string, unknown>;
+    const data = await updateParticipantNote(noteId, String(body ?? ""), req.currentUser.id);
+    res.json({ data });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+eventsRouter.delete("/participant-notes/:noteId", async (req, res) => {
+  try {
+    const noteId = parseId(req.params.noteId);
+    await deleteParticipantNote(noteId, req.currentUser.id);
+    res.json({ data: null });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+eventsRouter.post("/participants/:participantId/contact", async (req, res) => {
+  try {
+    const participantId = parseId(req.params.participantId);
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const data = await markParticipantContacted(
+      participantId,
+      { note: body.note != null ? String(body.note) : null },
       req.currentUser.id,
     );
     res.json({ data });
@@ -247,7 +343,18 @@ eventsRouter.patch("/participants/:participantId", async (req, res) => {
 eventsRouter.delete("/participants/:participantId", async (req, res) => {
   try {
     const participantId = parseId(req.params.participantId);
-    await removeParticipant(participantId, req.currentUser.id);
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    await removeParticipant(
+      participantId,
+      {
+        ...(body.reason !== undefined && { reason: String(body.reason) as never }),
+        ...(body.note !== undefined && { note: body.note != null ? String(body.note) : null }),
+        ...(body.guestResolution !== undefined && {
+          guestResolution: String(body.guestResolution) as never,
+        }),
+      },
+      req.currentUser.id,
+    );
     res.json({ data: null });
   } catch (err) {
     sendError(res, err);

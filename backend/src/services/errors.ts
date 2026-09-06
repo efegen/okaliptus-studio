@@ -182,9 +182,37 @@ export class EventParticipantHasPaymentsError extends AppError {
 
 export class EventParticipantHasGuestsError extends AppError {
   constructor(
-    message = "Bu kişinin misafirleri var; önce onları kaldırın ya da bağlantısını değiştirin.",
+    message = "Bu kişinin misafirleri var; kaldırmadan önce bağlantılarını koparın (misafirler bağımsız katılımcı olur) ya da misafirleri de birlikte kaldırın.",
   ) {
     super("EVENT_PARTICIPANT_HAS_GUESTS", message, 409);
+  }
+}
+
+// Katılımcı profili not günlüğü (0280) — genel Notlar'daki yazar-özel
+// düzenle/sil kuralının aynısı, ayrı hata adlarıyla (bkz. events.service.ts).
+export class EventParticipantNoteNotFoundError extends AppError {
+  constructor(message = "Katılımcı notu bulunamadı.") {
+    super("EVENT_PARTICIPANT_NOTE_NOT_FOUND", message, 404);
+  }
+}
+
+export class EventParticipantNoteForbiddenError extends AppError {
+  constructor(message = "Yalnızca kendi notunuzu düzenleyebilir veya silebilirsiniz.") {
+    super("EVENT_PARTICIPANT_NOTE_FORBIDDEN", message, 403);
+  }
+}
+
+// Etkinlik hareketleri (0279) — mobil "Hareketler" ekranı. Geri alma yalnız
+// telafisi tanımlı hareketlerde mümkün; nedeni kullanıcıya aynen gösterilir.
+export class EventActivityNotFoundError extends AppError {
+  constructor(message = "Etkinlik hareketi bulunamadı.") {
+    super("EVENT_ACTIVITY_NOT_FOUND", message, 404);
+  }
+}
+
+export class EventActivityNotRevertibleError extends AppError {
+  constructor(message = "Bu hareket geri alınamaz.") {
+    super("EVENT_ACTIVITY_NOT_REVERTIBLE", message, 409);
   }
 }
 
@@ -199,6 +227,18 @@ export class NoteNotFoundError extends AppError {
 export class NoteForbiddenError extends AppError {
   constructor(message = "Yalnızca kendi notunuzu düzenleyebilir veya silebilirsiniz.") {
     super("NOTE_FORBIDDEN", message, 403);
+  }
+}
+
+export class NoteCategoryNotFoundError extends AppError {
+  constructor(message = "Not kategorisi bulunamadı.") {
+    super("NOTE_CATEGORY_NOT_FOUND", message, 404);
+  }
+}
+
+export class NoteCategoryNameTakenError extends AppError {
+  constructor(message = "Bu not kategorisi zaten var.") {
+    super("NOTE_CATEGORY_NAME_TAKEN", message, 409);
   }
 }
 
@@ -314,6 +354,8 @@ export function toServiceError(error: unknown): Error {
       return new UsernameTakenError();
     case "event_participants_event_id_student_id_key":
       return new DuplicateParticipantError();
+    case "note_categories_name_unique_idx":
+      return new NoteCategoryNameTakenError();
     default:
       break;
   }

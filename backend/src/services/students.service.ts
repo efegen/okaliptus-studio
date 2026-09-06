@@ -13,6 +13,8 @@ import {
   type EntityId,
 } from "./shared.js";
 
+type Queryable = Pick<import("pg").PoolClient, "query">;
+
 export type LessonMode = "online" | "onsite";
 
 function normalizePreferredMode(value: unknown): LessonMode | null {
@@ -537,16 +539,117 @@ export async function updateStudent(
   }
 }
 
-// Öğrenciyi ve TÜM finansal ayak izini kalıcı olarak (fiziksel) siler.
+export type StudentDeleteImpact = {
+  lessons: number;
+  productSales: number;
+  prepaidPackages: number;
+  payments: number;
+  paidTotal: string;
+  eventParticipations: number;
+  eventPayments: number;
+  eventPaymentAllocations: number;
+  eventPaidTotal: string;
+  eventInteractions: number;
+  participantNotes: number;
+  noteMentions: number;
+  drivenVehicles: number;
+};
+
+type StudentDeleteImpactQueryRow = {
+  lessons: string;
+  product_sales: string;
+  prepaid_packages: string;
+  payments: string;
+  paid_total: string;
+  event_participations: string;
+  event_payments: string;
+  event_payment_allocations: string;
+  event_paid_total: string;
+  event_interactions: string;
+  participant_notes: string;
+  note_mentions: string;
+  driven_vehicles: string;
+};
+
+async function fetchStudentDeleteImpact(
+  queryable: Queryable,
+  studentId: EntityId,
+): Promise<StudentDeleteImpact | null> {
+  const result = await queryable.query<StudentDeleteImpactQueryRow>(
+    `
+      SELECT
+        (SELECT count(*) FROM lessons          WHERE student_id = s.id) AS lessons,
+        (SELECT count(*) FROM product_sales    WHERE student_id = s.id) AS product_sales,
+        (SELECT count(*) FROM prepaid_packages WHERE student_id = s.id) AS prepaid_packages,
+        (SELECT count(*) FROM payments p
+           WHERE p.lesson_id          IN (SELECT id FROM lessons          WHERE student_id = s.id)
+              OR p.product_sale_id    IN (SELECT id FROM product_sales    WHERE student_id = s.id)
+              OR p.prepaid_package_id IN (SELECT id FROM prepaid_packages WHERE student_id = s.id)) AS payments,
+        (SELECT COALESCE(SUM(p.amount), 0) FROM payments p
+           WHERE p.deleted_at IS NULL AND (
+                 p.lesson_id          IN (SELECT id FROM lessons          WHERE student_id = s.id)
+              OR p.product_sale_id    IN (SELECT id FROM product_sales    WHERE student_id = s.id)
+              OR p.prepaid_package_id IN (SELECT id FROM prepaid_packages WHERE student_id = s.id)
+           )) AS paid_total,
+        (SELECT count(*) FROM event_participants WHERE student_id = s.id) AS event_participations,
+        (SELECT count(*) FROM event_payments WHERE student_id = s.id) AS event_payments,
+        (SELECT count(*)
+           FROM event_payment_allocations a
+           JOIN event_payments ep ON ep.id = a.payment_id
+          WHERE ep.student_id = s.id) AS event_payment_allocations,
+        (SELECT COALESCE(SUM(amount), 0)
+           FROM event_payments
+          WHERE student_id = s.id AND cancelled_at IS NULL) AS event_paid_total,
+        (SELECT count(*) FROM event_participant_interactions WHERE student_id = s.id) AS event_interactions,
+        (SELECT count(*)
+           FROM event_participant_notes n
+           JOIN event_participants p ON p.id = n.participant_id
+          WHERE p.student_id = s.id) AS participant_notes,
+        (SELECT count(*) FROM note_mentions WHERE student_id = s.id) AS note_mentions,
+        (SELECT count(*) FROM event_vehicles WHERE driver_student_id = s.id) AS driven_vehicles
+      FROM students s
+      WHERE s.id = $1
+    `,
+    [studentId],
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+
+  return {
+    lessons: Number(row.lessons),
+    productSales: Number(row.product_sales),
+    prepaidPackages: Number(row.prepaid_packages),
+    payments: Number(row.payments),
+    paidTotal: row.paid_total,
+    eventParticipations: Number(row.event_participations),
+    eventPayments: Number(row.event_payments),
+    eventPaymentAllocations: Number(row.event_payment_allocations),
+    eventPaidTotal: row.event_paid_total,
+    eventInteractions: Number(row.event_interactions),
+    participantNotes: Number(row.participant_notes),
+    noteMentions: Number(row.note_mentions),
+    drivenVehicles: Number(row.driven_vehicles),
+  };
+}
+
+// Silme modalının, yalnız eski ders/finans tablolarını değil etkinlik ve not
+// bağlantılarını da aynı sunucu sözleşmesinden göstermesi için tek özet.
+export async function getStudentDeleteImpact(studentId: EntityId): Promise<StudentDeleteImpact> {
+  const impact = await fetchStudentDeleteImpact(pool, studentId);
+  if (!impact) throw new StudentNotFoundError();
+  return impact;
+}
+
+// Öğrenciyi ve TÜM finansal/operasyonel ayak izini kalıcı olarak (fiziksel) siler.
 // Karar (2026-05-29): geçmişi olan öğrenci de silinebilsin. Bu, "borç =
 // completed ders + satış" invariantının altındaki kayıtları yok eder ve geçmiş
 // raporları (ciro, ders sayısı) geriye dönük değiştirir — geri alınamaz.
 //
-// FK'ler ON DELETE RESTRICT olduğu için silme sırası önemli:
-//   payments → product_sales (product_sale_items CASCADE) → lessons →
-//   prepaid_packages → students.
-// (payments lessons/sales/packages'a; lessons packages'a; product_sales
-//  opsiyonel lessons'a referans verir — hepsi bu sırayla çözülür.)
+// Etkinlik tarafındaki sıra da önemlidir: payment allocations → event payments
+// → participant bağlantıları. Genel notun kendisi başka kullanıcılara ait ortak
+// içerik olabileceğinden korunur; yalnız note_mentions bağlantısı silinir.
+// Öğrencinin şoför olduğu araçta başka yolcular bulunabilir: aracı silmek yerine
+// kişisel şoför alanları temizlenip bağlantı anonim bir placeholder'a çevrilir.
 //
 // Tek kalan iz audit_logs olduğundan, silinen kayıtların özetini note'a yazarız.
 export async function hardDeleteStudent(
@@ -557,6 +660,34 @@ export async function hardDeleteStudent(
 
   try {
     await client.query("BEGIN");
+
+    // Etkinlik servisleri kilitleri event → participant/student sırasıyla alır.
+    // Aynı sırayı izlemek, ödeme/katılımcı ekleme ile hard-delete yarışında
+    // deadlock riskini azaltır. Yeni bir referans bu sorgudan sonra eklenmeye
+    // çalışırsa aşağıdaki student FOR UPDATE/FK key-share kilidi onu seri hale
+    // getirir; önce tamamlanmışsa de impact ve DELETE sorgularına dahil olur.
+    const relatedEvents = await client.query<{ event_id: string }>(
+      `
+        SELECT DISTINCT event_id::text AS event_id
+          FROM (
+            SELECT event_id FROM event_participants WHERE student_id = $1
+            UNION ALL
+            SELECT event_id FROM event_payments WHERE student_id = $1
+            UNION ALL
+            SELECT event_id FROM event_vehicles WHERE driver_student_id = $1
+            UNION ALL
+            SELECT event_id FROM event_participant_interactions WHERE student_id = $1
+          ) related
+         ORDER BY event_id
+      `,
+      [studentId],
+    );
+    if (relatedEvents.rows.length > 0) {
+      await client.query(
+        `SELECT id FROM events WHERE id = ANY($1::bigint[]) ORDER BY id FOR UPDATE`,
+        [relatedEvents.rows.map((row) => row.event_id)],
+      );
+    }
 
     const studentResult = await client.query<StudentRow>(
       `
@@ -574,35 +705,50 @@ export async function hardDeleteStudent(
       throw new StudentNotFoundError();
     }
 
-    // Silinecek kayıtların sayıları + tahsil edilmiş toplam — audit özeti için.
-    const countsResult = await client.query<{
-      lessons: string;
-      product_sales: string;
-      prepaid_packages: string;
-      payments: string;
-      paid_total: string;
-    }>(
-      `
-        SELECT
-          (SELECT count(*) FROM lessons          WHERE student_id = $1) AS lessons,
-          (SELECT count(*) FROM product_sales    WHERE student_id = $1) AS product_sales,
-          (SELECT count(*) FROM prepaid_packages WHERE student_id = $1) AS prepaid_packages,
-          (SELECT count(*) FROM payments p
-             WHERE p.lesson_id          IN (SELECT id FROM lessons          WHERE student_id = $1)
-                OR p.product_sale_id    IN (SELECT id FROM product_sales    WHERE student_id = $1)
-                OR p.prepaid_package_id IN (SELECT id FROM prepaid_packages WHERE student_id = $1)) AS payments,
-          (SELECT COALESCE(SUM(p.amount), 0) FROM payments p
-             WHERE p.deleted_at IS NULL AND (
-                   p.lesson_id          IN (SELECT id FROM lessons          WHERE student_id = $1)
-                OR p.product_sale_id    IN (SELECT id FROM product_sales    WHERE student_id = $1)
-                OR p.prepaid_package_id IN (SELECT id FROM prepaid_packages WHERE student_id = $1)
-             )) AS paid_total
-      `,
+    // Silinecek/anonymize edilecek kayıtların özeti — audit ve önizleme aynı
+    // alan adlarını kullanır, böylece yeni bir FK sessizce kapsam dışında kalmaz.
+    const counts = await fetchStudentDeleteImpact(client, studentId);
+    if (!counts) throw new StudentNotFoundError();
+
+    // 1) Etkinlik tahsilat dağılımları ve tahsilatlar. Allocation FK'sinde
+    //    cascade yoktur; deferred toplam trigger'ı payment da aynı transaction'da
+    //    silindiği için commit anında artık hedef bulmaz.
+    await client.query(
+      `DELETE FROM event_payment_allocations
+        WHERE payment_id IN (SELECT id FROM event_payments WHERE student_id = $1)`,
       [studentId],
     );
-    const counts = countsResult.rows[0];
+    await client.query(`DELETE FROM event_payments WHERE student_id = $1`, [studentId]);
 
-    // 1) Ödemeler (lessons/sales/packages'a referans verir — soft-deleted dahil
+    // 2) Ortak notlar korunur, yalnız silinen öğrenciye ait @ bağlantısı gider.
+    await client.query(`DELETE FROM note_mentions WHERE student_id = $1`, [studentId]);
+
+    // 3) Şoförün aracı başka öğrencileri taşıyor olabilir. Aracı/yolcu planını
+    //    koru, fakat silinen kişiye ait bağlantı/ad/telefon bilgisini temizle.
+    await client.query(
+      `UPDATE event_vehicles
+          SET driver_student_id = NULL,
+              driver_name = 'Silinmiş öğrenci',
+              driver_phone = NULL
+        WHERE driver_student_id = $1`,
+      [studentId],
+    );
+
+    // 4) Hedef katılımcıya bağlı misafirleri silmek, başka öğrencilerin kaydını
+    //    da yok ederdi. Onları bağımsız katılımcıya çevir; hedefin kendi ücret ve
+    //    profil notları participant DELETE CASCADE ile gider.
+    await client.query(
+      `UPDATE event_participants
+          SET guest_of_participant_id = NULL
+        WHERE guest_of_participant_id IN (
+          SELECT id FROM event_participants WHERE student_id = $1
+        )`,
+      [studentId],
+    );
+    await client.query(`DELETE FROM event_participant_interactions WHERE student_id = $1`, [studentId]);
+    await client.query(`DELETE FROM event_participants WHERE student_id = $1`, [studentId]);
+
+    // 5) Ödemeler (lessons/sales/packages'a referans verir — soft-deleted dahil
     //    hepsi fiziksel silinmeli ki RESTRICT FK'ler çözülsün).
     await client.query(
       `
@@ -614,17 +760,18 @@ export async function hardDeleteStudent(
       [studentId],
     );
 
-    // 2) Ürün satışları (product_sale_items ON DELETE CASCADE ile otomatik gider;
+    // 6) Ürün satışları (product_sale_items ON DELETE CASCADE ile otomatik gider;
     //    ayrıca lessons'a olası lesson_id referansı bu adımda temizlenmiş olur).
     await client.query(`DELETE FROM product_sales WHERE student_id = $1`, [studentId]);
 
-    // 3) Dersler (prepaid_packages'a referans verir → paketlerden önce).
+    // 7) Dersler (prepaid_packages'a referans verir → paketlerden önce).
     await client.query(`DELETE FROM lessons WHERE student_id = $1`, [studentId]);
 
-    // 4) Paketler.
+    // 8) Paketler.
     await client.query(`DELETE FROM prepaid_packages WHERE student_id = $1`, [studentId]);
 
-    // 5) Öğrenci.
+    // 9) Öğrenci. lesson_type_student_prices ve calendar_event_participants
+    //    mevcut ON DELETE CASCADE sözleşmeleriyle otomatik temizlenir.
     await client.query(`DELETE FROM students WHERE id = $1`, [studentId]);
 
     await insertAuditLog(client, {
@@ -633,9 +780,13 @@ export async function hardDeleteStudent(
       entityId: student.id,
       before: student,
       note:
-        `hard_delete · lessons=${counts.lessons} · product_sales=${counts.product_sales} · ` +
-        `prepaid_packages=${counts.prepaid_packages} · payments=${counts.payments} · ` +
-        `paid_total=${counts.paid_total}`,
+        `hard_delete · lessons=${counts.lessons} · product_sales=${counts.productSales} · ` +
+        `prepaid_packages=${counts.prepaidPackages} · payments=${counts.payments} · ` +
+        `paid_total=${counts.paidTotal} · event_participations=${counts.eventParticipations} · ` +
+        `event_payments=${counts.eventPayments} · event_payment_allocations=${counts.eventPaymentAllocations} · ` +
+        `event_paid_total=${counts.eventPaidTotal} · event_interactions=${counts.eventInteractions} · ` +
+        `participant_notes=${counts.participantNotes} · note_mentions=${counts.noteMentions} · ` +
+        `driven_vehicles=${counts.drivenVehicles}`,
       actorUserId: actorUserId ?? null,
     });
 

@@ -206,7 +206,7 @@ async function run(): Promise<void> {
     assertEqual((await req("GET", "/notification-settings", { token: tokenAsst })).status, 403, "G: assistant → 403");
     const gOwner = await req("GET", "/notification-settings", { token: tokenOwner });
     assertEqual(gOwner.status, 200, "G: owner → 200");
-    assert(Array.isArray(gOwner.json?.data) && gOwner.json.data.length >= 4, "G: owner listede 4+ satır (3 tür + _global)");
+    assert(Array.isArray(gOwner.json?.data) && gOwner.json.data.length >= 5, "G: owner listede 5+ satır (4 tür + _global)");
 
     ok("\nSMOKE 39 — BİLDİRİM AYAR MODÜLÜ TÜM ADIMLAR BAŞARILI ✓");
   } finally {

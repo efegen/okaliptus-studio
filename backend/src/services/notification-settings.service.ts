@@ -11,7 +11,7 @@ import { env } from "../config/env.js";
 import { sendToUser, type PushPayload } from "./push.service.js";
 import { ValidationError } from "./errors.js";
 
-export const NOTIFICATION_KEYS = ["lesson_reminder", "stale_lesson", "new_order"] as const;
+export const NOTIFICATION_KEYS = ["lesson_reminder", "stale_lesson", "new_order", "note_reminder"] as const;
 export type NotificationKey = (typeof NOTIFICATION_KEYS)[number];
 
 // ─── Varsayılanlar (seed ile aynı; config eksik/bozuksa fallback) ────────────
@@ -29,6 +29,14 @@ const DEFAULT_STALE = {
 const DEFAULT_NEW_ORDER = {
   titleTemplate: "Yeni sipariş",
   bodyTemplate: "Trendyol'dan yeni sipariş: {customer} — #{order}",
+};
+// note_reminder'ın DİĞER türlerden farkı: alıcılar burada GLOBAL değil — her
+// hatırlatmayla birlikte notu oluşturan kullanıcı tarafından seçilir (bkz.
+// note_reminders.recipient_user_ids, notes.service.ts). Bu yüzden yalnız metin
+// şablonu ayarlanabilir; recipientUserIds/enabled genel kapatma anlamına gelir.
+const DEFAULT_NOTE_REMINDER = {
+  titleTemplate: "Not hatırlatması",
+  bodyTemplate: "{author}: {note}",
 };
 const DEFAULT_QUIET = { quietHoursStart: "22:00", quietHoursEnd: "08:00" };
 
@@ -70,8 +78,9 @@ export async function listNotificationSettings(): Promise<NotificationSettingRow
         WHEN 'lesson_reminder' THEN 1
         WHEN 'stale_lesson' THEN 2
         WHEN 'new_order' THEN 3
-        WHEN '_global' THEN 4
-        ELSE 5 END`,
+        WHEN 'note_reminder' THEN 4
+        WHEN '_global' THEN 5
+        ELSE 6 END`,
   );
   return rows.map((r) => ({
     key: r.key,
@@ -106,6 +115,12 @@ export type LoadedNotificationConfig = {
     titleTemplate: string;
     bodyTemplate: string;
   };
+  // recipients YOK — bkz. DEFAULT_NOTE_REMINDER üstteki not.
+  noteReminder: {
+    enabled: boolean;
+    titleTemplate: string;
+    bodyTemplate: string;
+  };
   quietHours: { enabled: boolean; start: string; end: string };
 };
 
@@ -128,6 +143,8 @@ export async function loadNotificationConfig(): Promise<LoadedNotificationConfig
   const stCfg = asObj(st?.config);
   const no = byKey.get("new_order");
   const noCfg = asObj(no?.config);
+  const nr = byKey.get("note_reminder");
+  const nrCfg = asObj(nr?.config);
   const gl = byKey.get("_global");
   const glCfg = asObj(gl?.config);
 
@@ -152,6 +169,11 @@ export async function loadNotificationConfig(): Promise<LoadedNotificationConfig
       recipients: no?.recipientUserIds ?? [],
       titleTemplate: strOr(noCfg.titleTemplate, DEFAULT_NEW_ORDER.titleTemplate),
       bodyTemplate: strOr(noCfg.bodyTemplate, DEFAULT_NEW_ORDER.bodyTemplate),
+    },
+    noteReminder: {
+      enabled: nr?.enabled ?? true,
+      titleTemplate: strOr(nrCfg.titleTemplate, DEFAULT_NOTE_REMINDER.titleTemplate),
+      bodyTemplate: strOr(nrCfg.bodyTemplate, DEFAULT_NOTE_REMINDER.bodyTemplate),
     },
     quietHours: {
       enabled: gl?.enabled ?? false,
@@ -257,7 +279,7 @@ function validateConfigForKey(key: string, raw: Record<string, unknown>): Record
       bodyTemplate: validateTemplateStr(raw.bodyTemplate, "Metin"),
     };
   }
-  if (key === "new_order") {
+  if (key === "new_order" || key === "note_reminder") {
     return {
       titleTemplate: validateTemplateStr(raw.titleTemplate, "Başlık"),
       bodyTemplate: validateTemplateStr(raw.bodyTemplate, "Metin"),
@@ -310,8 +332,9 @@ export async function updateNotificationSetting(key: string, patch: UpdatePatch)
     values.push(patch.enabled);
   }
 
-  // '_global' satırının alıcısı yoktur; verilse bile yok sayılır.
-  if (patch.recipientUserIds !== undefined && key !== "_global") {
+  // '_global' ve 'note_reminder' satırlarının GLOBAL alıcısı yoktur (bkz.
+  // DEFAULT_NOTE_REMINDER üstteki not); verilse bile yok sayılır.
+  if (patch.recipientUserIds !== undefined && key !== "_global" && key !== "note_reminder") {
     if (!Array.isArray(patch.recipientUserIds)) throw new ValidationError("recipientUserIds dizi olmalı.");
     const clean = await sanitizeRecipients(patch.recipientUserIds);
     sets.push(`recipient_user_ids = $${i++}::bigint[]`);
@@ -346,6 +369,7 @@ const SAMPLE_VARS: Record<NotificationKey, Record<string, string | number>> = {
   lesson_reminder: { student: "Örnek Öğrenci", minutes: 30 },
   stale_lesson: { student: "Örnek Öğrenci", time: "14:00" },
   new_order: { customer: "Örnek Müşteri", order: "1234567890" },
+  note_reminder: { author: "Örnek Kullanıcı", note: "Salı günü matlar temizlenecek." },
 };
 
 // Çağırana (owner) örnek değişkenlerle test push'u yollar; kaç cihaza gittiğini
@@ -362,6 +386,7 @@ export async function sendTestNotification(key: string, toUserId: string): Promi
   const defaults =
     key === "lesson_reminder" ? DEFAULT_LESSON_REMINDER
     : key === "stale_lesson" ? DEFAULT_STALE
+    : key === "note_reminder" ? DEFAULT_NOTE_REMINDER
     : DEFAULT_NEW_ORDER;
   const vars = SAMPLE_VARS[key as NotificationKey];
   const payload: PushPayload = {

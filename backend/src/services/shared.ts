@@ -22,6 +22,9 @@ type AuditLogInsert = {
   after?: unknown;
   note?: string | null;
   actorUserId?: number | string | null;
+  // Etkinlik hareket akışı (bkz. 0279_event_activity.sql). Yalnız events
+  // servisinin yazdığı kayıtlar doldurur; diğer modüllerde null kalır.
+  eventId?: number | string | null;
 };
 
 export function normalizeRequiredText(value: string, fieldName: string): string {
@@ -112,8 +115,10 @@ export async function rollbackQuietly(client: PoolClient): Promise<void> {
 export async function insertAuditLog(client: PoolClient, entry: AuditLogInsert): Promise<void> {
   await client.query(
     `
-      INSERT INTO audit_logs (action, entity_type, entity_id, before, after, note, actor_user_id)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      INSERT INTO audit_logs (
+        action, entity_type, entity_id, before, after, note, actor_user_id, event_id
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
     `,
     [
       entry.action,
@@ -123,6 +128,7 @@ export async function insertAuditLog(client: PoolClient, entry: AuditLogInsert):
       entry.after ?? null,
       entry.note ?? null,
       entry.actorUserId ?? null,
+      entry.eventId ?? null,
     ],
   );
 }

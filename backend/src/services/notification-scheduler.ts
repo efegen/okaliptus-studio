@@ -237,6 +237,65 @@ export async function checkNewChannelOrders(preloaded?: LoadedNotificationConfig
   }
 }
 
+type NoteReminderCandidate = {
+  id: string;
+  recipient_user_ids: string[];
+  author_name: string;
+  note_body: string | null;
+  note_deleted: boolean;
+};
+
+const NOTE_EXCERPT_MAX_LEN = 80;
+
+// ─── Not hatırlatıcısı (kullanıcı tanımlı, tek seferlik) ────────────────────
+// lesson_reminder'ın aksine sabit dakika penceresi yok — remind_at kullanıcının
+// seçtiği mutlak zaman (bkz. note_reminders, migration 0282). Tüm alıcılara
+// aynı anda gönderilir; tek sent_at damgası claim+idempotency sağlar. Not bu
+// arada silinmişse (deleted_at) damga yine basılır ama gönderim atlanır —
+// tekrar denenip aynı hatırlatmanın bir daha claim edilmeye çalışılması yerine
+// sessizce yutulur.
+export async function checkNoteReminders(preloaded?: LoadedNotificationConfig): Promise<void> {
+  try {
+    const cfg = preloaded ?? (await loadNotificationConfig());
+    const nr = cfg.noteReminder;
+    if (!nr.enabled) return;
+
+    const { rows: claimed } = await pool.query<NoteReminderCandidate>(
+      `UPDATE note_reminders r
+          SET sent_at = now()
+         FROM notes n
+         JOIN users u ON u.id = n.author_user_id
+        WHERE r.note_id = n.id
+          AND r.sent_at IS NULL
+          AND r.remind_at <= now()
+        RETURNING r.id, r.recipient_user_ids, u.display_name AS author_name,
+                  n.body AS note_body, (n.deleted_at IS NOT NULL) AS note_deleted`,
+    );
+    if (claimed.length === 0) return;
+
+    for (const c of claimed) {
+      if (c.note_deleted) continue;
+
+      const recipients = await resolveActiveRecipients(c.recipient_user_ids.map(String));
+      if (recipients.length === 0) continue;
+
+      const body = c.note_body ?? "";
+      const excerpt = body.length > NOTE_EXCERPT_MAX_LEN ? `${body.slice(0, NOTE_EXCERPT_MAX_LEN)}…` : body;
+      const vars = { author: c.author_name, note: excerpt };
+      const payload: PushPayload = {
+        title: renderTemplate(nr.titleTemplate, vars),
+        body: renderTemplate(nr.bodyTemplate, vars),
+        url: "/",
+      };
+      for (const userId of recipients) {
+        await trySend(userId, payload, "not hatırlatması");
+      }
+    }
+  } catch (err) {
+    console.error("[notif-scheduler] not hatırlatması hatası:", err instanceof Error ? err.message : err);
+  }
+}
+
 async function tick(): Promise<void> {
   if (running) return; // önceki tick hâlâ sürüyor
   running = true;
@@ -252,6 +311,7 @@ async function tick(): Promise<void> {
     await check10MinReminders(cfg);
     await checkStaleLessonStatus(cfg);
     await checkNewChannelOrders(cfg);
+    await checkNoteReminders(cfg);
   } catch (err) {
     console.error("[notif-scheduler] hata:", err instanceof Error ? err.message : err);
   } finally {

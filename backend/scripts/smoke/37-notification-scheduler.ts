@@ -25,6 +25,10 @@
  *      farklı order_number eklenince 2. kayıt oluşur.
  *   E. Regresyon: order_date 30 gün önce olan ama şimdi görülen (first_seen_at
  *      yeni) sipariş bildirilMEZ — 0260 migration'ın düzelttiği canlı olay.
+ *   F. Not hatırlatıcısı (migration 0282): remind_at geçmişe alınınca claim
+ *      edilir (sent_at dolar), ikinci çağrıda değişmez (idempotent); not
+ *      claim'den önce silinmişse yine de claim edilir (sonsuz yeniden deneme
+ *      olmasın diye) ama gönderim atlanır.
  *
  * ÇALIŞTIRMA:
  *   cd backend && npx tsx scripts/smoke/37-notification-scheduler.ts
@@ -35,7 +39,9 @@ import {
   check10MinReminders,
   checkStaleLessonStatus,
   checkNewChannelOrders,
+  checkNoteReminders,
 } from "../../src/services/notification-scheduler.js";
+import { addNote, deleteNote } from "../../src/services/notes.service.js";
 import { createStudent } from "../../src/services/students.service.js";
 import { pool } from "../../src/db/connection.js";
 import {
@@ -46,11 +52,13 @@ import {
   fail,
   closePool,
   cleanupSmoke,
+  getActorUserId,
 } from "./_shared.js";
 
 async function run(): Promise<void> {
   const studentIds: string[] = [];
   const orderNumbers: string[] = [];
+  const noteIds: string[] = [];
 
   try {
     section("SMOKE 37 — Bildirim zamanlayıcısı");
@@ -223,6 +231,61 @@ async function run(): Promise<void> {
     );
     assertEqual(countOld.rows[0].c, "0", "E: 30 gün önce verilmiş sipariş, yeni görülse bile bildirilmedi");
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // F. Not hatırlatıcısı — claim + idempotency + silinmiş nota gönderilmez
+    // ─────────────────────────────────────────────────────────────────────────
+    section("F — Not hatırlatıcısı: claim + idempotent + silinmiş nota gönderim atlanır");
+
+    const actorUserId = await getActorUserId();
+    if (!actorUserId) {
+      ok("F: aktif kullanıcı yok (BOOTSTRAP_ADMINS?), not hatırlatıcısı testi atlandı");
+    } else {
+      // addNote yalnız gelecekteki zamanı kabul eder; "zamanı geldi" durumu
+      // insertLesson'daki starts_at offset deseniyle aynı fikirle simüle
+      // edilir — kayıttan sonra remind_at doğrudan DB'de geçmişe alınır.
+      const noteF = await addNote({
+        body: "SMOKE37 Hatırlatıcılı not.",
+        actorUserId,
+        reminder: { remindAt: new Date(Date.now() + 60_000).toISOString(), recipientUserIds: [actorUserId] },
+      });
+      noteIds.push(noteF.id);
+      await pool.query(`UPDATE note_reminders SET remind_at = now() - interval '1 minute' WHERE note_id = $1`, [noteF.id]);
+
+      await checkNoteReminders();
+      const afterF1 = await pool.query<{ sent_at: string | null }>(
+        `SELECT sent_at::text AS sent_at FROM note_reminders WHERE note_id = $1`,
+        [noteF.id],
+      );
+      assert(afterF1.rows[0].sent_at !== null, "F: sent_at dolu (claim edildi)");
+      const stampF1 = afterF1.rows[0].sent_at;
+
+      await checkNoteReminders();
+      const afterF2 = await pool.query<{ sent_at: string | null }>(
+        `SELECT sent_at::text AS sent_at FROM note_reminders WHERE note_id = $1`,
+        [noteF.id],
+      );
+      assertEqual(afterF2.rows[0].sent_at, stampF1, "F: ikinci çağrıda damga değişmedi (idempotent)");
+
+      // Silinmiş not: claim yine de olur (sonsuz yeniden deneme olmasın diye) —
+      // yalnız gönderim atlanır (push zaten VAPID'siz sessizce yutuluyor,
+      // burada doğrulanabilen tek şey claim'in engellenmediğidir).
+      const noteFDeleted = await addNote({
+        body: "SMOKE37 Hatırlatıcılı, sonra silinen not.",
+        actorUserId,
+        reminder: { remindAt: new Date(Date.now() + 60_000).toISOString(), recipientUserIds: [actorUserId] },
+      });
+      noteIds.push(noteFDeleted.id);
+      await deleteNote(noteFDeleted.id, actorUserId);
+      await pool.query(`UPDATE note_reminders SET remind_at = now() - interval '1 minute' WHERE note_id = $1`, [noteFDeleted.id]);
+
+      await checkNoteReminders();
+      const afterFDeleted = await pool.query<{ sent_at: string | null }>(
+        `SELECT sent_at::text AS sent_at FROM note_reminders WHERE note_id = $1`,
+        [noteFDeleted.id],
+      );
+      assert(afterFDeleted.rows[0].sent_at !== null, "F: silinmiş not için de claim edilir (retry fırtınası olmaz)");
+    }
+
     ok("\nSMOKE 37 — BİLDİRİM ZAMANLAYICISI TÜM ADIMLAR BAŞARILI ✓");
   } finally {
     if (orderNumbers.length > 0) {
@@ -232,6 +295,11 @@ async function run(): Promise<void> {
       await pool
         .query(`DELETE FROM channel_order_sightings WHERE channel = 'trendyol' AND order_number = ANY($1::text[])`, [orderNumbers])
         .catch(() => undefined);
+    }
+    if (noteIds.length > 0) {
+      // note_reminders, notes.id FK'sinde ON DELETE CASCADE olduğu için not
+      // silinince kendiliğinden temizlenir.
+      await pool.query(`DELETE FROM notes WHERE id = ANY($1::bigint[])`, [noteIds]).catch(() => undefined);
     }
     // cleanupSmoke, studentIds'e bağlı TÜM lessons satırlarını (A/B/C senaryolarında
     // yaratılanlar dahil) soft-delete eder — ayrıca lesson-id takibi gerekmez.

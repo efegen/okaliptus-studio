@@ -1,7 +1,7 @@
 /**
  * SMOKE 40 — Etkinlik (event) takip modülü (migration 0261)
  *
- * (+ migration 0263: ücret kalemi "coverage" — kim ödüyor + ücretsiz kontenjan)
+ * (+ migration 0263: ücret kalemi "coverage"; 0277: arama/kaldırma geçmişi)
  *
  * events / event_fee_items / event_participants / event_participant_fees /
  * event_vehicles: oluşturma, rol bazlı ücret ön ayarı (davetli = stüdyo üstlenir),
@@ -24,10 +24,12 @@ import {
   addExistingParticipant,
   addFeeItem,
   addNewParticipant,
+  addParticipantNote,
   assignParticipantToVehicle,
   cancelParticipantPayment,
   createEvent,
   createVehicle,
+  deleteParticipantNote,
   deleteVehicle,
   deleteEvent,
   getEventById,
@@ -35,15 +37,18 @@ import {
   getUpcomingEvent,
   listEventBalancesForStudent,
   listParticipantFees,
+  listParticipantNotes,
   listParticipantPayments,
   listParticipants,
   listVehicles,
+  markParticipantContacted,
   recordParticipantPayment,
   removeParticipant,
   searchStudentsForEvent,
   updateEvent,
   updateParticipant,
   updateParticipantFee,
+  updateParticipantNote,
   updateVehicle,
 } from "../../src/services/events.service.js";
 import { pool } from "../../src/db/connection.js";
@@ -58,6 +63,7 @@ import {
   closePool,
   cleanupSmoke,
   seedAdminUser,
+  getActorUserId,
 } from "./_shared.js";
 
 async function run(): Promise<void> {
@@ -66,23 +72,44 @@ async function run(): Promise<void> {
 
   async function cleanupEvents(): Promise<void> {
     if (eventIds.length === 0) return;
-    await pool.query(
-      `DELETE FROM event_payment_allocations WHERE payment_id IN (
-         SELECT id FROM event_payments WHERE event_id = ANY($1::bigint[])
-       )`,
-      [eventIds],
-    );
-    await pool.query(`DELETE FROM event_payments WHERE event_id = ANY($1::bigint[])`, [eventIds]);
-    await pool.query(
-      `DELETE FROM event_participant_fees WHERE participant_id IN (
-         SELECT id FROM event_participants WHERE event_id = ANY($1::bigint[])
-       )`,
-      [eventIds],
-    );
-    await pool.query(`DELETE FROM event_participants WHERE event_id = ANY($1::bigint[])`, [eventIds]);
-    await pool.query(`DELETE FROM event_vehicles WHERE event_id = ANY($1::bigint[])`, [eventIds]);
-    await pool.query(`DELETE FROM event_fee_items WHERE event_id = ANY($1::bigint[])`, [eventIds]);
-    await pool.query(`DELETE FROM events WHERE id = ANY($1::bigint[])`, [eventIds]);
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      // Önceki yarım kalmış SMOKE40 çalıştırmalarını da aynı güvenli sınırda
+      // temizle. Allocation toplamı constraint'i deferred olduğundan allocation
+      // ve payment silmeleri tek transaction içinde tamamlanmalıdır.
+      const targets = await client.query<{ id: string }>(
+        `SELECT id FROM events
+          WHERE id = ANY($1::bigint[]) OR name LIKE 'SMOKE40 %'`,
+        [eventIds],
+      );
+      const targetIds = targets.rows.map((row) => row.id);
+      if (targetIds.length > 0) {
+        await client.query(
+          `DELETE FROM event_payment_allocations WHERE payment_id IN (
+             SELECT id FROM event_payments WHERE event_id = ANY($1::bigint[])
+           )`,
+          [targetIds],
+        );
+        await client.query(`DELETE FROM event_payments WHERE event_id = ANY($1::bigint[])`, [targetIds]);
+        await client.query(
+          `DELETE FROM event_participant_fees WHERE participant_id IN (
+             SELECT id FROM event_participants WHERE event_id = ANY($1::bigint[])
+           )`,
+          [targetIds],
+        );
+        await client.query(`DELETE FROM event_participants WHERE event_id = ANY($1::bigint[])`, [targetIds]);
+        await client.query(`DELETE FROM event_vehicles WHERE event_id = ANY($1::bigint[])`, [targetIds]);
+        await client.query(`DELETE FROM event_fee_items WHERE event_id = ANY($1::bigint[])`, [targetIds]);
+        await client.query(`DELETE FROM events WHERE id = ANY($1::bigint[])`, [targetIds]);
+      }
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   try {
@@ -90,6 +117,7 @@ async function run(): Promise<void> {
 
     // ── A. Etkinlik oluşturma + ücret kalemleri ───────────────────────────────
     section("A — createEvent: ücret kalemleriyle birlikte");
+    const upcomingBeforeSmoke = await getUpcomingEvent();
     const event = await createEvent({
       name: "SMOKE40 Bahçe Yogası + Kahvaltı",
       startsAt: new Date(Date.now() + 10 * 86_400_000).toISOString(),
@@ -116,7 +144,11 @@ async function run(): Promise<void> {
     assertEqual(loaded.totalParticipants, 0, "A: liste boş başlıyor (auto-seed yok)");
 
     const upcoming = await getUpcomingEvent();
-    assertEqual(upcoming?.id, event.id, "A: getUpcomingEvent en yakın etkinliği döner");
+    const expectedUpcomingId = upcomingBeforeSmoke
+      && new Date(upcomingBeforeSmoke.starts_at).getTime() <= new Date(event.starts_at).getTime()
+      ? upcomingBeforeSmoke.id
+      : event.id;
+    assertEqual(upcoming?.id, expectedUpcomingId, "A: getUpcomingEvent en yakın etkinliği döner");
 
     // ── B. Kayıtlı öğrenci ekleme + rol bazlı ücret ───────────────────────────
     section("B — addExistingParticipant: normal vs davetli ücretlendirmesi");
@@ -223,10 +255,33 @@ async function run(): Promise<void> {
     assertMoney(summary.potentialAmount, "1000.00", "G2: potansiyel kazanç yalnız öğrenciye yazılan kalemlerden (500×2)");
     assertMoney(summary.studioCoveredAmount, "500.00", "G2: gönüllünün bedeli stüdyo üstlenimi olarak ayrı sayılır");
 
+    // ── G3. Listedeki bağımsız katılımcı sonradan misafir yapılabilir ─────────
+    section("G3 — updateParticipant: mevcut katılımcıyı misafire bağlama kuralları");
+    const linkedParticipantB = await updateParticipant(participantB.id, {
+      guestOfParticipantId: participantA.id,
+    });
+    assertEqual(
+      linkedParticipantB.guest_of_participant_id,
+      participantA.id,
+      "G3: listedeki bağımsız katılımcı mevcut kaydıyla misafir yapılır",
+    );
+    await updateParticipant(participantB.id, { guestOfParticipantId: null });
+    await assertRejects(
+      () => updateParticipant(participantNew.id, { guestOfParticipantId: participantB.id }),
+      "VALIDATION_ERROR",
+      "G3: zaten başka birine bağlı katılımcı yeniden bağlanamaz",
+    );
+    await assertRejects(
+      () => updateParticipant(participantA.id, { guestOfParticipantId: participantB.id }),
+      "VALIDATION_ERROR",
+      "G3: kendi misafiri olan katılımcı başka birinin misafiri olamaz",
+    );
+
     // ── H. Ödeme: FIFO dağıtım + aşırı ödeme reddi ────────────────────────────
     section("H — recordParticipantPayment: kısmi dağıtım ve aşırı ödeme reddi");
-    const payment = await recordParticipantPayment(participantA.id, "400.00", null, "iban", "smoke40-payment-1");
-    await recordParticipantPayment(participantA.id, "400.00", null, "iban", "smoke40-payment-1");
+    const firstPaymentKey = `smoke40-payment-${event.id}-1`;
+    const payment = await recordParticipantPayment(participantA.id, "400.00", null, "iban", firstPaymentKey);
+    await recordParticipantPayment(participantA.id, "400.00", null, "iban", firstPaymentKey);
     const feesA = await listParticipantFees(participantA.id);
     const lessonFee = feesA.find((f) => f.label === "Ders ücreti");
     const breakfastFee = feesA.find((f) => f.label === "Kahvaltı");
@@ -240,7 +295,7 @@ async function run(): Promise<void> {
     const cancelledFees = await listParticipantFees(participantA.id);
     assertMoney(cancelledFees.find((f) => f.label === "Ders ücreti")!.paid_amount, "0.00", "H: iptal ders tahsilatını geri alır");
     assertMoney(cancelledFees.find((f) => f.label === "Kahvaltı")!.paid_amount, "0.00", "H: iptal kısmi kalem tahsilatını geri alır");
-    await recordParticipantPayment(participantA.id, "400.00", null, "cash", "smoke40-payment-2");
+    await recordParticipantPayment(participantA.id, "400.00", null, "cash", `smoke40-payment-${event.id}-2`);
 
     await assertRejects(
       () => recordParticipantPayment(participantA.id, "1000.00"),
@@ -569,12 +624,43 @@ async function run(): Promise<void> {
       role: "regular",
       rsvpStatus: "unsure",
     });
-    await removeParticipant(participantQ1.id);
+    const contactedQ1 = await markParticipantContacted(participantQ1.id, {
+      note: "SMOKE yarın yeniden aranacak",
+    });
+    assert(!!contactedQ1.last_contacted_at, "Q: arandı zamanı katılımcıya yansır");
+    assertEqual(contactedQ1.contact_note, "SMOKE yarın yeniden aranacak", "Q: son arama notu döner");
+    assertEqual(contactedQ1.contact_count, 1, "Q: ilk arama sayısı döner");
+    assertEqual(contactedQ1.is_new_student, true, "Q: tamamlanmış dersi olmayan katılımcı yeni görünür");
+
+    const contactedAgainQ1 = await markParticipantContacted(participantQ1.id, {
+      note: "SMOKE ikinci arama",
+    });
+    assertEqual(contactedAgainQ1.contact_count, 2, "Q: yinelenen aramalar toplam sayıya eklenir");
+    assertEqual(contactedAgainQ1.contact_note, "SMOKE ikinci arama", "Q: en güncel arama notu döner");
+
+    await removeParticipant(participantQ1.id, {
+      reason: "student_cancelled",
+      note: "SMOKE programı değişti",
+    });
     await assertRejects(
       () => getParticipantById(participantQ1.id),
       "EVENT_PARTICIPANT_NOT_FOUND",
       "Q: kaldırılan katılımcı artık bulunamıyor",
     );
+    const interactionsQ1 = await pool.query<{
+      interaction_type: string;
+      removal_reason: string | null;
+      note: string | null;
+    }>(
+      `SELECT interaction_type, removal_reason, note
+         FROM event_participant_interactions
+        WHERE participant_id = $1
+        ORDER BY id`,
+      [participantQ1.id],
+    );
+    assertEqual(interactionsQ1.rows.length, 3, "Q: aramalar ve kaldırma geçmişi silinen satırdan sonra kalır");
+    assertEqual(interactionsQ1.rows[2].removal_reason, "student_cancelled", "Q: kaldırma nedeni saklanır");
+    assertEqual(interactionsQ1.rows[2].note, "SMOKE programı değişti", "Q: kaldırma notu saklanır");
 
     const studentQ2 = await createStudent({ fullName: "SMOKE40 Sena Ödemeli" });
     studentIds.push(studentQ2.id);
@@ -619,6 +705,168 @@ async function run(): Promise<void> {
       "Q: var olmayan katılımcı kaldırma isteği reddedilir",
     );
 
+    // ── Q2. removeParticipant: guestResolution — "bağlantıları kopart" /
+    // "misafirleri de kaldır" (0281) ────────────────────────────────────────
+    section("Q2 — removeParticipant: guestResolution seçenekleri");
+
+    const studentQ4 = await createStudent({ fullName: "SMOKE40 Baris Misafirli Unlink" });
+    studentIds.push(studentQ4.id);
+    const participantQ4 = await addExistingParticipant(eventQ.id, {
+      studentId: studentQ4.id,
+      role: "regular",
+      rsvpStatus: "coming",
+    });
+    const participantQ4Guest = await addNewParticipant(eventQ.id, {
+      fullName: "SMOKE40 Baris Misafiri",
+      role: "regular",
+      rsvpStatus: "unsure",
+      guestOfParticipantId: participantQ4.id,
+    });
+    studentIds.push(participantQ4Guest.student_id);
+    await assertRejects(
+      () => removeParticipant(participantQ4.id, { guestResolution: "not_a_real_option" as never }),
+      "VALIDATION_ERROR",
+      "Q2: geçersiz guestResolution reddedilir",
+    );
+    await removeParticipant(participantQ4.id, { guestResolution: "unlink" });
+    const unlinkedGuest = await getParticipantById(participantQ4Guest.id);
+    assertEqual(unlinkedGuest.guest_of_participant_id, null, "Q2: unlink sonrası misafir bağımsız katılımcı olur");
+    await assertRejects(
+      () => getParticipantById(participantQ4.id),
+      "EVENT_PARTICIPANT_NOT_FOUND",
+      "Q2: unlink seçilse de host kaldırılmış olur",
+    );
+    const unlinkAudit = await pool.query<{ action: string }>(
+      `SELECT action FROM audit_logs WHERE entity_type = 'event_participant' AND entity_id = $1 ORDER BY id DESC LIMIT 1`,
+      [participantQ4Guest.id],
+    );
+    assertEqual(unlinkAudit.rows[0]?.action, "event_participant_guest_unlinked", "Q2: unlink audit kaydı yazılır");
+    await removeParticipant(participantQ4Guest.id);
+
+    const studentQ5 = await createStudent({ fullName: "SMOKE40 Deniz Misafirli RemoveGuests" });
+    studentIds.push(studentQ5.id);
+    const participantQ5 = await addExistingParticipant(eventQ.id, {
+      studentId: studentQ5.id,
+      role: "regular",
+      rsvpStatus: "coming",
+    });
+    const participantQ5Guest = await addNewParticipant(eventQ.id, {
+      fullName: "SMOKE40 Deniz Misafiri",
+      role: "regular",
+      rsvpStatus: "unsure",
+      guestOfParticipantId: participantQ5.id,
+    });
+    studentIds.push(participantQ5Guest.student_id);
+    await removeParticipant(participantQ5.id, { guestResolution: "remove_guests" });
+    await assertRejects(
+      () => getParticipantById(participantQ5.id),
+      "EVENT_PARTICIPANT_NOT_FOUND",
+      "Q2: remove_guests sonrası host kaldırılır",
+    );
+    await assertRejects(
+      () => getParticipantById(participantQ5Guest.id),
+      "EVENT_PARTICIPANT_NOT_FOUND",
+      "Q2: remove_guests sonrası misafir de kaldırılır",
+    );
+
+    const studentQ6 = await createStudent({ fullName: "SMOKE40 Elif Misafirli Odemeli" });
+    studentIds.push(studentQ6.id);
+    const participantQ6 = await addExistingParticipant(eventQ.id, {
+      studentId: studentQ6.id,
+      role: "regular",
+      rsvpStatus: "coming",
+    });
+    const participantQ6Guest = await addNewParticipant(eventQ.id, {
+      fullName: "SMOKE40 Elif Misafiri",
+      role: "regular",
+      rsvpStatus: "coming",
+      guestOfParticipantId: participantQ6.id,
+    });
+    studentIds.push(participantQ6Guest.student_id);
+    await recordParticipantPayment(participantQ6Guest.id, "50.00");
+    await assertRejects(
+      () => removeParticipant(participantQ6.id, { guestResolution: "remove_guests" }),
+      "EVENT_PARTICIPANT_HAS_PAYMENTS",
+      "Q2: ödemesi alınmış misafir varken remove_guests hepsini reddeder",
+    );
+    assertEqual((await getParticipantById(participantQ6.id)).id, participantQ6.id, "Q2: reddedilen istekte host silinmeden kalır");
+    assertEqual((await getParticipantById(participantQ6Guest.id)).id, participantQ6Guest.id, "Q2: reddedilen istekte misafir de silinmeden kalır");
+
+    // ── S. Katılımcı profili not günlüğü (0280) ───────────────────────────────
+    section("S — Katılımcı profili not günlüğü: ekle/listele/düzenle/sil, yazar kısıtı");
+    const notesActorUserId = await getActorUserId();
+    if (!notesActorUserId) {
+      ok("S: aktif kullanıcı yok (BOOTSTRAP_ADMINS?), katılımcı notu testi atlandı");
+    } else {
+      const secondNotesActorRow = await pool.query<{ id: string }>(
+        `SELECT id FROM users WHERE is_active = true AND id <> $1 ORDER BY id ASC LIMIT 1`,
+        [notesActorUserId],
+      );
+      const secondNotesActorUserId = secondNotesActorRow.rows[0] ? Number(secondNotesActorRow.rows[0].id) : null;
+
+      assertEqual((await listParticipantNotes(participantQ2.id)).length, 0, "S: yeni katılımcının hiç notu yok");
+
+      await assertRejects(
+        () => addParticipantNote(participantQ2.id, "   ", notesActorUserId),
+        "VALIDATION_ERROR",
+        "S: boş not gövdesi reddedilir",
+      );
+      await assertRejects(
+        () => addParticipantNote("999999999", "SMOKE40 var olmayan katılımcı", notesActorUserId),
+        "EVENT_PARTICIPANT_NOT_FOUND",
+        "S: var olmayan katılımcıya not eklenemez",
+      );
+
+      const noteS1 = await addParticipantNote(participantQ2.id, "SMOKE40 kahvaltıya geç kalabilir", notesActorUserId);
+      assertEqual(noteS1.body, "SMOKE40 kahvaltıya geç kalabilir", "S: eklenen notun gövdesi döner");
+      assertEqual(noteS1.author_user_id, String(notesActorUserId), "S: notu ekleyen kullanıcı kaydedilir");
+      assert(!!noteS1.author_name, "S: yazar adı JOIN ile döner");
+
+      const noteS2 = await addParticipantNote(participantQ2.id, "SMOKE40 ulaşım için araç lazım", notesActorUserId);
+      const listAfterTwo = await listParticipantNotes(participantQ2.id);
+      assertEqual(listAfterTwo.length, 2, "S: iki not da listede görünür");
+      assertEqual(listAfterTwo[0].id, noteS2.id, "S: liste en yeni nottan en eskiye sıralanır");
+
+      const updatedNoteS1 = await updateParticipantNote(noteS1.id, "SMOKE40 kahvaltıya yetişecek", notesActorUserId);
+      assertEqual(updatedNoteS1.body, "SMOKE40 kahvaltıya yetişecek", "S: not düzenlenince gövde güncellenir");
+      assert(updatedNoteS1.updated_at !== updatedNoteS1.created_at, "S: düzenleme updated_at'i ileri alır");
+
+      await assertRejects(
+        () => updateParticipantNote(noteS1.id, "   ", notesActorUserId),
+        "VALIDATION_ERROR",
+        "S: boş gövdeyle düzenleme reddedilir",
+      );
+      await assertRejects(
+        () => updateParticipantNote("999999999", "SMOKE40 yok", notesActorUserId),
+        "EVENT_PARTICIPANT_NOTE_NOT_FOUND",
+        "S: var olmayan not düzenlenemez",
+      );
+
+      if (secondNotesActorUserId) {
+        await assertRejects(
+          () => updateParticipantNote(noteS1.id, "SMOKE40 başkası düzenlemeye çalışıyor", secondNotesActorUserId),
+          "EVENT_PARTICIPANT_NOTE_FORBIDDEN",
+          "S: başkasının notu düzenlenemez",
+        );
+        await assertRejects(
+          () => deleteParticipantNote(noteS1.id, secondNotesActorUserId),
+          "EVENT_PARTICIPANT_NOTE_FORBIDDEN",
+          "S: başkasının notu silinemez",
+        );
+      }
+
+      await deleteParticipantNote(noteS2.id, notesActorUserId);
+      const listAfterDelete = await listParticipantNotes(participantQ2.id);
+      assertEqual(listAfterDelete.length, 1, "S: silinen not listeden kalıcı olarak kalkar");
+      assertEqual(listAfterDelete[0].id, noteS1.id, "S: geriye kalan not doğru");
+
+      await assertRejects(
+        () => deleteParticipantNote(noteS2.id, notesActorUserId),
+        "EVENT_PARTICIPANT_NOTE_NOT_FOUND",
+        "S: zaten silinmiş not ikinci kez silinemez",
+      );
+    }
+
     // ── L. HTTP router bağlantı kontrolü ──────────────────────────────────────
     section("L — /events HTTP router bağlı ve erişilebilir (tüm roller açık)");
     const admin = seedAdminUser();
@@ -656,7 +904,10 @@ async function run(): Promise<void> {
     ok("\nSMOKE 40 — ETKİNLİK MODÜLÜ TÜM ADIMLAR BAŞARILI ✓");
   } finally {
     await cleanupEvents();
-    await cleanupSmoke(studentIds);
+    const staleStudents = await pool.query<{ id: string }>(
+      `SELECT id FROM students WHERE full_name LIKE 'SMOKE40 %' AND deleted_at IS NULL`,
+    );
+    await cleanupSmoke([...new Set([...studentIds, ...staleStudents.rows.map((row) => row.id)])]);
     await closePool();
   }
 }

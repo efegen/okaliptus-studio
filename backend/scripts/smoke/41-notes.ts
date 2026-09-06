@@ -5,8 +5,8 @@
  * 40'ın "R" bölümü), 0273'te genel bir alana dönüştü: tek liste, etkinlik
  * referansı yok. 0275 tepki ve fotoğraf yan tablolarını ekledi.
  * Kapsam: ekleme, sıralama, düzenleme, silme (soft-delete), tek seviye yanıt,
- * "@" ile öğrenci bahsi, yazar kısıtı, emoji tepkileri, fotoğraf ve /notes
- * HTTP router'ı.
+ * "@" ile öğrenci bahsi, yazar kısıtı, emoji tepkileri, fotoğraf, hatırlatıcı
+ * (migration 0282 — doğrulama + kalıcılık) ve /notes HTTP router'ı.
  *
  * Not: liste stüdyo geneli olduğu için önceki koşuların notları da döner —
  * doğrulamalar bu koşuda üretilen id'lere göre süzülür.
@@ -23,11 +23,16 @@ import { login, logout } from "../../src/services/auth.service.js";
 import { createStudent } from "../../src/services/students.service.js";
 import {
   addNote,
+  createNoteCategory,
+  deleteNoteCategory,
   deleteNote,
   getNoteImage,
+  listNoteCategories,
+  listNoteReminderRecipients,
   listNotes,
   setNoteImage,
   toggleNoteReaction,
+  updateNoteCategory,
   updateNote,
 } from "../../src/services/notes.service.js";
 import { pool } from "../../src/db/connection.js";
@@ -47,6 +52,7 @@ import {
 async function run(): Promise<void> {
   const studentIds: string[] = [];
   const noteIds: string[] = [];
+  const categoryIds: string[] = [];
 
   async function cleanupNotes(): Promise<void> {
     if (noteIds.length === 0) return;
@@ -54,6 +60,9 @@ async function run(): Promise<void> {
     // Yanıtlar üst nottan önce silinmeli (parent_note_id FK).
     await pool.query(`DELETE FROM notes WHERE id = ANY($1::bigint[]) AND parent_note_id IS NOT NULL`, [noteIds]);
     await pool.query(`DELETE FROM notes WHERE id = ANY($1::bigint[])`, [noteIds]);
+    if (categoryIds.length > 0) {
+      await pool.query(`DELETE FROM note_categories WHERE id = ANY($1::bigint[])`, [categoryIds]);
+    }
   }
 
   try {
@@ -65,9 +74,11 @@ async function run(): Promise<void> {
       return;
     }
 
-    const actorDisplayName = (
-      await pool.query<{ display_name: string }>(`SELECT display_name FROM users WHERE id = $1`, [actorUserId])
-    ).rows[0].display_name;
+    const actorRow = (
+      await pool.query<{ display_name: string; role: string }>(`SELECT display_name, role FROM users WHERE id = $1`, [actorUserId])
+    ).rows[0];
+    const actorDisplayName = actorRow.display_name;
+    const actorRole = actorRow.role;
     // "Başkasının notu" testleri için ikinci bir aktif kullanıcı arıyoruz —
     // yoksa (tek admin ortamı) forbidden testleri atlanır, çökmez.
     const secondActorRow = await pool.query<{ id: string }>(
@@ -92,6 +103,7 @@ async function run(): Promise<void> {
     const noteFirst = await addNote({ body: "SMOKE41 Malzemeler bahçede hazır.", actorUserId });
     noteIds.push(noteFirst.id);
     assertEqual(noteFirst.author_name, actorDisplayName, "A: not, yazarın users.display_name'iyle JOIN'lenmiş döner");
+    assertEqual(noteFirst.author_role, actorRole, "A: not, yazarın users.role'üyle JOIN'lenmiş döner");
     assertEqual(noteFirst.body, "SMOKE41 Malzemeler bahçede hazır.", "A: not metni aynen kaydedilir");
     assertEqual(noteFirst.parent_note_id, null, "A: üst seviye not parent_note_id=null");
     assertEqual(noteFirst.deleted_at, null, "A: yeni not silinmemiş");
@@ -107,6 +119,68 @@ async function run(): Promise<void> {
     assertEqual(mine.length, 2, "A: her iki not da genel listede");
     assertEqual(mine[0].id, noteSecond.id, "A: en yeni not daha üstte (created_at DESC)");
     assertEqual(mine[1].id, noteFirst.id, "A: en eski not daha altta");
+
+    // ── A2. Kullanıcı tanımlı kategoriler ───────────────────────────────────
+    section("A2 — Not kategorileri: CRUD, tekil nullable atama");
+    const category = await createNoteCategory("SMOKE41 Operasyon", actorUserId);
+    categoryIds.push(category.id);
+    assertEqual(category.name, "SMOKE41 Operasyon", "A2: kategori oluşturuldu");
+    await assertRejects(
+      () => createNoteCategory("smoke41 operasyon", actorUserId),
+      "NOTE_CATEGORY_NAME_TAKEN",
+      "A2: kategori adı büyük/küçük harf duyarsız benzersiz",
+    );
+    const renamedCategory = await updateNoteCategory(category.id, "SMOKE41 Hazırlık");
+    assertEqual(renamedCategory.name, "SMOKE41 Hazırlık", "A2: kategori yeniden adlandırıldı");
+
+    const secondCategory = await createNoteCategory("SMOKE41 Malzeme", actorUserId);
+    categoryIds.push(secondCategory.id);
+
+    const categorizedNote = await addNote({
+      body: "SMOKE41 Kategorili not.",
+      actorUserId,
+      categoryId: category.id,
+    });
+    noteIds.push(categorizedNote.id);
+    assertEqual(categorizedNote.category?.id, category.id, "A2: not tek kategori id'siyle bağlı döner");
+    assertEqual(categorizedNote.category?.name, "SMOKE41 Hazırlık", "A2: kategori adı nota bağlı döner");
+    const categoryList = await listNoteCategories();
+    assertEqual(categoryList.find((item) => item.id === category.id)?.note_count, 1, "A2: kategori not sayısı doğru");
+
+    const uncategorizedNote = await addNote({ body: "SMOKE41 Kategorisiz not.", actorUserId });
+    noteIds.push(uncategorizedNote.id);
+    assertEqual(uncategorizedNote.category, null, "A2: kategori seçmeden not eklenebilir");
+
+    await assertRejects(
+      () => addNote({
+        body: "SMOKE41 Kategorili yanıt olmamalı.",
+        actorUserId,
+        parentNoteId: noteFirst.id,
+        categoryId: category.id,
+      }),
+      "VALIDATION_ERROR",
+      "A2: yanıta kategori atanamaz",
+    );
+
+    const recategorized = await updateNote(categorizedNote.id, {
+      body: categorizedNote.body!,
+      actorUserId,
+      categoryId: secondCategory.id,
+    });
+    assertEqual(recategorized.category?.id, secondCategory.id, "A2: düzenlemede kategori tekil olarak değişir");
+
+    await deleteNoteCategory(secondCategory.id);
+    const afterCategoryDelete = (await listNotes(actorUserId)).find((item) => item.id === categorizedNote.id)!;
+    assertEqual(afterCategoryDelete.category, null, "A2: kategori silinince not korunur ve category null olur");
+    assert(
+      !(await listNoteCategories()).some((item) => item.id === secondCategory.id),
+      "A2: silinen kategori katalogdan kalkar",
+    );
+    await assertRejects(
+      () => deleteNoteCategory(secondCategory.id),
+      "NOTE_CATEGORY_NOT_FOUND",
+      "A2: silinmiş kategori ikinci kez silinemez",
+    );
 
     // ── B. "@" ile öğrenci bahsi ─────────────────────────────────────────────
     section("B — @ bahis: geçerli/geçersiz öğrenci referansı");
@@ -244,6 +318,69 @@ async function run(): Promise<void> {
       "F: silinmiş nota yanıt verilemez",
     );
 
+    // ── H. Hatırlatıcı: doğrulama + kalıcılık (migration 0282) ──────────────
+    section("H — Hatırlatıcı: doğrulama + kalıcılık (note_reminders)");
+
+    const futureIso = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const pastIso = new Date(Date.now() - 60 * 1000).toISOString();
+
+    await assertRejects(
+      () => addNote({
+        body: "SMOKE41 Geçmiş hatırlatma.",
+        actorUserId,
+        reminder: { remindAt: pastIso, recipientUserIds: [actorUserId] },
+      }),
+      "VALIDATION_ERROR",
+      "H: geçmiş zamanlı hatırlatma reddedilir",
+    );
+    const afterPastReject = await pool.query<{ c: string }>(
+      `SELECT COUNT(*)::text AS c FROM notes WHERE body = 'SMOKE41 Geçmiş hatırlatma.'`,
+    );
+    assertEqual(afterPastReject.rows[0].c, "0", "H: doğrulama başarısızsa not da oluşmaz (aynı transaction)");
+
+    await assertRejects(
+      () => addNote({
+        body: "SMOKE41 Alıcısız hatırlatma.",
+        actorUserId,
+        reminder: { remindAt: futureIso, recipientUserIds: [] },
+      }),
+      "VALIDATION_ERROR",
+      "H: alıcısız hatırlatma reddedilir",
+    );
+
+    await assertRejects(
+      () => addNote({
+        body: "SMOKE41 Geçersiz alıcı.",
+        actorUserId,
+        reminder: { remindAt: futureIso, recipientUserIds: ["999999999"] },
+      }),
+      "VALIDATION_ERROR",
+      "H: var olmayan/pasif alıcı reddedilir",
+    );
+
+    const noteWithReminder = await addNote({
+      body: "SMOKE41 Hatırlatıcılı not.",
+      actorUserId,
+      reminder: { remindAt: futureIso, recipientUserIds: [actorUserId] },
+    });
+    noteIds.push(noteWithReminder.id);
+    const reminderRow = await pool.query<{ recipient_user_ids: string[]; sent_at: string | null }>(
+      `SELECT recipient_user_ids, sent_at FROM note_reminders WHERE note_id = $1`,
+      [noteWithReminder.id],
+    );
+    assertEqual(reminderRow.rows.length, 1, "H: not için tek bir hatırlatıcı satırı kaydedildi");
+    assert(
+      reminderRow.rows[0].recipient_user_ids.map(String).includes(String(actorUserId)),
+      "H: alıcı kaydedildi",
+    );
+    assertEqual(reminderRow.rows[0].sent_at, null, "H: henüz gönderilmedi (sent_at boş)");
+
+    const reminderRecipients = await listNoteReminderRecipients();
+    assert(
+      reminderRecipients.some((r) => String(r.id) === String(actorUserId)),
+      "H: listNoteReminderRecipients aktörü içerir (yalnız owner değil, tüm roller)",
+    );
+
     // ── G. HTTP router ───────────────────────────────────────────────────────
     section("G — /notes HTTP router bağlı ve erişilebilir (tüm roller açık)");
     const admin = seedAdminUser();
@@ -261,15 +398,51 @@ async function run(): Promise<void> {
           process.exit(1);
         }
 
+        const malformedReminderBody = "SMOKE41 HTTP hatalı hatırlatıcı.";
+        const malformedReminderRes = await fetch(`${base}/notes`, {
+          method: "POST",
+          headers: { Cookie: `session=${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ body: malformedReminderBody, reminder: { remindAt: futureIso } }),
+        });
+        assertEqual(malformedReminderRes.status, 400, "G: eksik reminder gövdesi → 400");
+        const malformedReminderPayload = await malformedReminderRes.json();
+        assertEqual(malformedReminderPayload.error.code, "VALIDATION_ERROR", "G: hatalı reminder VALIDATION_ERROR döner");
+        const malformedReminderNoteCount = await pool.query<{ c: string }>(
+          `SELECT COUNT(*)::text AS c FROM notes WHERE body = $1`,
+          [malformedReminderBody],
+        );
+        assertEqual(malformedReminderNoteCount.rows[0].c, "0", "G: hatalı reminder ile not oluşmaz");
+
+        const categoryPostRes = await fetch(`${base}/notes/categories`, {
+          method: "POST",
+          headers: { Cookie: `session=${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ name: "SMOKE41 HTTP Kategori" }),
+        });
+        assertEqual(categoryPostRes.status, 201, "G: POST /notes/categories → 201");
+        const categoryPostBody = await categoryPostRes.json();
+        categoryIds.push(categoryPostBody.data.id);
+
         const postRes = await fetch(`${base}/notes`, {
           method: "POST",
           headers: { Cookie: `session=${token}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ body: "SMOKE41 HTTP üzerinden eklenen not." }),
+          body: JSON.stringify({
+            body: "SMOKE41 HTTP üzerinden eklenen not.",
+            categoryId: categoryPostBody.data.id,
+          }),
         });
         assertEqual(postRes.status, 201, "G: POST /notes → 201");
         const postBody = await postRes.json();
         noteIds.push(postBody.data.id);
         assertEqual(postBody.data.body, "SMOKE41 HTTP üzerinden eklenen not.", "G: POST yanıtı eklenen notu döner");
+        assertEqual(postBody.data.category.id, categoryPostBody.data.id, "G: POST yanıtı tekil kategoriyi döner");
+
+        const categoryDeleteRes = await fetch(`${base}/notes/categories/${categoryPostBody.data.id}`, {
+          method: "DELETE",
+          headers: { Cookie: `session=${token}` },
+        });
+        assertEqual(categoryDeleteRes.status, 200, "G: DELETE /notes/categories/:categoryId → 200");
+        const noteAfterCategoryDelete = (await listNotes(actorUserId)).find((item) => item.id === postBody.data.id)!;
+        assertEqual(noteAfterCategoryDelete.category, null, "G: HTTP kategori silme notu koruyup bağı temizler");
 
         const reactionRes = await fetch(`${base}/notes/${postBody.data.id}/reactions`, {
           method: "POST",
@@ -303,6 +476,11 @@ async function run(): Promise<void> {
           listBody.data.some((n: { id: string }) => n.id === postBody.data.id),
           "G: GET listesi HTTP üzerinden eklenen notu içeriyor — herkes görebilir",
         );
+
+        const recipientsRes = await fetch(`${base}/notes/reminder-recipients`, { headers: { Cookie: `session=${token}` } });
+        assertEqual(recipientsRes.status, 200, "G: GET /notes/reminder-recipients → 200 (owner değil ama erişebilir)");
+        const recipientsBody = await recipientsRes.json();
+        assert(Array.isArray(recipientsBody.data) && recipientsBody.data.length > 0, "G: alıcı listesi dolu döner");
 
         const patchRes = await fetch(`${base}/notes/${postBody.data.id}`, {
           method: "PATCH",

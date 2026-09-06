@@ -10,11 +10,15 @@ import { createStudentWithClient } from "./students.service.js";
 import {
   CompQuotaExceededError,
   DuplicateParticipantError,
+  EventActivityNotFoundError,
+  EventActivityNotRevertibleError,
   EventFeeItemNotFoundError,
   EventHasPaymentsError,
   EventNotFoundError,
   EventParticipantHasGuestsError,
   EventParticipantHasPaymentsError,
+  EventParticipantNoteForbiddenError,
+  EventParticipantNoteNotFoundError,
   EventParticipantNotFoundError,
   EventPaymentNotFoundError,
   EventVehicleNotFoundError,
@@ -45,6 +49,16 @@ export type RsvpStatus = "coming" | "unsure";
 export type TransportMode = "needs_vehicle" | "self_arranged" | "unspecified";
 export type AttendanceStatus = "pending" | "arrived" | "no_show";
 export type VehicleType = "student_car" | "rental_service";
+export type ParticipantRemovalReason =
+  | "student_cancelled"
+  | "plans_changed"
+  | "added_by_mistake"
+  | "other";
+// Misafiri olan biri doğrudan silinemez (bkz. removeParticipant) — çağıran
+// taraf bu iki yoldan birini seçmek ZORUNDA: "unlink" misafirleri bağımsız,
+// normal katılımcıya çevirir (bağlantı kopar, kendileri kalır); "remove_guests"
+// hepsini host ile birlikte kaldırır (ör. host gelmiyorsa misafiri de gelmez).
+export type GuestResolution = "unlink" | "remove_guests";
 // Bir ücret kaleminin bedelini KİM karşılıyor — bkz. 0263_event_fee_coverage.sql.
 // Yalnız "student" katılımcıdan alınacak tutardır; "none" kişiyi kalemin
 // sayımından da çıkarır. Etkinlik günü borç üretimi ayrı/deferred akıştır.
@@ -57,6 +71,13 @@ const TRANSPORT_MODES: TransportMode[] = ["needs_vehicle", "self_arranged", "uns
 const ATTENDANCE_STATUSES: AttendanceStatus[] = ["pending", "arrived", "no_show"];
 const VEHICLE_TYPES: VehicleType[] = ["student_car", "rental_service"];
 const FEE_COVERAGES: FeeCoverage[] = ["student", "studio", "comp", "external", "none"];
+const PARTICIPANT_REMOVAL_REASONS: ParticipantRemovalReason[] = [
+  "student_cancelled",
+  "plans_changed",
+  "added_by_mistake",
+  "other",
+];
+const GUEST_RESOLUTIONS: GuestResolution[] = ["unlink", "remove_guests"];
 
 // Rol = ön ayar, kural değil. Ekleme ekranı bu ön ayarı gösterir ve kalem bazında
 // değiştirilebilir (fees[] gönderilir); gönderilmezse burası uygulanır.
@@ -155,11 +176,14 @@ export type EventParticipantRow = {
   transport_mode: TransportMode;
   vehicle_id: string | null;
   attendance_status: AttendanceStatus;
-  note: string | null;
   student_name: string;
   student_nickname: string | null;
   student_phone: string | null;
   guest_of_name: string | null;
+  last_contacted_at: string | null;
+  contact_note: string | null;
+  contact_count: number;
+  is_new_student: boolean;
   total_due: string;
   total_paid: string;
   total_studio_covered: string;
@@ -247,7 +271,7 @@ export type UpdateParticipantInput = {
   rsvpStatus?: RsvpStatus;
   transportMode?: TransportMode;
   attendanceStatus?: AttendanceStatus;
-  note?: string | null;
+  guestOfParticipantId?: EntityId | null;
 };
 
 export type CreateVehicleInput = {
@@ -267,6 +291,16 @@ export type UpdateVehicleInput = {
   driverPhone?: string | null;
   passengerSeats?: number;
   meetingPlace?: string | null;
+  note?: string | null;
+};
+
+export type RemoveParticipantInput = {
+  reason?: ParticipantRemovalReason;
+  note?: string | null;
+  guestResolution?: GuestResolution;
+};
+
+export type ContactParticipantInput = {
   note?: string | null;
 };
 
@@ -480,6 +514,7 @@ export async function createEvent(input: CreateEventInput): Promise<EventRow> {
 
     await insertAuditLog(client, {
       action: "event_created",
+      eventId: event.id,
       entityType: "event",
       entityId: event.id,
       after: event,
@@ -647,11 +682,13 @@ export async function updateEvent(
   eventId: EntityId,
   input: UpdateEventInput,
   actorUserId?: number | string | null,
+  transactionClient?: PoolClient,
 ): Promise<EventRow> {
-  const client = await pool.connect();
+  const ownsTransaction = transactionClient === undefined;
+  const client = transactionClient ?? await pool.connect();
 
   try {
-    await client.query("BEGIN");
+    if (ownsTransaction) await client.query("BEGIN");
     const before = await lockEvent(client, eventId);
 
     const sets: string[] = [];
@@ -701,7 +738,7 @@ export async function updateEvent(
     }
 
     if (sets.length === 0) {
-      await client.query("COMMIT");
+      if (ownsTransaction) await client.query("COMMIT");
       return before;
     }
 
@@ -714,6 +751,7 @@ export async function updateEvent(
 
     await insertAuditLog(client, {
       action: "event_updated",
+      eventId: updated.id,
       entityType: "event",
       entityId: updated.id,
       before,
@@ -721,13 +759,13 @@ export async function updateEvent(
       actorUserId: actorUserId ?? null,
     });
 
-    await client.query("COMMIT");
+    if (ownsTransaction) await client.query("COMMIT");
     return updated;
   } catch (error) {
-    await rollbackQuietly(client);
+    if (ownsTransaction) await rollbackQuietly(client);
     throw toServiceError(error);
   } finally {
-    client.release();
+    if (ownsTransaction) client.release();
   }
 }
 
@@ -760,6 +798,7 @@ export async function deleteEvent(
 
     await insertAuditLog(client, {
       action: "event_deleted",
+      eventId: String(eventId),
       entityType: "event",
       entityId: String(eventId),
       before,
@@ -834,6 +873,7 @@ export async function addFeeItem(
 
     await insertAuditLog(client, {
       action: "event_fee_item_created",
+      eventId: feeItem.event_id,
       entityType: "event_fee_item",
       entityId: feeItem.id,
       after: feeItem,
@@ -853,9 +893,13 @@ export async function addFeeItem(
 const PARTICIPANT_SELECT = `
   SELECT
     p.id, p.event_id, p.student_id, p.role, p.rsvp_status, p.guest_of_participant_id,
-    p.transport_mode, p.vehicle_id, p.attendance_status, p.note,
+    p.transport_mode, p.vehicle_id, p.attendance_status,
     s.full_name AS student_name, s.nickname AS student_nickname, s.phone AS student_phone,
     g.full_name AS guest_of_name,
+    last_contact.occurred_at AS last_contacted_at,
+    last_contact.note AS contact_note,
+    last_contact.contact_count,
+    NOT student_history.has_completed_lesson AS is_new_student,
     COALESCE(SUM(f.amount_snapshot) FILTER (WHERE f.included), 0)::text AS total_due,
     COALESCE(SUM(f.paid_amount), 0)::text AS total_paid,
     COALESCE(SUM(f.base_amount_snapshot) FILTER (WHERE f.coverage = 'studio'), 0)::text
@@ -865,9 +909,28 @@ const PARTICIPANT_SELECT = `
   LEFT JOIN event_participants gp ON gp.id = p.guest_of_participant_id
   LEFT JOIN students g ON g.id = gp.student_id
   LEFT JOIN event_participant_fees f ON f.participant_id = p.id
+  LEFT JOIN LATERAL (
+    SELECT
+      COUNT(*)::int AS contact_count,
+      (array_agg(i.occurred_at ORDER BY i.occurred_at DESC, i.id DESC))[1] AS occurred_at,
+      (array_agg(i.note ORDER BY i.occurred_at DESC, i.id DESC))[1] AS note
+      FROM event_participant_interactions i
+     WHERE i.participant_id = p.id AND i.interaction_type = 'called'
+  ) last_contact ON true
+  LEFT JOIN LATERAL (
+    SELECT EXISTS (
+      SELECT 1
+        FROM lessons l
+       WHERE l.student_id = p.student_id
+         AND l.status = 'completed'
+         AND l.deleted_at IS NULL
+    ) AS has_completed_lesson
+  ) student_history ON true
 `;
 const PARTICIPANT_GROUP_BY = `
-  GROUP BY p.id, s.full_name, s.nickname, s.phone, g.full_name
+  GROUP BY p.id, s.full_name, s.nickname, s.phone, g.full_name,
+           last_contact.occurred_at, last_contact.note, last_contact.contact_count,
+           student_history.has_completed_lesson
 `;
 
 export async function listParticipants(eventId: EntityId): Promise<EventParticipantRow[]> {
@@ -895,8 +958,11 @@ export async function getParticipantById(participantId: EntityId): Promise<Event
   return getParticipantByIdWith(pool, participantId);
 }
 
-export async function listParticipantFees(participantId: EntityId): Promise<EventParticipantFeeRow[]> {
-  const result = await pool.query<EventParticipantFeeRow>(
+async function listParticipantFeesWith(
+  queryable: Queryable,
+  participantId: EntityId,
+): Promise<EventParticipantFeeRow[]> {
+  const result = await queryable.query<EventParticipantFeeRow>(
     `SELECT f.id, f.participant_id, f.fee_item_id, f.included, f.coverage,
             f.amount_snapshot, f.base_amount_snapshot, f.amount_override, f.paid_amount,
             i.label, i.is_pass_through, i.is_lesson_fee, i.comp_quota,
@@ -1024,6 +1090,7 @@ async function addExistingParticipantWithClient(
 
     await insertAuditLog(client, {
       action: "event_participant_added",
+      eventId: String(eventId),
       entityType: "event_participant",
       entityId: participantId,
       after: { eventId: String(eventId), studentId: String(input.studentId), role, rsvpStatus },
@@ -1088,15 +1155,48 @@ export async function addNewParticipant(
   }
 }
 
+type ParticipantUpdateSnapshotRow = {
+  role: ParticipantRole;
+  rsvp_status: RsvpStatus;
+  transport_mode: TransportMode;
+  attendance_status: AttendanceStatus;
+  vehicle_id: string | null;
+  guest_of_participant_id: string | null;
+};
+
+// "Önce" anlık görüntüsü, input ile AYNI biçimde (camelCase) ve yalnız input'ta
+// gerçekten gönderilen alanlar için yazılır — geri alma (revertEventActivity)
+// böylece aynı sözlüğü doğrudan updateParticipant'a geri verebilir, dokunulmamış
+// alanları yanlışlıkla değiştirmez.
+function participantUpdateSnapshot(
+  row: ParticipantUpdateSnapshotRow,
+  input: UpdateParticipantInput,
+): Record<string, unknown> {
+  const before: Record<string, unknown> = {};
+  if (input.role !== undefined) before.role = row.role;
+  if (input.rsvpStatus !== undefined) before.rsvpStatus = row.rsvp_status;
+  if (input.transportMode !== undefined) {
+    before.transportMode = row.transport_mode;
+    // transportMode yazımı vehicle_id'yi daima temizler (bkz. aşağıdaki UPDATE);
+    // geri alma eski aracı da bağlayabilsin diye burada saklanır.
+    before.vehicleId = row.vehicle_id;
+  }
+  if (input.attendanceStatus !== undefined) before.attendanceStatus = row.attendance_status;
+  if (input.guestOfParticipantId !== undefined) before.guestOfParticipantId = row.guest_of_participant_id;
+  return before;
+}
+
 export async function updateParticipant(
   participantId: EntityId,
   input: UpdateParticipantInput,
   actorUserId?: number | string | null,
+  transactionClient?: PoolClient,
 ): Promise<EventParticipantRow> {
-  const client = await pool.connect();
+  const ownsTransaction = transactionClient === undefined;
+  const client = transactionClient ?? await pool.connect();
 
   try {
-    await client.query("BEGIN");
+    if (ownsTransaction) await client.query("BEGIN");
 
     const eventLookup = await client.query<{ event_id: string }>(
       `SELECT event_id FROM event_participants WHERE id = $1`,
@@ -1105,8 +1205,11 @@ export async function updateParticipant(
     if (!eventLookup.rows[0]) throw new EventParticipantNotFoundError();
     await lockEvent(client, eventLookup.rows[0].event_id);
 
-    const currentResult = await client.query<{ id: string; event_id: string; role: ParticipantRole }>(
-      `SELECT id, event_id, role FROM event_participants WHERE id = $1 FOR UPDATE`,
+    // "Hareketler" ekranındaki geri alma, değişen alanları eski değerine
+    // döndürebilmek için tam satırı ister (bkz. participantUpdateSnapshot).
+    const currentResult = await client.query<ParticipantUpdateSnapshotRow & { id: string; event_id: string }>(
+      `SELECT id, event_id, role, rsvp_status, transport_mode, attendance_status, vehicle_id, guest_of_participant_id
+         FROM event_participants WHERE id = $1 FOR UPDATE`,
       [participantId],
     );
     const current = currentResult.rows[0];
@@ -1137,9 +1240,31 @@ export async function updateParticipant(
       values.push(normalizeEnum(input.attendanceStatus, ATTENDANCE_STATUSES, "attendanceStatus"));
       sets.push(`attendance_status = $${values.length}`);
     }
-    if (input.note !== undefined) {
-      values.push(normalizeOptionalText(input.note));
-      sets.push(`note = $${values.length}`);
+    if (input.guestOfParticipantId !== undefined) {
+      if (input.guestOfParticipantId == null || input.guestOfParticipantId === "") {
+        values.push(null);
+        sets.push(`guest_of_participant_id = $${values.length}`);
+      } else {
+        if (String(input.guestOfParticipantId) === String(participantId)) {
+          throw new ValidationError("Bir katılımcı kendi kendisinin misafiri olamaz.");
+        }
+        if (
+          current.guest_of_participant_id !== null
+          && String(current.guest_of_participant_id) !== String(input.guestOfParticipantId)
+        ) {
+          throw new ValidationError("Zaten başka bir katılımcının misafiri olan biri yeniden bağlanamaz.");
+        }
+        const ownGuests = await client.query<{ count: string }>(
+          `SELECT COUNT(*)::text AS count FROM event_participants WHERE guest_of_participant_id = $1`,
+          [participantId],
+        );
+        if (Number(ownGuests.rows[0].count) > 0) {
+          throw new ValidationError("Kendi misafiri olan biri başka birinin misafiri olamaz.");
+        }
+        const guestOfParticipantId = await assertGuestOfValid(client, current.event_id, input.guestOfParticipantId);
+        values.push(guestOfParticipantId);
+        sets.push(`guest_of_participant_id = $${values.length}`);
+      }
     }
 
     if (sets.length > 0) {
@@ -1193,9 +1318,83 @@ export async function updateParticipant(
 
     await insertAuditLog(client, {
       action: "event_participant_updated",
+      eventId: current.event_id,
       entityType: "event_participant",
       entityId: String(participantId),
+      before: participantUpdateSnapshot(current, input),
       after: input,
+      actorUserId: actorUserId ?? null,
+    });
+
+    const updated = await getParticipantByIdWith(client, participantId);
+    if (ownsTransaction) await client.query("COMMIT");
+    return updated;
+  } catch (error) {
+    if (ownsTransaction) await rollbackQuietly(client);
+    throw toServiceError(error);
+  } finally {
+    if (ownsTransaction) client.release();
+  }
+}
+
+export async function markParticipantContacted(
+  participantId: EntityId,
+  input: ContactParticipantInput = {},
+  actorUserId?: number | string | null,
+): Promise<EventParticipantRow> {
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    const eventLookup = await client.query<{ event_id: string }>(
+      `SELECT event_id FROM event_participants WHERE id = $1`,
+      [participantId],
+    );
+    if (!eventLookup.rows[0]) throw new EventParticipantNotFoundError();
+    await lockEvent(client, eventLookup.rows[0].event_id);
+
+    const currentResult = await client.query<{
+      id: string;
+      event_id: string;
+      student_id: string;
+    }>(
+      `SELECT id, event_id, student_id
+         FROM event_participants
+        WHERE id = $1
+        FOR UPDATE`,
+      [participantId],
+    );
+    const current = currentResult.rows[0];
+    if (!current) throw new EventParticipantNotFoundError();
+
+    const note = normalizeOptionalText(input.note);
+    if (note && note.length > 500) {
+      throw new ValidationError("Arama notu en fazla 500 karakter olabilir.");
+    }
+
+    const interaction = await client.query<{ id: string; occurred_at: string }>(
+      `INSERT INTO event_participant_interactions (
+         event_id, participant_id, student_id, interaction_type, note, created_by_user_id
+       ) VALUES ($1, $2, $3, 'called', $4, $5)
+       RETURNING id, occurred_at`,
+      [current.event_id, current.id, current.student_id, note, actorUserId ?? null],
+    );
+
+    await insertAuditLog(client, {
+      action: "event_participant_contacted",
+      eventId: current.event_id,
+      entityType: "event_participant",
+      entityId: current.id,
+      // interactionId geri alma içindir: occurred_at JSON'a milisaniye
+      // hassasiyetiyle yazıldığından timestamp eşleşmesi güvenilir değil.
+      after: {
+        eventId: current.event_id,
+        studentId: current.student_id,
+        note,
+        interactionId: interaction.rows[0].id,
+        contactedAt: interaction.rows[0].occurred_at,
+      },
       actorUserId: actorUserId ?? null,
     });
 
@@ -1210,15 +1409,106 @@ export async function updateParticipant(
   }
 }
 
-// RSVP'de "gelmiyor" seçeneği yok — gelmeyecek kişi işaretlenmez, doğrudan
-// listeden silinir. Ödemesi tahsil edilmiş bir katılımcı silinemez (para
-// hareketi geri dönüşsüz kaybolmasın diye, bkz. deleteEvent'teki aynı kural);
-// misafiri olan biri de silinemez (guest_of_participant_id'de FK NO ACTION
-// zaten reddeder, burada önceden anlaşılır bir hata verilir).
-export async function removeParticipant(
+// ─── Katılımcı profili not günlüğü (0280) ───────────────────────────────────
+// Eskiden event_participants.note tekil, üzerine yazılan bir alandı. Şimdi
+// genel Notlar'daki gibi (bkz. notes.service.ts) birden fazla kullanıcının
+// eklediği, yazarı görünen bir günlük — ama kapsam bilinçli olarak dar: yanıt/
+// bahis/tepki/fotoğraf yok, yalnız ekle + yazarına özel düzenle/sil. Yalnız bu
+// katılımcının bu etkinlikteki profilinde görünür, stüdyo geneline sızmaz.
+
+export type EventParticipantNoteRow = {
+  id: string;
+  source: "participant_note" | "contact_note" | "mention";
+  participant_id: string | null;
+  author_user_id: string | null;
+  author_name: string;
+  body: string;
+  categories: Array<{ id: string; name: string }>;
+  has_image: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+const PARTICIPANT_NOTE_SELECT = `
+  SELECT n.id, 'participant_note'::text AS source, n.participant_id,
+         n.author_user_id, u.display_name AS author_name, n.body,
+         '[]'::json AS categories, false AS has_image,
+         n.created_at, n.updated_at
+    FROM event_participant_notes n
+    JOIN users u ON u.id = n.author_user_id
+`;
+
+export async function listParticipantNotes(participantId: EntityId): Promise<EventParticipantNoteRow[]> {
+  const result = await pool.query<EventParticipantNoteRow>(
+    `WITH target AS (
+       SELECT id AS participant_id, student_id
+         FROM event_participants
+        WHERE id = $1
+     ), feed AS (
+       SELECT n.id::text AS id, 'participant_note'::text AS source,
+              n.participant_id::text AS participant_id,
+              n.author_user_id::text AS author_user_id,
+              u.display_name AS author_name, n.body,
+              '[]'::json AS categories, false AS has_image,
+              n.created_at, n.updated_at
+         FROM event_participant_notes n
+         JOIN target t ON t.participant_id = n.participant_id
+         JOIN users u ON u.id = n.author_user_id
+
+       UNION ALL
+
+       SELECT i.id::text AS id, 'contact_note'::text AS source,
+              i.participant_id::text AS participant_id,
+              i.created_by_user_id::text AS author_user_id,
+              COALESCE(u.display_name, 'Sistem') AS author_name,
+              COALESCE(i.note, 'Arandı olarak işaretlendi.') AS body,
+              '[]'::json AS categories, false AS has_image,
+              i.occurred_at AS created_at, i.occurred_at AS updated_at
+         FROM event_participant_interactions i
+         JOIN target t ON t.participant_id = i.participant_id
+         LEFT JOIN users u ON u.id = i.created_by_user_id
+        WHERE i.interaction_type = 'called'
+
+       UNION ALL
+
+       SELECT n.id::text AS id, 'mention'::text AS source,
+              NULL::text AS participant_id,
+              n.author_user_id::text AS author_user_id,
+              u.display_name AS author_name,
+              COALESCE(NULLIF(n.body, ''),
+                CASE WHEN ni.note_id IS NOT NULL THEN 'Fotoğraflı not' ELSE 'Öğrenci etiketlendi.' END
+              ) AS body,
+              CASE WHEN c.id IS NOT NULL
+                THEN json_build_array(json_build_object('id', c.id::text, 'name', c.name))
+                ELSE '[]'::json
+              END AS categories,
+              (ni.note_id IS NOT NULL) AS has_image,
+              n.created_at, n.updated_at
+         FROM notes n
+         JOIN note_mentions mention ON mention.note_id = n.id
+         JOIN target t ON t.student_id = mention.student_id
+         JOIN users u ON u.id = n.author_user_id
+         LEFT JOIN note_images ni ON ni.note_id = n.id
+         LEFT JOIN note_categories c ON c.id = n.category_id
+        WHERE n.deleted_at IS NULL
+     )
+     SELECT * FROM feed
+      ORDER BY created_at DESC, source, id DESC`,
+    [participantId],
+  );
+  return result.rows;
+}
+
+export async function listParticipantFees(participantId: EntityId): Promise<EventParticipantFeeRow[]> {
+  return listParticipantFeesWith(pool, participantId);
+}
+
+export async function addParticipantNote(
   participantId: EntityId,
-  actorUserId?: number | string | null,
-): Promise<void> {
+  bodyInput: string,
+  actorUserId: number | string,
+): Promise<EventParticipantNoteRow> {
+  const body = normalizeRequiredText(bodyInput, "body");
   const client = await pool.connect();
 
   try {
@@ -1231,37 +1521,98 @@ export async function removeParticipant(
     if (!eventLookup.rows[0]) throw new EventParticipantNotFoundError();
     await lockEvent(client, eventLookup.rows[0].event_id);
 
-    const currentResult = await client.query<{ id: string; event_id: string; student_id: string; role: ParticipantRole; rsvp_status: RsvpStatus }>(
-      `SELECT id, event_id, student_id, role, rsvp_status FROM event_participants WHERE id = $1 FOR UPDATE`,
-      [participantId],
+    const insertResult = await client.query<{ id: string }>(
+      `INSERT INTO event_participant_notes (participant_id, author_user_id, body)
+       VALUES ($1, $2, $3) RETURNING id`,
+      [participantId, actorUserId, body],
     );
-    const current = currentResult.rows[0];
-    if (!current) throw new EventParticipantNotFoundError();
-
-    const guestResult = await client.query<{ count: string }>(
-      `SELECT COUNT(*)::text AS count FROM event_participants WHERE guest_of_participant_id = $1`,
-      [participantId],
-    );
-    if (Number(guestResult.rows[0].count) > 0) {
-      throw new EventParticipantHasGuestsError();
-    }
-
-    const paidResult = await client.query<{ paid_amount: string }>(
-      `SELECT paid_amount FROM event_participant_fees WHERE participant_id = $1 FOR UPDATE`,
-      [participantId],
-    );
-    if (paidResult.rows.some((row) => Number(row.paid_amount) > 0)) {
-      throw new EventParticipantHasPaymentsError();
-    }
-
-    await client.query(`DELETE FROM event_participants WHERE id = $1`, [participantId]);
+    const noteId = insertResult.rows[0].id;
 
     await insertAuditLog(client, {
-      action: "event_participant_removed",
-      entityType: "event_participant",
-      entityId: String(participantId),
-      before: current,
-      actorUserId: actorUserId ?? null,
+      action: "event_participant_note_created",
+      entityType: "event_participant_note",
+      entityId: noteId,
+      after: { participantId: String(participantId), body },
+      actorUserId,
+    });
+
+    await client.query("COMMIT");
+
+    const result = await pool.query<EventParticipantNoteRow>(`${PARTICIPANT_NOTE_SELECT} WHERE n.id = $1`, [noteId]);
+    return result.rows[0];
+  } catch (error) {
+    await rollbackQuietly(client);
+    throw toServiceError(error);
+  } finally {
+    client.release();
+  }
+}
+
+// Not silinmişse (fiziksel) ya da hiç yoksa "bulunamadı"; yazarı değilse
+// "yasak" — bkz. notes.service.ts lockOwnedNote (aynı kural, ayrı tablo).
+async function lockOwnedParticipantNote(
+  client: PoolClient,
+  noteId: EntityId,
+  actorUserId: number | string,
+): Promise<{ id: string; participant_id: string }> {
+  const result = await client.query<{ id: string; author_user_id: string; participant_id: string }>(
+    `SELECT id, author_user_id, participant_id FROM event_participant_notes WHERE id = $1 FOR UPDATE`,
+    [noteId],
+  );
+  const note = result.rows[0];
+  if (!note) throw new EventParticipantNoteNotFoundError();
+  if (String(note.author_user_id) !== String(actorUserId)) throw new EventParticipantNoteForbiddenError();
+  return note;
+}
+
+export async function updateParticipantNote(
+  noteId: EntityId,
+  bodyInput: string,
+  actorUserId: number | string,
+): Promise<EventParticipantNoteRow> {
+  const body = normalizeRequiredText(bodyInput, "body");
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+    await lockOwnedParticipantNote(client, noteId, actorUserId);
+
+    await client.query(`UPDATE event_participant_notes SET body = $1 WHERE id = $2`, [body, noteId]);
+
+    await insertAuditLog(client, {
+      action: "event_participant_note_updated",
+      entityType: "event_participant_note",
+      entityId: noteId,
+      after: { body },
+      actorUserId,
+    });
+
+    await client.query("COMMIT");
+
+    const result = await pool.query<EventParticipantNoteRow>(`${PARTICIPANT_NOTE_SELECT} WHERE n.id = $1`, [noteId]);
+    return result.rows[0];
+  } catch (error) {
+    await rollbackQuietly(client);
+    throw toServiceError(error);
+  } finally {
+    client.release();
+  }
+}
+
+export async function deleteParticipantNote(noteId: EntityId, actorUserId: number | string): Promise<void> {
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+    await lockOwnedParticipantNote(client, noteId, actorUserId);
+
+    await client.query(`DELETE FROM event_participant_notes WHERE id = $1`, [noteId]);
+
+    await insertAuditLog(client, {
+      action: "event_participant_note_deleted",
+      entityType: "event_participant_note",
+      entityId: noteId,
+      actorUserId,
     });
 
     await client.query("COMMIT");
@@ -1273,6 +1624,161 @@ export async function removeParticipant(
   }
 }
 
+// RSVP'de "gelmiyor" seçeneği yok — gelmeyecek kişi işaretlenmez, doğrudan
+// listeden silinir. Neden/not, silinen katılımcı satırından bağımsız
+// etkileşim geçmişine yazılır. Ödemesi tahsil edilmiş bir katılımcı
+// silinemez; misafiri olan biri de guestResolution belirtilmeden silinemez
+// (bkz. GuestResolution) — UI önce kullanıcıya "bağlantıları kopart" /
+// "misafirleri de kaldır" seçimini sorar.
+export async function removeParticipant(
+  participantId: EntityId,
+  input: RemoveParticipantInput = {},
+  actorUserId?: number | string | null,
+  transactionClient?: PoolClient,
+): Promise<void> {
+  const ownsTransaction = transactionClient === undefined;
+  const client = transactionClient ?? await pool.connect();
+
+  try {
+    if (ownsTransaction) await client.query("BEGIN");
+
+    const eventLookup = await client.query<{ event_id: string }>(
+      `SELECT event_id FROM event_participants WHERE id = $1`,
+      [participantId],
+    );
+    if (!eventLookup.rows[0]) throw new EventParticipantNotFoundError();
+    await lockEvent(client, eventLookup.rows[0].event_id);
+
+    const currentResult = await client.query<{
+      id: string;
+      event_id: string;
+      student_id: string;
+      role: ParticipantRole;
+      rsvp_status: RsvpStatus;
+      guest_of_participant_id: string | null;
+      transport_mode: TransportMode;
+    }>(
+      // guest_of_participant_id / transport_mode yalnız geri alma için okunur:
+      // "kaldırma"nın telafisi kişiyi aynı bağlarla geri eklemektir.
+      `SELECT id, event_id, student_id, role, rsvp_status, guest_of_participant_id, transport_mode
+         FROM event_participants WHERE id = $1 FOR UPDATE`,
+      [participantId],
+    );
+    const current = currentResult.rows[0];
+    if (!current) throw new EventParticipantNotFoundError();
+
+    const removalReason = input.reason === undefined
+      ? null
+      : normalizeEnum(input.reason, PARTICIPANT_REMOVAL_REASONS, "reason");
+    const removalNote = normalizeOptionalText(input.note);
+    if (removalNote && removalNote.length > 500) {
+      throw new ValidationError("Kaldırma notu en fazla 500 karakter olabilir.");
+    }
+
+    const guestsResult = await client.query<{
+      id: string;
+      student_id: string;
+      guest_of_participant_id: string | null;
+    }>(
+      `SELECT id, student_id, guest_of_participant_id
+         FROM event_participants WHERE guest_of_participant_id = $1 FOR UPDATE`,
+      [participantId],
+    );
+    const guests = guestsResult.rows;
+
+    if (guests.length > 0) {
+      const guestResolution = input.guestResolution === undefined
+        ? null
+        : normalizeEnum(input.guestResolution, GUEST_RESOLUTIONS, "guestResolution");
+      if (!guestResolution) throw new EventParticipantHasGuestsError();
+
+      if (guestResolution === "unlink") {
+        // Misafirler kalır, yalnız bağlantı kopar — bundan sonra herkes gibi
+        // bağımsız, normal bir katılımcı olurlar.
+        for (const guest of guests) {
+          await client.query(
+            `UPDATE event_participants SET guest_of_participant_id = NULL WHERE id = $1`,
+            [guest.id],
+          );
+          await insertAuditLog(client, {
+            action: "event_participant_guest_unlinked",
+            eventId: current.event_id,
+            entityType: "event_participant",
+            entityId: guest.id,
+            before: { guestOfParticipantId: guest.guest_of_participant_id },
+            after: { guestOfParticipantId: null },
+            actorUserId: actorUserId ?? null,
+          });
+        }
+      } else {
+        // remove_guests: hepsi ödemesiz olmadıkça hiçbiri silinmez — kısmi bir
+        // silme, yarım kalmış/tutarsız bir misafir listesi bırakırdı.
+        for (const guest of guests) {
+          const guestPaid = await client.query<{ paid_amount: string }>(
+            `SELECT paid_amount FROM event_participant_fees WHERE participant_id = $1 FOR UPDATE`,
+            [guest.id],
+          );
+          if (guestPaid.rows.some((row) => Number(row.paid_amount) > 0)) {
+            throw new EventParticipantHasPaymentsError(
+              "Misafirlerinden birinin tahsilatı var; önce iade edip iptal edin, sonra tekrar deneyin.",
+            );
+          }
+        }
+        for (const guest of guests) {
+          await client.query(
+            `INSERT INTO event_participant_interactions (
+               event_id, participant_id, student_id, interaction_type, removal_reason, note, created_by_user_id
+             ) VALUES ($1, $2, $3, 'removed', $4, $5, $6)`,
+            [current.event_id, guest.id, guest.student_id, removalReason, removalNote, actorUserId ?? null],
+          );
+          await client.query(`DELETE FROM event_participants WHERE id = $1`, [guest.id]);
+          await insertAuditLog(client, {
+            action: "event_participant_removed",
+            eventId: current.event_id,
+            entityType: "event_participant",
+            entityId: guest.id,
+            before: { ...guest, removalReason, removalNote },
+            actorUserId: actorUserId ?? null,
+          });
+        }
+      }
+    }
+
+    const paidResult = await client.query<{ paid_amount: string }>(
+      `SELECT paid_amount FROM event_participant_fees WHERE participant_id = $1 FOR UPDATE`,
+      [participantId],
+    );
+    if (paidResult.rows.some((row) => Number(row.paid_amount) > 0)) {
+      throw new EventParticipantHasPaymentsError();
+    }
+
+    await client.query(
+      `INSERT INTO event_participant_interactions (
+         event_id, participant_id, student_id, interaction_type, removal_reason, note, created_by_user_id
+       ) VALUES ($1, $2, $3, 'removed', $4, $5, $6)`,
+      [current.event_id, current.id, current.student_id, removalReason, removalNote, actorUserId ?? null],
+    );
+
+    await client.query(`DELETE FROM event_participants WHERE id = $1`, [participantId]);
+
+    await insertAuditLog(client, {
+      action: "event_participant_removed",
+      eventId: current.event_id,
+      entityType: "event_participant",
+      entityId: String(participantId),
+      before: { ...current, removalReason, removalNote },
+      actorUserId: actorUserId ?? null,
+    });
+
+    if (ownsTransaction) await client.query("COMMIT");
+  } catch (error) {
+    if (ownsTransaction) await rollbackQuietly(client);
+    throw toServiceError(error);
+  } finally {
+    if (ownsTransaction) client.release();
+  }
+}
+
 // Tek bir katılımcının tek bir kalemini kim karşılıyor sorusunu değiştirir.
 // Ödenmemiş, öğrenciye yazılan ders ücretine özel tutar atanabilir (0272).
 // input.included eski (0261) çağrılar için korunur: false → "almıyor".
@@ -1281,11 +1787,13 @@ export async function updateParticipantFee(
   feeItemId: EntityId,
   input: { coverage?: FeeCoverage; included?: boolean; amount?: MoneyInput },
   actorUserId?: number | string | null,
+  transactionClient?: PoolClient,
 ): Promise<void> {
-  const client = await pool.connect();
+  const ownsTransaction = transactionClient === undefined;
+  const client = transactionClient ?? await pool.connect();
 
   try {
-    await client.query("BEGIN");
+    if (ownsTransaction) await client.query("BEGIN");
 
     const eventLookup = await client.query<{ event_id: string }>(
       `SELECT event_id FROM event_fee_items WHERE id = $1`,
@@ -1362,6 +1870,7 @@ export async function updateParticipantFee(
 
     await insertAuditLog(client, {
       action: "event_participant_fee_updated",
+      eventId: eventLookup.rows[0].event_id,
       entityType: "event_participant_fee",
       entityId: String(participantId),
       before: { feeItemId: String(feeItemId), coverage: fee.coverage, amount: fee.amount_snapshot },
@@ -1369,12 +1878,12 @@ export async function updateParticipantFee(
       actorUserId: actorUserId ?? null,
     });
 
-    await client.query("COMMIT");
+    if (ownsTransaction) await client.query("COMMIT");
   } catch (error) {
-    await rollbackQuietly(client);
+    if (ownsTransaction) await rollbackQuietly(client);
     throw toServiceError(error);
   } finally {
-    client.release();
+    if (ownsTransaction) client.release();
   }
 }
 
@@ -1492,6 +2001,7 @@ export async function recordParticipantPayment(
 
     await insertAuditLog(client, {
       action: "event_participant_payment_recorded",
+      eventId: participant.event_id,
       entityType: "event_payment",
       entityId: payment.id,
       after: { participantId: String(participantId), amount: normalizedAmount, source: normalizedSource },
@@ -1525,10 +2035,12 @@ export async function cancelParticipantPayment(
   paymentId: EntityId,
   note: string | null | undefined,
   actorUserId: EntityId,
+  transactionClient?: PoolClient,
 ): Promise<EventPaymentRow> {
-  const client = await pool.connect();
+  const ownsTransaction = transactionClient === undefined;
+  const client = transactionClient ?? await pool.connect();
   try {
-    await client.query("BEGIN");
+    if (ownsTransaction) await client.query("BEGIN");
     const lookup = await client.query<{ event_id: string }>(
       `SELECT event_id FROM event_payments WHERE id = $1`,
       [paymentId],
@@ -1548,7 +2060,7 @@ export async function cancelParticipantPayment(
     const payment = paymentResult.rows[0];
     if (!payment) throw new EventPaymentNotFoundError();
     if (payment.cancelled_at !== null) {
-      await client.query("COMMIT");
+      if (ownsTransaction) await client.query("COMMIT");
       return payment;
     }
 
@@ -1587,6 +2099,7 @@ export async function cancelParticipantPayment(
     const cancelled = cancelledResult.rows[0];
     await insertAuditLog(client, {
       action: "event_participant_payment_cancelled",
+      eventId: payment.event_id,
       entityType: "event_payment",
       entityId: cancelled.id,
       before: payment,
@@ -1594,13 +2107,13 @@ export async function cancelParticipantPayment(
       note: cancellationNote,
       actorUserId,
     });
-    await client.query("COMMIT");
+    if (ownsTransaction) await client.query("COMMIT");
     return { ...cancelled, created_by_name: payment.created_by_name, cancelled_by_name: null };
   } catch (error) {
-    await rollbackQuietly(client);
+    if (ownsTransaction) await rollbackQuietly(client);
     throw toServiceError(error);
   } finally {
-    client.release();
+    if (ownsTransaction) client.release();
   }
 }
 
@@ -1627,11 +2140,13 @@ export async function listVehicles(eventId: EntityId): Promise<EventVehicleRow[]
 export async function createVehicle(
   eventId: EntityId,
   input: CreateVehicleInput,
+  transactionClient?: PoolClient,
 ): Promise<EventVehicleRow> {
-  const client = await pool.connect();
+  const ownsTransaction = transactionClient === undefined;
+  const client = transactionClient ?? await pool.connect();
 
   try {
-    await client.query("BEGIN");
+    if (ownsTransaction) await client.query("BEGIN");
     await lockEvent(client, eventId);
 
     const vehicleType = normalizeEnum(input.vehicleType, VEHICLE_TYPES, "vehicleType");
@@ -1665,19 +2180,20 @@ export async function createVehicle(
 
     await insertAuditLog(client, {
       action: "event_vehicle_created",
+      eventId: vehicle.event_id,
       entityType: "event_vehicle",
       entityId: vehicle.id,
       after: vehicle,
       actorUserId: input.actorUserId ?? null,
     });
 
-    await client.query("COMMIT");
+    if (ownsTransaction) await client.query("COMMIT");
     return vehicle;
   } catch (error) {
-    await rollbackQuietly(client);
+    if (ownsTransaction) await rollbackQuietly(client);
     throw toServiceError(error);
   } finally {
-    client.release();
+    if (ownsTransaction) client.release();
   }
 }
 
@@ -1685,10 +2201,12 @@ export async function updateVehicle(
   vehicleId: EntityId,
   input: UpdateVehicleInput,
   actorUserId?: EntityId | null,
+  transactionClient?: PoolClient,
 ): Promise<EventVehicleRow> {
-  const client = await pool.connect();
+  const ownsTransaction = transactionClient === undefined;
+  const client = transactionClient ?? await pool.connect();
   try {
-    await client.query("BEGIN");
+    if (ownsTransaction) await client.query("BEGIN");
     const eventLookup = await client.query<{ event_id: string }>(
       `SELECT event_id FROM event_vehicles WHERE id = $1`,
       [vehicleId],
@@ -1743,7 +2261,7 @@ export async function updateVehicle(
       sets.push(`note = $${values.length}`);
     }
     if (sets.length === 0) {
-      await client.query("COMMIT");
+      if (ownsTransaction) await client.query("COMMIT");
       return before;
     }
 
@@ -1755,29 +2273,32 @@ export async function updateVehicle(
     const updated = { ...updatedResult.rows[0], seats_taken: before.seats_taken };
     await insertAuditLog(client, {
       action: "event_vehicle_updated",
+      eventId: updated.event_id,
       entityType: "event_vehicle",
       entityId: updated.id,
       before,
       after: updated,
       actorUserId: actorUserId ?? null,
     });
-    await client.query("COMMIT");
+    if (ownsTransaction) await client.query("COMMIT");
     return updated;
   } catch (error) {
-    await rollbackQuietly(client);
+    if (ownsTransaction) await rollbackQuietly(client);
     throw toServiceError(error);
   } finally {
-    client.release();
+    if (ownsTransaction) client.release();
   }
 }
 
 export async function deleteVehicle(
   vehicleId: EntityId,
   actorUserId?: EntityId | null,
+  transactionClient?: PoolClient,
 ): Promise<void> {
-  const client = await pool.connect();
+  const ownsTransaction = transactionClient === undefined;
+  const client = transactionClient ?? await pool.connect();
   try {
-    await client.query("BEGIN");
+    if (ownsTransaction) await client.query("BEGIN");
     const eventLookup = await client.query<{ event_id: string }>(
       `SELECT event_id FROM event_vehicles WHERE id = $1`,
       [vehicleId],
@@ -1798,17 +2319,18 @@ export async function deleteVehicle(
     await client.query(`DELETE FROM event_vehicles WHERE id = $1`, [vehicleId]);
     await insertAuditLog(client, {
       action: "event_vehicle_deleted",
+      eventId: before.event_id,
       entityType: "event_vehicle",
       entityId: String(vehicleId),
       before,
       actorUserId: actorUserId ?? null,
     });
-    await client.query("COMMIT");
+    if (ownsTransaction) await client.query("COMMIT");
   } catch (error) {
-    await rollbackQuietly(client);
+    if (ownsTransaction) await rollbackQuietly(client);
     throw toServiceError(error);
   } finally {
-    client.release();
+    if (ownsTransaction) client.release();
   }
 }
 
@@ -1816,11 +2338,13 @@ export async function assignParticipantToVehicle(
   participantId: EntityId,
   vehicleId: EntityId,
   actorUserId?: number | string | null,
+  transactionClient?: PoolClient,
 ): Promise<void> {
-  const client = await pool.connect();
+  const ownsTransaction = transactionClient === undefined;
+  const client = transactionClient ?? await pool.connect();
 
   try {
-    await client.query("BEGIN");
+    if (ownsTransaction) await client.query("BEGIN");
 
     const vehicleLookup = await client.query<{ event_id: string }>(
       `SELECT event_id FROM event_vehicles WHERE id = $1`,
@@ -1836,8 +2360,13 @@ export async function assignParticipantToVehicle(
     const vehicle = vehicleResult.rows[0];
     if (!vehicle) throw new EventVehicleNotFoundError();
 
-    const participantResult = await client.query<{ id: string; event_id: string }>(
-      `SELECT id, event_id FROM event_participants WHERE id = $1 FOR UPDATE`,
+    const participantResult = await client.query<{
+      id: string;
+      event_id: string;
+      vehicle_id: string | null;
+      transport_mode: TransportMode;
+    }>(
+      `SELECT id, event_id, vehicle_id, transport_mode FROM event_participants WHERE id = $1 FOR UPDATE`,
       [participantId],
     );
     const participant = participantResult.rows[0];
@@ -1862,18 +2391,20 @@ export async function assignParticipantToVehicle(
 
     await insertAuditLog(client, {
       action: "event_participant_vehicle_assigned",
+      eventId: vehicle.event_id,
       entityType: "event_participant",
       entityId: String(participantId),
+      before: { vehicleId: participant.vehicle_id, transportMode: participant.transport_mode },
       after: { vehicleId: String(vehicleId) },
       actorUserId: actorUserId ?? null,
     });
 
-    await client.query("COMMIT");
+    if (ownsTransaction) await client.query("COMMIT");
   } catch (error) {
-    await rollbackQuietly(client);
+    if (ownsTransaction) await rollbackQuietly(client);
     throw toServiceError(error);
   } finally {
-    client.release();
+    if (ownsTransaction) client.release();
   }
 }
 
@@ -1899,4 +2430,599 @@ export async function listEventBalancesForStudent(studentId: EntityId): Promise<
     [studentId],
   );
   return result.rows;
+}
+
+// ─── Etkinlik hareketleri (0279) ─────────────────────────────────────────────
+// Mobil etkinlik detayındaki "Hareketler" kısayolunun kaynağı. Ayrı bir hareket
+// tablosu YOK: akış, audit_logs'un bu etkinliğe bağlı satırlarıdır (event_id,
+// bkz. 0279_event_activity.sql) — kayıt zaten her servis yazımında düşüyordu,
+// tek doğruluk noktası korunur.
+//
+// Geri alma bir SİLME değildir. Telafi işlemi normal servis yolundan yapılır
+// (aynı doğrulamalar, kendi audit kaydı), orijinal satır yalnız "geri alındı"
+// damgası alır. Böylece hem hata hem düzeltmesi geçmişte görünür kalır ve aynı
+// kayıt ikinci kez geri alınamaz.
+
+export type EventActivityRow = {
+  id: string;
+  event_id: string;
+  action: string;
+  entity_type: string;
+  entity_id: string;
+  before: unknown;
+  after: unknown;
+  note: string | null;
+  created_at: string;
+  actor_user_id: string | null;
+  actor_name: string | null;
+  reverted_at: string | null;
+  reverted_by_name: string | null;
+  subject_name: string | null;
+  subject_nickname: string | null;
+  // Kayıt hâlâ listede duran bir katılımcıya işaret ediyorsa onun kimliği —
+  // "Düzelt" kısayolu yalnız o zaman anlamlı (kaldırılmış kişi açılamaz).
+  participant_id: string | null;
+  vehicle_label: string | null;
+  revertable: boolean;
+  revert_blocked_reason: string | null;
+};
+
+type EventActivitySqlRow = Omit<EventActivityRow, "revertable" | "revert_blocked_reason">;
+
+// Telafisi tanımlı hareketler. Buraya eklenen her action için
+// applyActivityRevert içinde bir dal olmak ZORUNDA.
+const REVERTABLE_ACTIONS = new Set<string>([
+  "event_updated",
+  "event_participant_added",
+  "event_participant_updated",
+  "event_participant_contacted",
+  "event_participant_removed",
+  "event_participant_fee_updated",
+  "event_participant_payment_recorded",
+  "event_participant_vehicle_assigned",
+  "event_vehicle_created",
+  "event_vehicle_updated",
+  "event_vehicle_deleted",
+]);
+
+// Eski değeri olmadan geri alınamayan hareketler. 0279 öncesinde yazılmış
+// kayıtlarda `before` boş olabilir; o satırlar dürüstçe "geri alınamaz" olur.
+const REVERT_NEEDS_BEFORE = new Set<string>([
+  "event_updated",
+  "event_participant_updated",
+  "event_participant_removed",
+  "event_participant_fee_updated",
+  "event_participant_vehicle_assigned",
+  "event_vehicle_updated",
+  "event_vehicle_deleted",
+]);
+
+// Tam satır snapshot'ından alan-bazlı geri alma yapan hareketlerde `after`,
+// aynı alanın daha sonra tekrar değişip değişmediğini anlamak için zorunludur.
+// Bu önkoşul olmadan eski bir hareketi geri almak daha yeni düzenlemeyi
+// sessizce ezebilirdi.
+const REVERT_NEEDS_AFTER = new Set<string>([
+  "event_updated",
+  "event_vehicle_updated",
+]);
+
+const REVERT_BLOCKED_REASONS: Record<string, string> = {
+  event_created:
+    "Etkinliğin oluşturulması geri alınamaz; etkinliği tümüyle kaldırmak için Ayarlar → Etkinliği sil.",
+  event_deleted:
+    "Silme buradan geri alınmaz; etkinlik Ayarlar → Durum bölümünden yeniden açılır.",
+  event_fee_item_created:
+    "Ücret kalemi eklemesi geri alınamaz — kalem tüm katılımcı satırlarına dağıtılmıştır.",
+  event_participant_payment_cancelled:
+    "Tahsilat iptali geri alınamaz; para gerçekten alındıysa tahsilatı yeniden kaydedin.",
+  event_participant_contact_reverted: "Bu kayıt zaten bir geri alma işlemidir.",
+  event_participant_vehicle_unassigned: "Bu kayıt zaten bir geri alma işlemidir.",
+};
+
+const ACTIVITY_SELECT = `
+  SELECT a.id::text,
+         a.event_id::text AS event_id,
+         a.action,
+         a.entity_type,
+         a.entity_id::text,
+         a.before,
+         a.after,
+         a.note,
+         a.created_at,
+         a.actor_user_id::text,
+         actor.display_name AS actor_name,
+         a.reverted_at,
+         reverter.display_name AS reverted_by_name,
+         subject.full_name AS subject_name,
+         subject.nickname AS subject_nickname,
+         COALESCE(
+           (SELECT p.id::text FROM event_participants p
+             WHERE a.entity_type IN ('event_participant', 'event_participant_fee')
+               AND p.id = a.entity_id),
+           (SELECT p2.id::text FROM event_payments ep
+              JOIN event_participants p2 ON p2.id = ep.participant_id
+             WHERE a.entity_type = 'event_payment' AND ep.id = a.entity_id)
+         ) AS participant_id,
+         COALESCE(a.after ->> 'driver_name', a.before ->> 'driver_name') AS vehicle_label
+    FROM audit_logs a
+    LEFT JOIN users actor ON actor.id = a.actor_user_id
+    LEFT JOIN users reverter ON reverter.id = a.reverted_by_user_id
+    -- Hangi kişiyle ilgili: satır duruyorsa join'den, silinmişse (kaldırılmış
+    -- katılımcı) kaydın kendi JSON'undan çözülür.
+    LEFT JOIN LATERAL (
+      SELECT s.full_name, s.nickname
+        FROM students s
+       WHERE s.id = COALESCE(
+               (SELECT p.student_id FROM event_participants p
+                 WHERE a.entity_type IN ('event_participant', 'event_participant_fee')
+                   AND p.id = a.entity_id),
+               (SELECT ep.student_id FROM event_payments ep
+                 WHERE a.entity_type = 'event_payment' AND ep.id = a.entity_id),
+               CASE WHEN a.before ->> 'student_id' ~ '^[0-9]+$'
+                    THEN (a.before ->> 'student_id')::bigint END,
+               CASE WHEN a.after ->> 'studentId' ~ '^[0-9]+$'
+                    THEN (a.after ->> 'studentId')::bigint END
+             )
+    ) subject ON true
+`;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function revertBlockedReason(entry: EventActivitySqlRow): string | null {
+  if (entry.reverted_at) return "Bu hareket zaten geri alınmış.";
+  const known = REVERT_BLOCKED_REASONS[entry.action];
+  if (known) return known;
+  if (!REVERTABLE_ACTIONS.has(entry.action)) return "Bu hareket türünün otomatik geri alması yok.";
+  if (REVERT_NEEDS_BEFORE.has(entry.action) && !isRecord(entry.before)) {
+    return "Bu kayıt önceki değerleri saklanmadan yazılmış; geri alınamıyor.";
+  }
+  if (REVERT_NEEDS_AFTER.has(entry.action) && !isRecord(entry.after)) {
+    return "Bu kayıt sonraki değerleri saklanmadan yazılmış; güvenle geri alınamıyor.";
+  }
+  // Arama kaydı, silinecek etkileşim satırının kimliğiyle birlikte yazılır;
+  // 0279 öncesi kayıtlarda bu kimlik yok.
+  if (entry.action === "event_participant_contacted"
+      && !(isRecord(entry.after) && entry.after.interactionId != null)) {
+    return "Bu arama kaydı eski sürümde yazılmış; geri alınamıyor.";
+  }
+  return null;
+}
+
+function decorateActivity(row: EventActivitySqlRow): EventActivityRow {
+  const reason = revertBlockedReason(row);
+  return { ...row, revertable: reason === null, revert_blocked_reason: reason };
+}
+
+async function assertEventExists(eventId: EntityId): Promise<void> {
+  const result = await pool.query(
+    `SELECT 1 FROM events WHERE id = $1 AND deleted_at IS NULL`,
+    [eventId],
+  );
+  if (!result.rows[0]) throw new EventNotFoundError();
+}
+
+export async function listEventActivity(
+  eventId: EntityId,
+  limit = 100,
+): Promise<EventActivityRow[]> {
+  await assertEventExists(eventId);
+  const safeLimit = Math.min(Math.max(1, Math.trunc(Number(limit) || 100)), 300);
+  const result = await pool.query<EventActivitySqlRow>(
+    `${ACTIVITY_SELECT}
+      WHERE a.event_id = $1
+      ORDER BY a.created_at DESC, a.id DESC
+      LIMIT $2`,
+    [eventId, safeLimit],
+  );
+  return result.rows.map(decorateActivity);
+}
+
+async function loadActivityWith(
+  queryable: Queryable,
+  eventId: EntityId,
+  activityId: EntityId,
+): Promise<EventActivitySqlRow> {
+  const result = await queryable.query<EventActivitySqlRow>(
+    `${ACTIVITY_SELECT} WHERE a.event_id = $1 AND a.id = $2`,
+    [eventId, activityId],
+  );
+  const row = result.rows[0];
+  if (!row) throw new EventActivityNotFoundError();
+  return row;
+}
+
+async function loadActivity(
+  eventId: EntityId,
+  activityId: EntityId,
+): Promise<EventActivitySqlRow> {
+  return loadActivityWith(pool, eventId, activityId);
+}
+
+async function lockActivity(
+  client: PoolClient,
+  eventId: EntityId,
+  activityId: EntityId,
+): Promise<EventActivitySqlRow> {
+  // ACTIVITY_SELECT dış join'ler içerdiği için doğrudan FOR UPDATE alamaz.
+  // Önce kaynak audit satırını kilitle, sonra aynı transaction/client ile
+  // zenginleştirilmiş satırı oku. Eşzamanlı ikinci geri alma burada bekler.
+  const locked = await client.query<{ id: string }>(
+    `SELECT id::text AS id
+       FROM audit_logs
+      WHERE event_id = $1 AND id = $2
+      FOR UPDATE`,
+    [eventId, activityId],
+  );
+  if (!locked.rows[0]) throw new EventActivityNotFoundError();
+  return loadActivityWith(client, eventId, activityId);
+}
+
+const REVERT_NOTE = "Hareketler ekranından geri alındı.";
+
+export async function revertEventActivity(
+  eventId: EntityId,
+  activityId: EntityId,
+  actorUserId: EntityId,
+): Promise<EventActivityRow> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const entry = await lockActivity(client, eventId, activityId);
+    const blocked = revertBlockedReason(entry);
+    if (blocked) throw new EventActivityNotRevertibleError(blocked);
+
+    // Telafi, telafinin normal audit kaydı ve orijinal kaydın damgası aynı
+    // transaction'dadır. Çökme/hata hepsini geri alır; FOR UPDATE da iki
+    // eşzamanlı isteğin aynı telafiyi uygulamasını engeller.
+    await applyActivityRevert(client, entry, eventId, actorUserId);
+
+    const stamped = await client.query(
+      `UPDATE audit_logs
+          SET reverted_at = now(), reverted_by_user_id = $2
+        WHERE id = $1 AND reverted_at IS NULL`,
+      [entry.id, actorUserId],
+    );
+    if (stamped.rowCount !== 1) {
+      throw new EventActivityNotRevertibleError("Bu hareket zaten geri alınmış.");
+    }
+
+    const result = decorateActivity(await loadActivityWith(client, eventId, activityId));
+    await client.query("COMMIT");
+    return result;
+  } catch (error) {
+    await rollbackQuietly(client);
+    throw toServiceError(error);
+  } finally {
+    client.release();
+  }
+}
+
+function requireBefore(entry: EventActivitySqlRow): Record<string, unknown> {
+  if (!isRecord(entry.before)) {
+    throw new EventActivityNotRevertibleError(
+      "Bu kaydın önceki değeri bulunamadı; geri alınamıyor.",
+    );
+  }
+  return entry.before;
+}
+
+function requireAfter(entry: EventActivitySqlRow): Record<string, unknown> {
+  if (!isRecord(entry.after)) {
+    throw new EventActivityNotRevertibleError(
+      "Bu kaydın sonraki değeri bulunamadı; güvenle geri alınamıyor.",
+    );
+  }
+  return entry.after;
+}
+
+function activitySnapshotValueEquals(field: string, left: unknown, right: unknown): boolean {
+  if (field === "starts_at") {
+    const leftTime = left instanceof Date ? left.getTime() : Date.parse(String(left));
+    const rightTime = right instanceof Date ? right.getTime() : Date.parse(String(right));
+    return Number.isFinite(leftTime) && Number.isFinite(rightTime) && leftTime === rightTime;
+  }
+  return Object.is(left, right);
+}
+
+function assertRevertFieldsStillCurrent(
+  current: Record<string, unknown>,
+  after: Record<string, unknown>,
+  changedFields: string[],
+): void {
+  const staleFields = changedFields.filter(
+    (field) => !activitySnapshotValueEquals(field, current[field], after[field]),
+  );
+  if (staleFields.length > 0) {
+    throw new EventActivityNotRevertibleError(
+      "Bu hareketten sonra aynı alan yeniden değiştirilmiş; daha yeni düzenlemeyi korumak için geri alma durduruldu.",
+    );
+  }
+}
+
+async function revertEventUpdate(
+  client: PoolClient,
+  entry: EventActivitySqlRow,
+  eventId: EntityId,
+  actorUserId: EntityId,
+): Promise<void> {
+  const before = requireBefore(entry);
+  const after = requireAfter(entry);
+  const current = await lockEvent(client, eventId) as unknown as Record<string, unknown>;
+  const fields = [
+    "name",
+    "starts_at",
+    "location",
+    "status",
+    "capacity_limit",
+    "transport_enabled",
+    "note",
+  ];
+  const changedFields = fields.filter(
+    (field) => !activitySnapshotValueEquals(field, before[field], after[field]),
+  );
+  assertRevertFieldsStillCurrent(current, after, changedFields);
+
+  const input: UpdateEventInput = {};
+  for (const field of changedFields) {
+    switch (field) {
+      case "name": input.name = before.name as string; break;
+      case "starts_at": input.startsAt = before.starts_at as string; break;
+      case "location": input.location = before.location as string | null; break;
+      case "status": input.status = before.status as EventStatus; break;
+      case "capacity_limit": input.capacityLimit = before.capacity_limit as number | null; break;
+      case "transport_enabled": input.transportEnabled = before.transport_enabled as boolean; break;
+      case "note": input.note = before.note as string | null; break;
+    }
+  }
+  await updateEvent(eventId, input, actorUserId, client);
+}
+
+async function revertVehicleUpdate(
+  client: PoolClient,
+  entry: EventActivitySqlRow,
+  actorUserId: EntityId,
+): Promise<void> {
+  const before = requireBefore(entry);
+  const after = requireAfter(entry);
+  const currentResult = await client.query<Record<string, unknown>>(
+    `SELECT * FROM event_vehicles WHERE id = $1 FOR UPDATE`,
+    [entry.entity_id],
+  );
+  const current = currentResult.rows[0];
+  if (!current) throw new EventVehicleNotFoundError();
+  const fields = ["driver_name", "driver_phone", "passenger_seats", "meeting_place", "note"];
+  const changedFields = fields.filter(
+    (field) => !activitySnapshotValueEquals(field, before[field], after[field]),
+  );
+  assertRevertFieldsStillCurrent(current, after, changedFields);
+
+  const input: UpdateVehicleInput = {};
+  for (const field of changedFields) {
+    switch (field) {
+      case "driver_name": input.driverName = before.driver_name as string | null; break;
+      case "driver_phone": input.driverPhone = before.driver_phone as string | null; break;
+      case "passenger_seats": input.passengerSeats = before.passenger_seats as number; break;
+      case "meeting_place": input.meetingPlace = before.meeting_place as string | null; break;
+      case "note": input.note = before.note as string | null; break;
+    }
+  }
+  await updateVehicle(entry.entity_id, input, actorUserId, client);
+}
+
+async function applyActivityRevert(
+  client: PoolClient,
+  entry: EventActivitySqlRow,
+  eventId: EntityId,
+  actorUserId: EntityId,
+): Promise<void> {
+  switch (entry.action) {
+    case "event_updated": {
+      await revertEventUpdate(client, entry, eventId, actorUserId);
+      return;
+    }
+
+    case "event_participant_added": {
+      // Telafi = kişiyi listeden kaldırmak. Ödemesi/misafiri varsa servis
+      // reddeder — geri alma bu kuralları atlamaz.
+      await removeParticipant(
+        entry.entity_id,
+        { reason: "added_by_mistake", note: REVERT_NOTE },
+        actorUserId,
+        client,
+      );
+      return;
+    }
+
+    case "event_participant_removed": {
+      const before = requireBefore(entry);
+      await addExistingParticipantWithClient(client, eventId, {
+        studentId: String(before.student_id),
+        role: before.role as ParticipantRole | undefined,
+        rsvpStatus: before.rsvp_status as RsvpStatus | undefined,
+        // Misafirse eski bağ da kurulur; host'u da kaldırılmışsa servis
+        // "önce host'u geri ekleyin" anlamına gelen hatayı verir.
+        guestOfParticipantId: (before.guest_of_participant_id as string | null) ?? null,
+        transportMode: before.transport_mode as TransportMode | undefined,
+        actorUserId,
+      });
+      return;
+    }
+
+    case "event_participant_updated": {
+      const before = requireBefore(entry);
+      const { vehicleId, ...fields } = before;
+      if (Object.keys(fields).length > 0) {
+        await updateParticipant(entry.entity_id, fields as UpdateParticipantInput, actorUserId, client);
+      }
+      // transportMode yazımı aracı koparır; eski araç varsa geri bağlanır.
+      // Koltuk dolduysa hata görünür olur, sessizce yutulmaz.
+      if (fields.transportMode !== undefined && vehicleId != null) {
+        await assignParticipantToVehicle(entry.entity_id, String(vehicleId), actorUserId, client);
+      }
+      return;
+    }
+
+    case "event_participant_contacted": {
+      await revertContactInteraction(client, entry, actorUserId);
+      return;
+    }
+
+    case "event_participant_fee_updated": {
+      const before = requireBefore(entry);
+      const feeItemId = String(before.feeItemId);
+      await updateParticipantFee(
+        entry.entity_id,
+        feeItemId,
+        { coverage: before.coverage as FeeCoverage },
+        actorUserId,
+        client,
+      );
+      // Kişiye özel ders ücreti (0272) yalnız "öğrenci ödüyor" durumunda ve
+      // yalnız ders kaleminde anlamlı; ancak kapsam geri alındıktan SONRA
+      // yazılabilir, o yüzden ikinci adım.
+      if (before.coverage === "student" && before.amount != null) {
+        const fees = await listParticipantFeesWith(client, entry.entity_id);
+        const fee = fees.find((row) => String(row.fee_item_id) === feeItemId);
+        if (fee?.is_lesson_fee && fee.amount_snapshot !== String(before.amount)) {
+          await updateParticipantFee(
+            entry.entity_id,
+            feeItemId,
+            { amount: String(before.amount) },
+            actorUserId,
+            client,
+          );
+        }
+      }
+      return;
+    }
+
+    case "event_participant_payment_recorded": {
+      // Tahsilat kaydı silinmez, iptal edilir (defter bozulmasın) — sistem dışı
+      // nakit iadesi her zaman operatörün sorumluluğundadır.
+      await cancelParticipantPayment(entry.entity_id, REVERT_NOTE, actorUserId, client);
+      return;
+    }
+
+    case "event_participant_vehicle_assigned": {
+      const before = requireBefore(entry);
+      if (before.vehicleId != null) {
+        await assignParticipantToVehicle(entry.entity_id, String(before.vehicleId), actorUserId, client);
+        return;
+      }
+      await unassignParticipantVehicle(
+        client,
+        entry,
+        (before.transportMode as TransportMode | undefined) ?? "unspecified",
+        actorUserId,
+      );
+      return;
+    }
+
+    case "event_vehicle_created": {
+      await deleteVehicle(entry.entity_id, actorUserId, client);
+      return;
+    }
+
+    case "event_vehicle_updated": {
+      await revertVehicleUpdate(client, entry, actorUserId);
+      return;
+    }
+
+    case "event_vehicle_deleted": {
+      // Araç yeni bir kimlikle geri gelir; silinebilmesi için yolcusuz olması
+      // gerekiyordu, dolayısıyla kopan bir yolcu bağı yoktur.
+      const before = requireBefore(entry) as unknown as EventVehicleRow;
+      await createVehicle(eventId, {
+        vehicleType: before.vehicle_type,
+        driverStudentId: before.driver_student_id,
+        driverName: before.driver_name,
+        driverPhone: before.driver_phone,
+        passengerSeats: before.passenger_seats,
+        meetingTime: before.meeting_time,
+        meetingPlace: before.meeting_place,
+        note: before.note,
+        actorUserId,
+      }, client);
+      return;
+    }
+
+    default:
+      throw new EventActivityNotRevertibleError("Bu hareket türünün otomatik geri alması yok.");
+  }
+}
+
+// "Arandı" kaydının telafisi: etkileşim satırını sil. Doğal bir servis çağrısı
+// yok, o yüzden tek transaction + kendi audit kaydı (action 0279'da eklendi).
+async function revertContactInteraction(
+  transactionClient: PoolClient,
+  entry: EventActivitySqlRow,
+  actorUserId: EntityId,
+): Promise<void> {
+  const after = isRecord(entry.after) ? entry.after : {};
+  const interactionId = after.interactionId;
+  if (interactionId == null) {
+    throw new EventActivityNotRevertibleError(
+      "Bu arama kaydı eski sürümde yazılmış; geri alınamıyor.",
+    );
+  }
+
+  const client = transactionClient;
+  try {
+    const deleted = await client.query<{ id: string }>(
+      `DELETE FROM event_participant_interactions
+        WHERE id = $1 AND participant_id = $2 AND interaction_type = 'called'
+        RETURNING id`,
+      [String(interactionId), entry.entity_id],
+    );
+    if (!deleted.rows[0]) {
+      throw new EventActivityNotRevertibleError(
+        "Arama kaydı bulunamadı; muhtemelen zaten geri alınmış.",
+      );
+    }
+    await insertAuditLog(client, {
+      action: "event_participant_contact_reverted",
+      eventId: entry.event_id,
+      entityType: "event_participant",
+      entityId: entry.entity_id,
+      before: entry.after,
+      note: REVERT_NOTE,
+      actorUserId,
+    });
+  } catch (error) {
+    throw toServiceError(error);
+  }
+}
+
+// Araç ataması öncesinde kişi hiçbir araca bağlı değildi: aracı çöz, ulaşım
+// tercihini eski değerine döndür.
+async function unassignParticipantVehicle(
+  transactionClient: PoolClient,
+  entry: EventActivitySqlRow,
+  transportMode: TransportMode,
+  actorUserId: EntityId,
+): Promise<void> {
+  const client = transactionClient;
+  try {
+    const updated = await client.query<{ id: string; event_id: string }>(
+      `UPDATE event_participants SET vehicle_id = NULL, transport_mode = $2
+        WHERE id = $1
+        RETURNING id, event_id`,
+      [entry.entity_id, normalizeEnum(transportMode, TRANSPORT_MODES, "transportMode")],
+    );
+    if (!updated.rows[0]) throw new EventParticipantNotFoundError();
+    await insertAuditLog(client, {
+      action: "event_participant_vehicle_unassigned",
+      eventId: updated.rows[0].event_id,
+      entityType: "event_participant",
+      entityId: entry.entity_id,
+      before: entry.after,
+      after: { vehicleId: null, transportMode },
+      note: REVERT_NOTE,
+      actorUserId,
+    });
+  } catch (error) {
+    throw toServiceError(error);
+  }
 }

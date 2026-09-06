@@ -4,6 +4,7 @@ import { Router } from "express";
 import {
   createStudent,
   getStudentById,
+  getStudentDeleteImpact,
   getStudentSummary,
   getStudentsKpi,
   listDebtors,
@@ -55,6 +56,19 @@ studentsRouter.get("/kpi", async (_req, res) => {
 studentsRouter.get("/", async (_req, res) => {
   try {
     const data = await listStudents();
+    res.json({ data });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+// GET /students/:id/delete-impact — kalıcı silme öncesi tek ve eksiksiz etki
+// özeti. Etkinlik/not bağlantıları da bu sözleşmeye dahildir; yalnız silme
+// yetkisi olan roller kişisel geçmiş kapsamını görebilir.
+studentsRouter.get("/:id/delete-impact", requireCan("students.delete"), async (req, res) => {
+  try {
+    const id = parseId(req.params.id);
+    const data = await getStudentDeleteImpact(id);
     res.json({ data });
   } catch (err) {
     sendError(res, err);
