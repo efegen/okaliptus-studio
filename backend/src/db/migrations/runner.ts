@@ -39,6 +39,27 @@ async function getMigrationFiles(): Promise<string[]> {
     .sort((left, right) => left.localeCompare(right));
 }
 
+async function assertMigrationPreconditions(client: PoolClient, filename: string): Promise<void> {
+  // 0267 eski `not_coming` satırlarını CASCADE ile fiziksel siliyor. Migration
+  // dosyasını geçmiş sözleşme gereği değiştirmiyoruz; fakat otomatik production
+  // migrate'ın sessiz veri kaybıyla ilerlemesine de izin vermiyoruz.
+  if (filename === "0267_event_rsvp_remove_not_coming.sql") {
+    await client.query("LOCK TABLE event_participants IN SHARE ROW EXCLUSIVE MODE");
+    const result = await client.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count
+         FROM event_participants
+        WHERE rsvp_status = 'not_coming'`,
+    );
+    const count = Number(result.rows[0]?.count ?? 0);
+    if (count > 0) {
+      throw new Error(
+        `Migration ${filename} durduruldu: ${count} not_coming katılımcı silinecekti. `
+        + "Önce yedek alın ve kayıtları iş kararıyla taşıyın.",
+      );
+    }
+  }
+}
+
 export async function runMigrations(): Promise<string[]> {
   const client = await pool.connect();
 
@@ -59,6 +80,7 @@ export async function runMigrations(): Promise<string[]> {
       await client.query("BEGIN");
 
       try {
+        await assertMigrationPreconditions(client, filename);
         await client.query(sql);
         await client.query(
           `INSERT INTO ${MIGRATIONS_TABLE} (filename) VALUES ($1)`,

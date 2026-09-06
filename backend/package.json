@@ -8,6 +8,7 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/db/migrate.js && node dist/index.js",
     "db:migrate": "tsx src/db/migrate.ts",
+    "db:preflight:events": "tsx scripts/preflight_events.ts",
     "db:bootstrap": "tsx scripts/bootstrap.ts",
     "smoke": "tsx scripts/smoke/run-all.ts",
     "smoke:single": "tsx scripts/smoke/run-all.ts --only",

@@ -353,6 +353,7 @@ cd backend && npm run dev    # Express backend on :4000
 
 ```bash
 npm run db:migrate           # Run pending SQL migrations (never run SQL by hand)
+npm run db:preflight:events  # Read-only safety check before event migrations
 npm run db:bootstrap         # Seed instructor + admin users from .env
 npm run db:backup            # pg_dump (custom format) → backend/backups/
 npm run db:size              # DB size check
