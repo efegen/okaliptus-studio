@@ -21,7 +21,7 @@ function normalizePreferredMode(value: unknown): LessonMode | null {
   throw new ValidationError("preferredMode must be 'online', 'onsite', or null.");
 }
 
-type StudentRow = {
+export type StudentRow = {
   id: string;
   full_name: string;
   nickname: string | null;
@@ -37,6 +37,62 @@ type StudentRow = {
   created_at: string;
   updated_at: string;
 };
+
+// Bir öğrencinin başka bir domain işlemiyle (ör. etkinliğe katılımcı ekleme)
+// aynı transaction içinde oluşturulabilmesi için transaction-sahibi olmayan
+// çekirdek işlem. BEGIN/COMMIT çağıran tarafın sorumluluğundadır.
+export async function createStudentWithClient(
+  client: import("pg").PoolClient,
+  input: CreateStudentInput,
+): Promise<StudentRow> {
+  const fullName = normalizeRequiredText(input.fullName, "fullName");
+  const currency = input.currency ?? "TRY";
+
+  assertTryCurrency(currency);
+
+  const insertResult = await client.query<StudentRow>(
+    `
+      INSERT INTO students (
+        full_name,
+        nickname,
+        preferred_mode,
+        phone,
+        email,
+        birthday,
+        joined_at,
+        note,
+        currency,
+        is_active
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      RETURNING *
+    `,
+    [
+      fullName,
+      normalizeOptionalText(input.nickname),
+      normalizePreferredMode(input.preferredMode),
+      normalizeOptionalText(input.phone),
+      normalizeOptionalText(input.email),
+      input.birthday ?? null,
+      input.joinedAt ?? null,
+      normalizeOptionalText(input.note),
+      currency,
+      input.isActive ?? true,
+    ],
+  );
+
+  const student = insertResult.rows[0];
+
+  await insertAuditLog(client, {
+    action: "student_created",
+    entityType: "student",
+    entityId: student.id,
+    after: student,
+    actorUserId: input.actorUserId ?? null,
+  });
+
+  return student;
+}
 
 type StudentSummaryRow = {
   id: string;
@@ -345,53 +401,8 @@ export async function createStudent(input: CreateStudentInput): Promise<StudentR
   const client = await pool.connect();
 
   try {
-    const fullName = normalizeRequiredText(input.fullName, "fullName");
-    const currency = input.currency ?? "TRY";
-
-    assertTryCurrency(currency);
-
     await client.query("BEGIN");
-
-    const insertResult = await client.query<StudentRow>(
-      `
-        INSERT INTO students (
-          full_name,
-          nickname,
-          preferred_mode,
-          phone,
-          email,
-          birthday,
-          joined_at,
-          note,
-          currency,
-          is_active
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-        RETURNING *
-      `,
-      [
-        fullName,
-        normalizeOptionalText(input.nickname),
-        normalizePreferredMode(input.preferredMode),
-        normalizeOptionalText(input.phone),
-        normalizeOptionalText(input.email),
-        input.birthday ?? null,
-        input.joinedAt ?? null,
-        normalizeOptionalText(input.note),
-        currency,
-        input.isActive ?? true,
-      ],
-    );
-
-    const student = insertResult.rows[0];
-
-    await insertAuditLog(client, {
-      action: "student_created",
-      entityType: "student",
-      entityId: student.id,
-      after: student,
-      actorUserId: input.actorUserId ?? null,
-    });
+    const student = await createStudentWithClient(client, input);
 
     await client.query("COMMIT");
     return student;

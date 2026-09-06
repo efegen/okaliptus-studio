@@ -27,7 +27,7 @@ export class OverpaymentOnPrepaidPackageError extends AppError {
 }
 
 export class OverpaymentNotAllowedError extends AppError {
-  constructor(message = "Payment amount exceeds the remaining debt.") {
+  constructor(message = "Ödeme tutarı kalan ödenecek tutarı aşamaz.") {
     super("OVERPAYMENT_NOT_ALLOWED", message, 409);
   }
 }
@@ -105,58 +105,76 @@ export class CalendarEventNotFoundError extends AppError {
 }
 
 export class EventNotFoundError extends AppError {
-  constructor(message = "Event not found.") {
+  constructor(message = "Etkinlik bulunamadı.") {
     super("EVENT_NOT_FOUND", message, 404);
   }
 }
 
 export class EventParticipantNotFoundError extends AppError {
-  constructor(message = "Event participant not found.") {
+  constructor(message = "Etkinlik katılımcısı bulunamadı.") {
     super("EVENT_PARTICIPANT_NOT_FOUND", message, 404);
   }
 }
 
 export class EventFeeItemNotFoundError extends AppError {
-  constructor(message = "Event fee item not found.") {
+  constructor(message = "Etkinlik ücret kalemi bulunamadı.") {
     super("EVENT_FEE_ITEM_NOT_FOUND", message, 404);
   }
 }
 
 export class EventVehicleNotFoundError extends AppError {
-  constructor(message = "Event vehicle not found.") {
+  constructor(message = "Etkinlik aracı bulunamadı.") {
     super("EVENT_VEHICLE_NOT_FOUND", message, 404);
   }
 }
 
 export class DuplicateParticipantError extends AppError {
-  constructor(message = "This student is already on the event's participant list.") {
+  constructor(message = "Bu öğrenci etkinliğin katılımcı listesinde zaten var.") {
     super("DUPLICATE_PARTICIPANT", message, 409);
   }
 }
 
 export class CompQuotaExceededError extends AppError {
-  constructor(message = "This fee item's complimentary quota is already used up.") {
+  constructor(message = "Bu ücret kaleminin ücretsiz kontenjanı dolu.") {
     super("COMP_QUOTA_EXCEEDED", message, 409);
   }
 }
 
 export class VehicleFullError extends AppError {
-  constructor(message = "This vehicle has no free passenger seats left.") {
+  constructor(message = "Bu araçta boş yolcu koltuğu kalmadı.") {
     super("VEHICLE_FULL", message, 409);
   }
 }
 
 export class EventHasPaymentsError extends AppError {
   constructor(
-    message = "Bu etkinlikte tahsil edilmiş ödeme var; silmeden önce etkinliği iptal edin.",
+    message = "Bu etkinlikte aktif tahsilat var; iade edip tahsilat kayıtlarını iptal etmeden etkinlik silinemez.",
   ) {
     super("EVENT_HAS_PAYMENTS", message, 409);
   }
 }
 
+export class EventVehicleHasPassengersError extends AppError {
+  constructor(message = "Araçta yolcu varken araç silinemez; önce yolcuların ulaşım durumunu değiştirin.") {
+    super("EVENT_VEHICLE_HAS_PASSENGERS", message, 409);
+  }
+}
+
+export class EventPaymentNotFoundError extends AppError {
+  constructor(message = "Etkinlik tahsilatı bulunamadı.") {
+    super("EVENT_PAYMENT_NOT_FOUND", message, 404);
+  }
+}
+
+export class ReauthenticationFailedError extends AppError {
+  constructor(message = "Mevcut hesap şifresi doğrulanamadı.") {
+    super("REAUTHENTICATION_FAILED", message, 403);
+  }
+}
+
 export class EventParticipantHasPaymentsError extends AppError {
   constructor(
-    message = "Bu katılımcının tahsil edilmiş ödemesi var; kaldırılamaz.",
+    message = "Bu katılımcının aktif tahsilatı var; iade edip tahsilatı iptal etmeden listeden kaldırılamaz.",
   ) {
     super("EVENT_PARTICIPANT_HAS_PAYMENTS", message, 409);
   }

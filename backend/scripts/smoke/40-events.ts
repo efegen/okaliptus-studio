@@ -25,14 +25,17 @@ import {
   addFeeItem,
   addNewParticipant,
   assignParticipantToVehicle,
+  cancelParticipantPayment,
   createEvent,
   createVehicle,
+  deleteVehicle,
   deleteEvent,
   getEventById,
   getParticipantById,
   getUpcomingEvent,
   listEventBalancesForStudent,
   listParticipantFees,
+  listParticipantPayments,
   listParticipants,
   listVehicles,
   recordParticipantPayment,
@@ -41,6 +44,7 @@ import {
   updateEvent,
   updateParticipant,
   updateParticipantFee,
+  updateVehicle,
 } from "../../src/services/events.service.js";
 import { pool } from "../../src/db/connection.js";
 import {
@@ -62,6 +66,13 @@ async function run(): Promise<void> {
 
   async function cleanupEvents(): Promise<void> {
     if (eventIds.length === 0) return;
+    await pool.query(
+      `DELETE FROM event_payment_allocations WHERE payment_id IN (
+         SELECT id FROM event_payments WHERE event_id = ANY($1::bigint[])
+       )`,
+      [eventIds],
+    );
+    await pool.query(`DELETE FROM event_payments WHERE event_id = ANY($1::bigint[])`, [eventIds]);
     await pool.query(
       `DELETE FROM event_participant_fees WHERE participant_id IN (
          SELECT id FROM event_participants WHERE event_id = ANY($1::bigint[])
@@ -174,6 +185,19 @@ async function run(): Promise<void> {
     );
     assert(!!newStudentRow.rows[0], "E: yeni kişi ana öğrenci listesine de kaydedildi");
 
+    await assertRejects(
+      () => addNewParticipant(event.id, {
+        fullName: "SMOKE40 Rollback Misafir",
+        guestOfParticipantId: participantNew.id,
+      }),
+      "VALIDATION_ERROR",
+      "E: bir misafire ikinci seviye misafir bağlanamaz",
+    );
+    const rolledBackStudent = await pool.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM students WHERE full_name = 'SMOKE40 Rollback Misafir'`,
+    );
+    assertEqual(rolledBackStudent.rows[0].count, "0", "E: katılımcı ekleme reddedilince yeni öğrenci de rollback olur");
+
     // ── F. Arama: zaten listede olan işaretlenir ──────────────────────────────
     section("F — searchStudentsForEvent: already_in_event bayrağı");
     const searchResults = await searchStudentsForEvent(event.id, "SMOKE40 Ayşe");
@@ -201,12 +225,22 @@ async function run(): Promise<void> {
 
     // ── H. Ödeme: FIFO dağıtım + aşırı ödeme reddi ────────────────────────────
     section("H — recordParticipantPayment: kısmi dağıtım ve aşırı ödeme reddi");
-    await recordParticipantPayment(participantA.id, "400.00");
+    const payment = await recordParticipantPayment(participantA.id, "400.00", null, "iban", "smoke40-payment-1");
+    await recordParticipantPayment(participantA.id, "400.00", null, "iban", "smoke40-payment-1");
     const feesA = await listParticipantFees(participantA.id);
     const lessonFee = feesA.find((f) => f.label === "Ders ücreti");
     const breakfastFee = feesA.find((f) => f.label === "Kahvaltı");
     assertMoney(lessonFee!.paid_amount, "350.00", "H: önce ders ücreti tam kapanır");
     assertMoney(breakfastFee!.paid_amount, "50.00", "H: kalan tutar kahvaltıya kısmi yansır");
+    assertEqual((await listParticipantPayments(participantA.id)).length, 1, "H: aynı işlem anahtarı ikinci tahsilat oluşturmaz");
+
+    const cancellationActor = await pool.query<{ id: string }>(`SELECT id FROM users WHERE is_active = true ORDER BY id LIMIT 1`);
+    assert(!!cancellationActor.rows[0], "H: tahsilat iptali için aktif smoke kullanıcısı var");
+    await cancelParticipantPayment(payment.id, "SMOKE iade", cancellationActor.rows[0].id);
+    const cancelledFees = await listParticipantFees(participantA.id);
+    assertMoney(cancelledFees.find((f) => f.label === "Ders ücreti")!.paid_amount, "0.00", "H: iptal ders tahsilatını geri alır");
+    assertMoney(cancelledFees.find((f) => f.label === "Kahvaltı")!.paid_amount, "0.00", "H: iptal kısmi kalem tahsilatını geri alır");
+    await recordParticipantPayment(participantA.id, "400.00", null, "cash", "smoke40-payment-2");
 
     await assertRejects(
       () => recordParticipantPayment(participantA.id, "1000.00"),
@@ -229,6 +263,18 @@ async function run(): Promise<void> {
     );
     const vehicles = await listVehicles(event.id);
     assertEqual(vehicles.find((v) => v.id === vehicle.id)?.seats_taken, 1, "I: seats_taken doğru sayılıyor");
+    await assertRejects(
+      () => updateVehicle(vehicle.id, { passengerSeats: 0 }),
+      "VALIDATION_ERROR",
+      "I: araç koltuğu pozitif olmalı",
+    );
+    const updatedVehicle = await updateVehicle(vehicle.id, { passengerSeats: 2, meetingPlace: "Stüdyo önü" });
+    assertEqual(updatedVehicle.passenger_seats, 2, "I: araç koltuğu güncellenebilir");
+    assertEqual(updatedVehicle.meeting_place, "Stüdyo önü", "I: buluşma yeri güncellenebilir");
+    const emptyVehicle = await createVehicle(event.id, { vehicleType: "student_car", driverName: "SMOKE Şoför", passengerSeats: 1 });
+    await deleteVehicle(emptyVehicle.id);
+    assert(!(await listVehicles(event.id)).some((v) => v.id === emptyVehicle.id), "I: boş araç silinebilir");
+    await assertRejects(() => deleteVehicle(vehicle.id), "EVENT_VEHICLE_HAS_PASSENGERS", "I: yolculu araç silinemez");
 
     // ── J. Öğrenci profili bakiye özeti — ana borca karışmaz ──────────────────
     section("J — listEventBalancesForStudent: ayrı bir defter");

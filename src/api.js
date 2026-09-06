@@ -1124,9 +1124,10 @@ export async function updateEvent(eventId, input) {
 
 // data: null döner — ensureMutationResult null'u reddedip her başarılı silmede
 // de hata fırlatırdı; apiRequest zaten HTTP hatasında fırlatıyor.
-export async function deleteEvent(eventId) {
+export async function deleteEvent(eventId, password) {
   await apiRequest(`/events/${encodeURIComponent(eventId)}`, {
     method: 'DELETE',
+    body: JSON.stringify({ password }),
   });
 }
 
@@ -1190,12 +1191,26 @@ export async function updateEventParticipantFee(participantId, feeItemId, input)
   return payload;
 }
 
-export async function recordEventParticipantPayment(participantId, amount) {
+export async function recordEventParticipantPayment(participantId, { amount, source, idempotencyKey }) {
   const payload = await apiRequest(`/events/participants/${encodeURIComponent(participantId)}/payments`, {
     method: 'POST',
-    body: JSON.stringify({ amount }),
+    body: JSON.stringify({ amount, source, idempotencyKey }),
   });
-  return payload;
+  return ensureMutationResult(payload, 'Tahsilat kaydedilemedi.');
+}
+
+export async function getEventParticipantPayments(participantId) {
+  const payload = await apiGet(`/events/participants/${encodeURIComponent(participantId)}/payments`);
+  if (!Array.isArray(payload?.data)) throw new Error('Tahsilat geçmişi alınamadı.');
+  return payload.data;
+}
+
+export async function cancelEventParticipantPayment(paymentId, note) {
+  const payload = await apiRequest(`/events/payments/${encodeURIComponent(paymentId)}`, {
+    method: 'DELETE',
+    body: JSON.stringify({ note }),
+  });
+  return ensureMutationResult(payload, 'Tahsilat iptal edilemedi.');
 }
 
 export async function getEventVehicles(eventId) {
@@ -1210,6 +1225,18 @@ export async function createEventVehicle(eventId, input) {
     body: JSON.stringify(input),
   });
   return ensureMutationResult(payload, 'Araç eklenemedi.');
+}
+
+export async function updateEventVehicle(vehicleId, input) {
+  const payload = await apiRequest(`/events/vehicles/${encodeURIComponent(vehicleId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+  return ensureMutationResult(payload, 'Araç güncellenemedi.');
+}
+
+export async function deleteEventVehicle(vehicleId) {
+  await apiRequest(`/events/vehicles/${encodeURIComponent(vehicleId)}`, { method: 'DELETE' });
 }
 
 export async function assignEventParticipantVehicle(participantId, vehicleId) {

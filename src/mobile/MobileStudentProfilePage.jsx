@@ -528,19 +528,19 @@ function StatementGroup({ group, children }) {
 // ─── Tab content ──────────────────────────────────────────────────────────────
 
 function EventBalancesCard({ balances }) {
-  const withDebt = balances.filter((b) => Number(b.total_due) - Number(b.total_paid) > 0.01);
-  if (withDebt.length === 0) return null;
+  const withPaymentRemaining = balances.filter((b) => Number(b.total_due) - Number(b.total_paid) > 0.01);
+  if (withPaymentRemaining.length === 0) return null;
   return (
     <>
       <div className="mobile-msp-seclbl">Etkinlikler</div>
       <div className="mobile-msp-mvlist">
-        {withDebt.map((b) => {
+        {withPaymentRemaining.map((b) => {
           const remaining = Number(b.total_due) - Number(b.total_paid);
           return (
             <div className="mobile-msp-mvrow" key={b.event_id}>
               <div className="mobile-msp-mvrow-body">
                 <span className="mobile-msp-mvrow-title">{b.event_name}</span>
-                <span className="mobile-msp-mvrow-meta">{fmtShortDate(b.starts_at)} · stüdyo borcundan ayrı</span>
+                <span className="mobile-msp-mvrow-meta">{fmtShortDate(b.starts_at)} · gelirse ödeyeceği tutar</span>
               </div>
               <span className="mobile-msp-mvrow-amt open">{fmtTL(remaining)}</span>
             </div>

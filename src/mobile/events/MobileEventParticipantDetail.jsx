@@ -5,7 +5,7 @@ import { fmtTL } from '../../data';
 import {
   getEventById, getEventParticipants, getEventParticipantFees, getEventVehicles,
   updateEventParticipant, updateEventParticipantFee, recordEventParticipantPayment,
-  removeEventParticipant,
+  getEventParticipantPayments, cancelEventParticipantPayment, removeEventParticipant,
 } from '../../api';
 import { queryKeys } from '../../hooks/queryKeys';
 import { FeeCoverageList, FeeCoverageTotals } from './feeCoverage';
@@ -14,11 +14,8 @@ import { FeeCoverageList, FeeCoverageTotals } from './feeCoverage';
 // (bkz. design_handoff_katilimci_profili/). Koyu "hero" başlık + bilgi kartı
 // (Rol/Ulaşım/Ödeme) + misafirler + not, sabit alt barda Ara/Ödeme al.
 //
-// Tasarımda örnek olarak geçen bazı ayrıntılar bilinçli olarak YOK: koltuk
-// numarası (event_vehicles yalnız toplam passenger_seats tutar, kişi başı
-// koltuk atamıyoruz) ve ödeme tarihi/yöntemi (event_participant_fees yalnız
-// toplam paid_amount tutar, tek tek tahsilat kaydı yok) — ikisi de backend'de
-// karşılığı olmayan alanlar, uydurulmadı.
+// Kişi başı koltuk numarası tutulmaz; araçta yalnız toplam yolcu koltuğu vardır.
+// Tahsilatların tarih/yöntem ve iade-iptal geçmişi event_payments defterindedir.
 //
 // Öğrencinin genel profiliyle KARIŞTIRILMAZ — burada yalnız bu kişinin BU
 // etkinlikteki durumu var, genel borç/ders geçmişi yok.
@@ -40,6 +37,12 @@ function initialsOf(name) {
 
 function fmtHHmm(iso) {
   return new Intl.DateTimeFormat('tr-TR', { timeZone: 'Europe/Istanbul', hour: '2-digit', minute: '2-digit' }).format(new Date(iso));
+}
+
+function normalizeDecimalInput(value) {
+  const cleaned = value.replace(/[^0-9.,]/g, '').replace(',', '.');
+  const [whole, ...fractions] = cleaned.split('.');
+  return fractions.length === 0 ? whole : `${whole}.${fractions.join('').slice(0, 2)}`;
 }
 
 // Ulaşım satırının değeri — yalnız gerçekten sakladığımız alanlardan kurulur
@@ -130,6 +133,68 @@ function FeeSection({ participantId, onChanged }) {
   );
 }
 
+function PaymentHistory({ participantId, onChanged }) {
+  const queryClient = useQueryClient();
+  const [busyId, setBusyId] = React.useState(null);
+  const [error, setError] = React.useState('');
+  const paymentsQuery = useQuery({
+    queryKey: queryKeys.eventParticipantPayments(participantId),
+    queryFn: () => getEventParticipantPayments(participantId),
+  });
+  const payments = paymentsQuery.data ?? [];
+
+  async function cancelPayment(payment) {
+    const note = window.prompt(
+      `${fmtTL(payment.amount)} tahsilat gerçek hayatta iade edildiyse iptal nedenini yazın.`,
+      'Katılımcı etkinliğe gelmeyecek',
+    );
+    if (note == null) return;
+    setBusyId(payment.id);
+    setError('');
+    try {
+      await cancelEventParticipantPayment(payment.id, note.trim() || null);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.eventParticipantPayments(participantId) });
+      await onChanged();
+    } catch (err) {
+      setError(err?.message || 'Tahsilat iptal edilemedi.');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  if (paymentsQuery.isLoading || payments.length === 0) return null;
+  return (
+    <div className="evx-section">
+      <span className="evx-section-label">Tahsilat geçmişi</span>
+      <div className="evx-group-list">
+        {payments.map((payment) => {
+          const cancelled = payment.cancelled_at != null;
+          const date = new Date(payment.paid_at).toLocaleString('tr-TR', {
+            timeZone: 'Europe/Istanbul', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+          });
+          return (
+            <div key={payment.id} className="evx-row" style={{ cursor: 'default', opacity: cancelled ? 0.62 : 1 }}>
+              <span className="evx-row-body">
+                <span className="evx-row-name" style={{ textDecoration: cancelled ? 'line-through' : undefined }}>
+                  {fmtTL(payment.amount)} · {payment.source === 'iban' ? 'IBAN' : 'Nakit'}
+                </span>
+                <span className="evx-row-sub">{cancelled ? `İptal edildi${payment.cancellation_note ? ` · ${payment.cancellation_note}` : ''}` : date}</span>
+              </span>
+              {!cancelled && (
+                <button type="button" className="evx-danger-link" style={{ margin: 0 }}
+                  disabled={busyId != null} onClick={() => cancelPayment(payment)}>
+                  {busyId === payment.id ? 'İptal…' : 'İade/iptal'}
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {error && <div className="evx-hint" style={{ color: 'oklch(0.5 0.18 30)' }} role="alert">{error}</div>}
+    </div>
+  );
+}
+
 export function MobileEventParticipantDetail({ eventId, participantId, onBack, onRemoved, onOpenParticipant, onOpenTransport, onOpenAddGuest }) {
   const queryClient = useQueryClient();
 
@@ -156,6 +221,8 @@ export function MobileEventParticipantDetail({ eventId, participantId, onBack, o
   const [rsvpError, setRsvpError] = React.useState('');
   const [payOpen, setPayOpen] = React.useState(false);
   const [amount, setAmount] = React.useState('');
+  const [paymentSource, setPaymentSource] = React.useState('cash');
+  const paymentKeyRef = React.useRef(null);
   const [payBusy, setPayBusy] = React.useState(false);
   const [payError, setPayError] = React.useState('');
   const [note, setNote] = React.useState('');
@@ -180,8 +247,11 @@ export function MobileEventParticipantDetail({ eventId, participantId, onBack, o
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: queryKeys.eventParticipants(eventId) }),
       queryClient.invalidateQueries({ queryKey: queryKeys.eventParticipantFees(participantId) }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.eventParticipantPayments(participantId) }),
       queryClient.invalidateQueries({ queryKey: queryKeys.eventById(eventId) }),
       queryClient.invalidateQueries({ queryKey: queryKeys.upcomingEvent() }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.weeklyKpi() }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.financeFlow() }),
       ...(participant ? [queryClient.invalidateQueries({ queryKey: queryKeys.studentEventBalances(participant.student_id) })] : []),
     ]);
   }
@@ -220,8 +290,15 @@ export function MobileEventParticipantDetail({ eventId, participantId, onBack, o
     if (!Number.isFinite(numeric) || numeric <= 0) return setPayError('Geçerli bir tutar girin.');
     setPayBusy(true);
     try {
-      await recordEventParticipantPayment(participantId, numeric);
+      if (!paymentKeyRef.current) {
+        paymentKeyRef.current = globalThis.crypto?.randomUUID?.()
+          ?? `event-${participantId}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      }
+      await recordEventParticipantPayment(participantId, {
+        amount: normalizeDecimalInput(amount), source: paymentSource, idempotencyKey: paymentKeyRef.current,
+      });
       await refreshAll();
+      paymentKeyRef.current = null;
       setPayOpen(false);
     } catch (err) {
       setPayError(err?.message || 'Ödeme kaydedilemedi.');
@@ -401,14 +478,17 @@ export function MobileEventParticipantDetail({ eventId, participantId, onBack, o
         </div>
 
         <FeeSection participantId={participantId} onChanged={refreshAll} />
+        <PaymentHistory participantId={participantId} onChanged={refreshAll} />
 
         <div className="evx-section">
           <div className="evx-group-head">
             <span className="evx-group-title" style={{ color: 'var(--ink-3)' }}>MİSAFİRLERİ</span>
             <span className="evx-group-count">{guests.length}</span>
             <span className="evx-group-line" />
-            <button type="button" style={{ border: 0, background: 'transparent', font: 'inherit', fontSize: 12, fontWeight: 600, color: 'var(--accent-ink)', padding: '4px 0' }}
-              onClick={() => onOpenAddGuest(participant)}>+ Misafir ekle</button>
+            {participant.guest_of_participant_id == null && (
+              <button type="button" style={{ border: 0, background: 'transparent', font: 'inherit', fontSize: 12, fontWeight: 600, color: 'var(--accent-ink)', padding: '4px 0' }}
+                onClick={() => onOpenAddGuest(participant)}>+ Misafir ekle</button>
+            )}
           </div>
           {guests.length === 0 && <p className="evx-hint">Henüz misafiri yok.</p>}
           {guests.length > 0 && (
@@ -473,9 +553,15 @@ export function MobileEventParticipantDetail({ eventId, participantId, onBack, o
       <div className="evx-footer">
         {payOpen ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div className="evx-seg">
+              {[['cash', 'Nakit'], ['iban', 'IBAN']].map(([id, label]) => (
+                <button key={id} type="button" className={`evx-seg-btn${paymentSource === id ? ' is-on' : ''}`}
+                  disabled={payBusy} onClick={() => { setPaymentSource(id); paymentKeyRef.current = null; }}>{label}</button>
+              ))}
+            </div>
             <div style={{ display: 'flex', gap: 8 }}>
               <input
-                value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ''))}
+                value={amount} onChange={(e) => { setAmount(normalizeDecimalInput(e.target.value)); paymentKeyRef.current = null; }}
                 inputMode="decimal" placeholder="Tutar" autoFocus
                 style={{ flex: 1, minHeight: 44, borderRadius: 12, border: '1px solid var(--line)', padding: '0 12px', background: 'var(--surface)', fontSize: 15 }}
               />

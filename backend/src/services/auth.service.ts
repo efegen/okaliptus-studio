@@ -46,6 +46,19 @@ export async function login(username: string, password: string, ip?: string): Pr
   return token;
 }
 
+// Yüksek riskli işlemlerde (örn. etkinlik silme) açık oturum tek başına yeterli
+// değildir; kullanıcının mevcut parolası yeniden doğrulanır.
+export async function verifyUserPassword(userId: string, password: unknown): Promise<boolean> {
+  const supplied = typeof password === 'string' ? password : '';
+  const result = await pool.query<{ password_hash: string }>(
+    `SELECT password_hash FROM users WHERE id = $1 AND is_active = true`,
+    [userId],
+  );
+  const hash = result.rows[0]?.password_hash ?? DUMMY_HASH;
+  const valid = await bcrypt.compare(supplied, hash);
+  return supplied.length >= 6 && result.rows[0] != null && valid;
+}
+
 export async function validateSession(token: string): Promise<AuthUser | null> {
   // role users satırından her istekte canlı okunur — panelden yapılan rol
   // değişikliği kullanıcının bir sonraki isteğinde geçerli olur, yeniden giriş

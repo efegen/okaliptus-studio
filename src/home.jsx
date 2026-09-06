@@ -2733,6 +2733,7 @@ export function HomePage({ layout, onNavigate }) {
   const collectionRateBarWidth = clampBarWidth(collectionRateValue);
   const monthlyCashInflowTotal = parseNumericValue(weeklyKpiData?.monthlyCashInflow?.total, 0);
   const monthlyRevenueTotal = parseNumericValue(weeklyKpiData?.monthlyRevenue?.total, 0);
+  const monthlyEventLessonRevenue = parseNumericValue(weeklyKpiData?.monthlyRevenue?.eventLesson, 0);
   const monthlyCollectionRateValue = monthlyRevenueTotal > 0 ? Math.round((monthlyCashInflowTotal / monthlyRevenueTotal) * 100) : 0;
   const monthlyCollectionRateBarWidth = clampBarWidth(monthlyCollectionRateValue);
   const currentMonthLabel = getIstanbulToday().toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' }).toLocaleUpperCase('tr-TR');
@@ -2890,6 +2891,7 @@ export function HomePage({ layout, onNavigate }) {
           </div>
           <div className="kpi-card-sub">
             Tahsilat oranı <strong>%{monthlyCollectionRateValue}</strong>
+            {monthlyEventLessonRevenue > 0 && <> · Etkinlik dersi <strong>{fmtTL(monthlyEventLessonRevenue)}</strong></>}
           </div>
         </div>
 

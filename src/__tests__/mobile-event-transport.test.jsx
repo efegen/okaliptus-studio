@@ -12,6 +12,9 @@ vi.mock('../api', () => ({
   searchEventStudents: vi.fn(),
   addEventParticipant: vi.fn(),
   assignEventParticipantVehicle: vi.fn(),
+  updateEventParticipant: vi.fn(),
+  updateEventVehicle: vi.fn(),
+  deleteEventVehicle: vi.fn(),
 }));
 
 let participants;
@@ -78,6 +81,11 @@ describe('Mobil etkinlik ulaşım planı', () => {
       participant.transport_mode = 'needs_vehicle';
       vehicles.find((vehicle) => vehicle.id === vehicleId).seats_taken += 1;
     });
+    api.updateEventParticipant.mockImplementation(async (participantId, input) => {
+      const participant = participants.find((item) => item.id === participantId);
+      participant.transport_mode = input.transportMode;
+      participant.vehicle_id = null;
+    });
   });
 
   it('gereksiz plan KPI alanını göstermez ve bekleyen kişiyi araç seçme sheetinden yerleştirir', async () => {
@@ -129,6 +137,14 @@ describe('Mobil etkinlik ulaşım planı', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Araç artık dolu.');
     expect(screen.getByText('Ayşe için araç seç')).toBeInTheDocument();
+  });
+
+  it('atanmış yolcuyu araçtan çıkarıp kendi geliyor olarak işaretler', async () => {
+    renderTransport();
+    fireEvent.click(await screen.findByRole('button', { name: 'Ayşe için aracı değiştir' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Kendi geliyor' }));
+    await waitFor(() => expect(api.updateEventParticipant).toHaveBeenCalledWith('1', { transportMode: 'self_arranged' }));
+    expect(await screen.findByText('Ayşe ulaşım durumu güncellendi.')).toBeInTheDocument();
   });
 
   it('paylaşım metnine buluşma ve çözülmemiş grupları dahil eder', async () => {

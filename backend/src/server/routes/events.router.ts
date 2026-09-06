@@ -1,18 +1,24 @@
 import { Router } from "express";
 
+import { verifyUserPassword } from "../../services/auth.service.js";
+import { ReauthenticationFailedError } from "../../services/errors.js";
+
 import {
   addExistingParticipant,
   addFeeItem,
   addNewParticipant,
   assignParticipantToVehicle,
+  cancelParticipantPayment,
   createEvent,
   createVehicle,
+  deleteVehicle,
   deleteEvent,
   getEventById,
   getUpcomingEvent,
   listEventBalancesForStudent,
   listEvents,
   listParticipantFees,
+  listParticipantPayments,
   listParticipants,
   listVehicles,
   recordParticipantPayment,
@@ -21,8 +27,10 @@ import {
   updateEvent,
   updateParticipant,
   updateParticipantFee,
+  updateVehicle,
 } from "../../services/events.service.js";
 import { sendError, parseId } from "../middleware/response.js";
+import { requireCan } from "../middleware/requireRole.js";
 
 export const eventsRouter = Router();
 
@@ -116,9 +124,13 @@ eventsRouter.patch("/:id", async (req, res) => {
 
 // Etkinlik ayarları → "Etkinliği sil". Ödemesi olan etkinlik reddedilir
 // (EVENT_HAS_PAYMENTS) — bkz. events.service.ts deleteEvent.
-eventsRouter.delete("/:id", async (req, res) => {
+eventsRouter.delete("/:id", requireCan("events.delete"), async (req, res) => {
   try {
     const id = parseId(req.params.id);
+    const { password } = req.body as Record<string, unknown>;
+    if (!await verifyUserPassword(req.currentUser.id, password)) {
+      throw new ReauthenticationFailedError();
+    }
     await deleteEvent(id, req.currentUser.id);
     res.json({ data: null });
   } catch (err) {
@@ -277,9 +289,40 @@ eventsRouter.patch("/participants/:participantId/fees/:feeItemId", async (req, r
 eventsRouter.post("/participants/:participantId/payments", async (req, res) => {
   try {
     const participantId = parseId(req.params.participantId);
-    const { amount } = req.body as Record<string, unknown>;
-    await recordParticipantPayment(participantId, amount as string | number, req.currentUser.id);
-    res.status(201).json({ data: null });
+    const { amount, source, idempotencyKey } = req.body as Record<string, unknown>;
+    const data = await recordParticipantPayment(
+      participantId,
+      amount as string | number,
+      req.currentUser.id,
+      source as "cash" | "iban",
+      idempotencyKey == null || idempotencyKey === "" ? undefined : String(idempotencyKey),
+    );
+    res.status(201).json({ data });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+eventsRouter.get("/participants/:participantId/payments", async (req, res) => {
+  try {
+    const participantId = parseId(req.params.participantId);
+    const data = await listParticipantPayments(participantId);
+    res.json({ data });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+eventsRouter.delete("/payments/:paymentId", async (req, res) => {
+  try {
+    const paymentId = parseId(req.params.paymentId);
+    const { note } = req.body as Record<string, unknown>;
+    const data = await cancelParticipantPayment(
+      paymentId,
+      note != null ? String(note) : null,
+      req.currentUser.id,
+    );
+    res.json({ data });
   } catch (err) {
     sendError(res, err);
   }
@@ -312,6 +355,33 @@ eventsRouter.post("/:id/vehicles", async (req, res) => {
       actorUserId: req.currentUser.id,
     });
     res.status(201).json({ data });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+eventsRouter.patch("/vehicles/:vehicleId", async (req, res) => {
+  try {
+    const vehicleId = parseId(req.params.vehicleId);
+    const { driverName, driverPhone, passengerSeats, meetingPlace, note } = req.body as Record<string, unknown>;
+    const data = await updateVehicle(vehicleId, {
+      ...(driverName !== undefined && { driverName: driverName != null ? String(driverName) : null }),
+      ...(driverPhone !== undefined && { driverPhone: driverPhone != null ? String(driverPhone) : null }),
+      ...(passengerSeats !== undefined && { passengerSeats: Number(passengerSeats) }),
+      ...(meetingPlace !== undefined && { meetingPlace: meetingPlace != null ? String(meetingPlace) : null }),
+      ...(note !== undefined && { note: note != null ? String(note) : null }),
+    }, req.currentUser.id);
+    res.json({ data });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+eventsRouter.delete("/vehicles/:vehicleId", async (req, res) => {
+  try {
+    const vehicleId = parseId(req.params.vehicleId);
+    await deleteVehicle(vehicleId, req.currentUser.id);
+    res.json({ data: null });
   } catch (err) {
     sendError(res, err);
   }

@@ -6618,9 +6618,11 @@
 
 .fa3-stack { display: flex; flex-direction: column; width: 100%; border-radius: 6px 6px 3px 3px; overflow: hidden; transition: height 0.4s cubic-bezier(0.22, 1, 0.36, 1); }
 .fa3-stack-urun { display: block; flex-shrink: 0; background: oklch(0.85 0.06 75); }
+.fa3-stack-event { display: block; flex-shrink: 0; background: oklch(0.78 0.08 235); }
 .fa3-stack-ders { display: block; flex: 1; background: oklch(0.86 0.025 145); }
 .fax-bar-col.is-sel .fa3-stack-ders { background: var(--accent); }
 .fax-bar-col.is-sel .fa3-stack-urun { background: var(--amber); }
+.fax-bar-col.is-sel .fa3-stack-event { background: oklch(0.58 0.13 235); }
 .fa3-legend { display: flex; gap: 16px; margin-top: 10px; }
 .fa3-leg { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--ink-3); font-weight: 500; }
 .fa3-leg-sw { width: 9px; height: 9px; border-radius: 3px; }
@@ -7494,7 +7496,8 @@
 .evx-transport-add-rider:active { background: var(--accent-2); }
 
 .evx-transport-name-cloud { display: flex; flex-wrap: wrap; gap: 6px; }
-.evx-transport-name-cloud > span { padding: 7px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--ink-2); font-size: 12.5px; }
+.evx-transport-name-cloud > span,
+.evx-transport-name-cloud > button { padding: 7px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--ink-2); font: inherit; font-size: 12.5px; }
 .evx-transport-unresolved { padding: 12px 14px; border: 1px dashed var(--line-2); border-radius: 14px; }
 .evx-transport-unresolved > div { display: flex; flex-direction: column; gap: 3px; }
 .evx-transport-unresolved strong { font-size: 12.5px; color: var(--ink-2); }

@@ -26,7 +26,7 @@ function toLocalInputParts(iso) {
   };
 }
 
-function EventSettingsBody({ eventId, event, onBack, onDeleted }) {
+function EventSettingsBody({ eventId, event, onBack, onDeleted, canDelete }) {
   const queryClient = useQueryClient();
   const startParts = toLocalInputParts(event.starts_at);
 
@@ -42,6 +42,8 @@ function EventSettingsBody({ eventId, event, onBack, onDeleted }) {
   const [statusError, setStatusError] = React.useState('');
   const [deleting, setDeleting] = React.useState(false);
   const [deleteError, setDeleteError] = React.useState('');
+  const [deleteOpen, setDeleteOpen] = React.useState(false);
+  const [password, setPassword] = React.useState('');
 
   async function refreshEvent() {
     await queryClient.invalidateQueries({ queryKey: queryKeys.eventById(eventId) });
@@ -84,12 +86,11 @@ function EventSettingsBody({ eventId, event, onBack, onDeleted }) {
   }
 
   async function handleDelete() {
-    const sure = window.confirm(`"${event.name}" silinecek. Bu işlem geri alınamaz. Emin misiniz?`);
-    if (!sure) return;
     setDeleteError('');
+    if (password.length < 6) return setDeleteError('Mevcut hesap şifrenizi girin.');
     setDeleting(true);
     try {
-      await deleteEvent(eventId);
+      await deleteEvent(eventId, password);
       await queryClient.invalidateQueries({ queryKey: queryKeys.events() });
       await queryClient.invalidateQueries({ queryKey: queryKeys.upcomingEvent() });
       onDeleted();
@@ -165,21 +166,39 @@ function EventSettingsBody({ eventId, event, onBack, onDeleted }) {
           {statusError && <div className="evx-hint" style={{ color: 'oklch(0.5 0.18 30)' }} role="alert">{statusError}</div>}
         </div>
 
-        <div className="evx-section">
-          <span className="evx-section-label">Tehlikeli bölge</span>
-          <button type="button" className="evx-btn-secondary evx-btn-danger" disabled={deleting} onClick={handleDelete}>
-            <Icon.Trash width="16" height="16" />
-            {deleting ? 'Siliniyor…' : 'Etkinliği sil'}
-          </button>
-          <p className="evx-hint">Yalnızca hiç ödeme tahsil edilmemiş etkinlikler silinebilir.</p>
-          {deleteError && <div className="evx-hint" style={{ color: 'oklch(0.5 0.18 30)' }} role="alert">{deleteError}</div>}
-        </div>
+        {canDelete && (
+          <div className="evx-section">
+            <span className="evx-section-label">Tehlikeli bölge</span>
+            {!deleteOpen ? (
+              <button type="button" className="evx-btn-secondary evx-btn-danger" onClick={() => setDeleteOpen(true)}>
+                <Icon.Trash width="16" height="16" /> Etkinliği sil
+              </button>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div className="evx-field">
+                  <span className="evx-field-label">MEVCUT HESAP ŞİFRESİ</span>
+                  <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+                    autoComplete="current-password" autoFocus placeholder="Silme işlemini doğrulayın" />
+                </div>
+                <p className="evx-hint">“{event.name}” yalnızca aktif tahsilatı kalmadıysa silinir. Bu işlem listelerden kaldırır ve geri alma ekranı yoktur.</p>
+                <div className="evx-footer-row" style={{ padding: 0 }}>
+                  <button type="button" className="evx-btn-secondary" disabled={deleting}
+                    onClick={() => { setDeleteOpen(false); setPassword(''); setDeleteError(''); }}>Vazgeç</button>
+                  <button type="button" className="evx-btn-secondary evx-btn-danger" disabled={deleting} onClick={handleDelete}>
+                    <Icon.Trash width="16" height="16" /> {deleting ? 'Siliniyor…' : 'Şifreyle sil'}
+                  </button>
+                </div>
+              </div>
+            )}
+            {deleteError && <div className="evx-hint" style={{ color: 'oklch(0.5 0.18 30)' }} role="alert">{deleteError}</div>}
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-export function MobileEventSettings({ eventId, onBack, onDeleted }) {
+export function MobileEventSettings({ eventId, onBack, onDeleted, user }) {
   const eventQuery = useQuery({ queryKey: queryKeys.eventById(eventId), queryFn: () => getEventById(eventId), enabled: !!eventId });
 
   if (eventQuery.isLoading) {
@@ -205,6 +224,7 @@ export function MobileEventSettings({ eventId, onBack, onDeleted }) {
       event={eventQuery.data}
       onBack={onBack}
       onDeleted={onDeleted}
+      canDelete={user?.role === 'owner'}
     />
   );
 }

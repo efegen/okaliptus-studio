@@ -18,7 +18,7 @@ export const COVERAGE_META = {
   student: {
     label: 'Öğrenci öder',
     tone: '',
-    note: 'Katılımcının etkinlik borcuna yazılır.',
+    note: 'Gelirse ödeyeceği tutardır; etkinlik öncesinde borç sayılmaz.',
   },
   studio: {
     label: 'Stüdyo karşılar',
@@ -33,7 +33,7 @@ export const COVERAGE_META = {
   external: {
     label: 'Kendi öder',
     tone: '',
-    note: 'Ücreti yerinde kendisi öder, bize borç yazılmaz.',
+    note: 'Ücreti yerinde kendisi öder; stüdyo tahsilatı değildir.',
   },
   none: {
     label: 'Almıyor',

@@ -383,6 +383,7 @@ export function MobileApp({
     body = (
       <MobileEventSettings
         eventId={eventDetailId}
+        user={currentUser}
         onBack={() => setPage('event-detail')}
         onDeleted={() => { setEventDetailId(null); setPage('events'); }}
       />

@@ -29,6 +29,7 @@ export const queryKeys = {
   notes:              ()      => ['notes'],
   noteImage:          (id, version) => ['notes', String(id), 'image', version ?? null],
   eventParticipantFees:(id)   => ['eventParticipant', id, 'fees'],
+  eventParticipantPayments:(id) => ['eventParticipant', id, 'payments'],
   eventVehicles:      (id)    => ['event', id, 'vehicles'],
   studentEventBalances:(id)   => ['student', id, 'events'],
 };

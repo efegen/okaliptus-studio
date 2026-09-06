@@ -12,6 +12,7 @@ type WeeklyKpiResult = {
   revenue: {
     total: string;
     lesson: string;
+    eventLesson: string;
     product: string;
   };
   lessonCounts: {
@@ -30,6 +31,7 @@ type WeeklyKpiResult = {
   };
   monthlyRevenue: {
     total: string;
+    eventLesson: string;
   };
   last30Start: string;
   last30CashInflow: {
@@ -37,6 +39,7 @@ type WeeklyKpiResult = {
   };
   last30Revenue: {
     total: string;
+    eventLesson: string;
   };
 };
 
@@ -79,6 +82,26 @@ export async function getWeeklyKpi(): Promise<WeeklyKpiResult> {
           AND paid_at <  date_window.week_end
           AND source IN ('cash', 'iban')
           AND deleted_at IS NULL
+      ),
+
+      -- Etkinlikte yalnız gerçekten alınmış ve iptal edilmemiş para kasaya
+      -- girer. Ödenecek/potansiyel tutarlar burada özellikle yoktur.
+      event_inflow AS (
+        SELECT
+          (SELECT COALESCE(SUM(ep.amount), 0) FROM event_payments ep, date_window
+            WHERE ep.cancelled_at IS NULL
+              AND ep.paid_at >= date_window.week_start AND ep.paid_at < date_window.week_end) AS total,
+          (SELECT COALESCE(SUM(ep.amount), 0) FROM event_payments ep, date_window
+            WHERE ep.cancelled_at IS NULL AND ep.source = 'cash'
+              AND ep.paid_at >= date_window.week_start AND ep.paid_at < date_window.week_end) AS cash_total,
+          (SELECT COALESCE(SUM(ep.amount), 0) FROM event_payments ep, date_window
+            WHERE ep.cancelled_at IS NULL AND ep.source = 'iban'
+              AND ep.paid_at >= date_window.week_start AND ep.paid_at < date_window.week_end) AS iban_total,
+          (SELECT COALESCE(SUM(a.amount), 0)
+             FROM event_payments ep
+             JOIN event_payment_allocations a ON a.payment_id = ep.id, date_window
+            WHERE ep.cancelled_at IS NULL AND a.is_lesson_fee
+              AND ep.paid_at >= date_window.week_start AND ep.paid_at < date_window.week_end) AS lesson_revenue
       ),
 
       -- §4.2 Ciro — lesson (starts_at penceresi, completed dersler)
@@ -160,6 +183,18 @@ export async function getWeeklyKpi(): Promise<WeeklyKpiResult> {
           AND deleted_at IS NULL
       ),
 
+      monthly_event_inflow AS (
+        SELECT
+          (SELECT COALESCE(SUM(ep.amount), 0) FROM event_payments ep, month_window
+            WHERE ep.cancelled_at IS NULL
+              AND ep.paid_at >= month_window.month_start AND ep.paid_at < month_window.month_end) AS total,
+          (SELECT COALESCE(SUM(a.amount), 0)
+             FROM event_payments ep
+             JOIN event_payment_allocations a ON a.payment_id = ep.id, month_window
+            WHERE ep.cancelled_at IS NULL AND a.is_lesson_fee
+              AND ep.paid_at >= month_window.month_start AND ep.paid_at < month_window.month_end) AS lesson_revenue
+      ),
+
       -- Aylık ciro (tamamlanmış dersler + ürün satışları)
       monthly_lesson_rev AS (
         SELECT COALESCE(SUM(l.price_snapshot - l.discount_amount), 0) AS lesson_revenue
@@ -188,6 +223,18 @@ export async function getWeeklyKpi(): Promise<WeeklyKpiResult> {
           AND deleted_at IS NULL
       ),
 
+      last30_event_inflow AS (
+        SELECT
+          (SELECT COALESCE(SUM(ep.amount), 0) FROM event_payments ep, last30_window
+            WHERE ep.cancelled_at IS NULL
+              AND ep.paid_at >= last30_window.last30_start AND ep.paid_at < last30_window.last30_end) AS total,
+          (SELECT COALESCE(SUM(a.amount), 0)
+             FROM event_payments ep
+             JOIN event_payment_allocations a ON a.payment_id = ep.id, last30_window
+            WHERE ep.cancelled_at IS NULL AND a.is_lesson_fee
+              AND ep.paid_at >= last30_window.last30_start AND ep.paid_at < last30_window.last30_end) AS lesson_revenue
+      ),
+
       -- Son 30 gün ciro (tamamlanmış dersler + ürün satışları)
       last30_lesson_rev AS (
         SELECT COALESCE(SUM(l.price_snapshot - l.discount_amount), 0) AS lesson_revenue
@@ -211,13 +258,14 @@ export async function getWeeklyKpi(): Promise<WeeklyKpiResult> {
       date_window.week_end::text AS week_end,
 
       -- cash inflow
-      inflow.total::text                  AS cash_inflow_total,
-      inflow.cash_total::text             AS cash_inflow_cash,
-      inflow.iban_total::text             AS cash_inflow_iban,
+      (inflow.total + event_inflow.total)::text                  AS cash_inflow_total,
+      (inflow.cash_total + event_inflow.cash_total)::text        AS cash_inflow_cash,
+      (inflow.iban_total + event_inflow.iban_total)::text        AS cash_inflow_iban,
 
       -- revenue
-      (lesson_rev.lesson_revenue + product_rev.product_revenue)::text AS revenue_total,
+      (lesson_rev.lesson_revenue + event_inflow.lesson_revenue + product_rev.product_revenue)::text AS revenue_total,
       lesson_rev.lesson_revenue::text                                  AS revenue_lesson,
+      event_inflow.lesson_revenue::text                                AS revenue_event_lesson,
       product_rev.product_revenue::text                                AS revenue_product,
 
       -- lesson counts
@@ -245,17 +293,19 @@ export async function getWeeklyKpi(): Promise<WeeklyKpiResult> {
 
       -- aylık finansal
       month_window.month_start::text                                                              AS month_start,
-      monthly_inflow.total::text                                                                  AS monthly_cash_inflow_total,
-      (monthly_lesson_rev.lesson_revenue + monthly_product_rev.product_revenue)::text             AS monthly_revenue_total,
+      (monthly_inflow.total + monthly_event_inflow.total)::text                                  AS monthly_cash_inflow_total,
+      (monthly_lesson_rev.lesson_revenue + monthly_event_inflow.lesson_revenue + monthly_product_rev.product_revenue)::text AS monthly_revenue_total,
+      monthly_event_inflow.lesson_revenue::text                                                  AS monthly_revenue_event_lesson,
 
       -- son 30 gün finansal
       last30_window.last30_start::text                                                            AS last30_start,
-      last30_inflow.total::text                                                                   AS last30_cash_inflow_total,
-      (last30_lesson_rev.lesson_revenue + last30_product_rev.product_revenue)::text               AS last30_revenue_total
+      (last30_inflow.total + last30_event_inflow.total)::text                                    AS last30_cash_inflow_total,
+      (last30_lesson_rev.lesson_revenue + last30_event_inflow.lesson_revenue + last30_product_rev.product_revenue)::text AS last30_revenue_total,
+      last30_event_inflow.lesson_revenue::text                                                   AS last30_revenue_event_lesson
 
-    FROM date_window, month_window, last30_window, inflow, lesson_rev, product_rev, lesson_counts, receivable, deferred, debtor_students, total_students,
-         monthly_inflow, monthly_lesson_rev, monthly_product_rev,
-         last30_inflow, last30_lesson_rev, last30_product_rev
+    FROM date_window, month_window, last30_window, inflow, event_inflow, lesson_rev, product_rev, lesson_counts, receivable, deferred, debtor_students, total_students,
+         monthly_inflow, monthly_event_inflow, monthly_lesson_rev, monthly_product_rev,
+         last30_inflow, last30_event_inflow, last30_lesson_rev, last30_product_rev
   `);
 
   const row = result.rows[0];
@@ -276,6 +326,7 @@ export async function getWeeklyKpi(): Promise<WeeklyKpiResult> {
     revenue: {
       total: r["revenue_total"] as string,
       lesson: r["revenue_lesson"] as string,
+      eventLesson: r["revenue_event_lesson"] as string,
       product: r["revenue_product"] as string,
     },
     lessonCounts: {
@@ -294,6 +345,7 @@ export async function getWeeklyKpi(): Promise<WeeklyKpiResult> {
     },
     monthlyRevenue: {
       total: r["monthly_revenue_total"] as string,
+      eventLesson: r["monthly_revenue_event_lesson"] as string,
     },
     last30Start: r["last30_start"] as string,
     last30CashInflow: {
@@ -301,6 +353,7 @@ export async function getWeeklyKpi(): Promise<WeeklyKpiResult> {
     },
     last30Revenue: {
       total: r["last30_revenue_total"] as string,
+      eventLesson: r["last30_revenue_event_lesson"] as string,
     },
   };
 }
@@ -314,12 +367,12 @@ export async function getWeeklyKpi(): Promise<WeeklyKpiResult> {
 //
 // Tanımlar (spec invariantlarıyla uyumlu):
 //   - kazanç (earnings) = tamamlanmış ders neti (price_snapshot − discount) +
-//     ürün satışı toplamı. scheduled/cancelled/no_show kazanç yaratmaz.
+//     tahsil edilmiş etkinlik ders payı + ürün satışı toplamı.
 //   - Kaynak dökümü:  Tek ders     = paket-DIŞI tamamlanmış ders neti
 //                     Ön ödemeli   = paket kredili tamamlanmış ders neti
+//                     Etkinlik dersi = iptal edilmemiş event payment allocation
 //                     Ürün satışı  = product_sales.total_amount
-//     (single + package = ders neti; + product = toplam kazanç — birbirini tutar)
-//   - Kasaya giren (cashInflow) = dönem içi nakit + IBAN tahsilat (payments).
+//   - Kasaya giren (cashInflow) = normal + etkinlik nakit/IBAN tahsilatları.
 //   - Önceki dönem (prevEarnings) "aynı günlere kadar" karşılaştırmasıdır:
 //     hafta için [Pzt−7g, şimdi−7g), ay için [ay başı−1ay, şimdi−1ay). Böylece
 //     devam eden (kısmi) dönem, geçen dönemin tamamı yerine eşit uzunlukta bir
@@ -328,6 +381,7 @@ export async function getWeeklyKpi(): Promise<WeeklyKpiResult> {
 export type FinanceFlowSeriesPoint = {
   start: string;            // 'YYYY-MM-DD' (Istanbul) — dönem başlangıcı
   lesson: string;           // tamamlanmış ders neti
+  eventLesson: string;      // tahsil edilmiş etkinlik ders payı
   product: string;          // ürün satışı toplamı
   completedLessons: string; // tamamlanmış ders adedi
   cashTotal: string;        // dönem içi kasaya giren (nakit + IBAN)
@@ -342,7 +396,7 @@ export type FinanceFlowPeriod = {
   cashInflow: { total: string; cash: string; iban: string };
   scheduledRemaining: string; // şimdi → dönem sonu arası planlı (scheduled) ders
   prevEarnings: string;       // önceki dönemde "aynı günlere kadar" kazanç
-  sources: { single: string; package: string; product: string };
+  sources: { single: string; package: string; eventLesson: string; product: string };
   series: FinanceFlowSeriesPoint[];
 };
 
@@ -389,22 +443,36 @@ function seriesSql(unit: Unit): string {
          FROM product_sales ps
          WHERE ps.deleted_at IS NULL
            AND ps.sold_at >= b.b_start AND ps.sold_at < b.b_end)::text AS product,
+      (SELECT COALESCE(SUM(a.amount), 0)
+         FROM event_payments ep
+         JOIN event_payment_allocations a ON a.payment_id = ep.id
+        WHERE ep.cancelled_at IS NULL AND a.is_lesson_fee
+          AND ep.paid_at >= b.b_start AND ep.paid_at < b.b_end)::text AS event_lesson,
       (SELECT COUNT(*)
          FROM lessons l
          WHERE l.status = 'completed' AND l.deleted_at IS NULL
            AND l.starts_at >= b.b_start AND l.starts_at < b.b_end)::text AS completed_lessons,
-      (SELECT COALESCE(SUM(p.amount), 0)
+      ((SELECT COALESCE(SUM(p.amount), 0)
          FROM payments p
          WHERE p.deleted_at IS NULL AND p.source IN ('cash', 'iban')
-           AND p.paid_at >= b.b_start AND p.paid_at < b.b_end)::text AS cash_total,
-      (SELECT COALESCE(SUM(p.amount), 0)
+           AND p.paid_at >= b.b_start AND p.paid_at < b.b_end)
+       + (SELECT COALESCE(SUM(ep.amount), 0) FROM event_payments ep
+           WHERE ep.cancelled_at IS NULL
+             AND ep.paid_at >= b.b_start AND ep.paid_at < b.b_end))::text AS cash_total,
+      ((SELECT COALESCE(SUM(p.amount), 0)
          FROM payments p
          WHERE p.deleted_at IS NULL AND p.source = 'cash'
-           AND p.paid_at >= b.b_start AND p.paid_at < b.b_end)::text AS cash_cash,
-      (SELECT COALESCE(SUM(p.amount), 0)
+           AND p.paid_at >= b.b_start AND p.paid_at < b.b_end)
+       + (SELECT COALESCE(SUM(ep.amount), 0) FROM event_payments ep
+           WHERE ep.cancelled_at IS NULL AND ep.source = 'cash'
+             AND ep.paid_at >= b.b_start AND ep.paid_at < b.b_end))::text AS cash_cash,
+      ((SELECT COALESCE(SUM(p.amount), 0)
          FROM payments p
          WHERE p.deleted_at IS NULL AND p.source = 'iban'
-           AND p.paid_at >= b.b_start AND p.paid_at < b.b_end)::text AS cash_iban,
+           AND p.paid_at >= b.b_start AND p.paid_at < b.b_end)
+       + (SELECT COALESCE(SUM(ep.amount), 0) FROM event_payments ep
+           WHERE ep.cancelled_at IS NULL AND ep.source = 'iban'
+             AND ep.paid_at >= b.b_start AND ep.paid_at < b.b_end))::text AS cash_iban,
       (
         (SELECT COALESCE(SUM(lb.remaining_receivable), 0)
            FROM v_lesson_balances lb
@@ -439,15 +507,24 @@ function summarySql(unit: Unit, withToday: boolean): string {
     )
     SELECT
       ${withToday ? "to_char((now() AT TIME ZONE 'Europe/Istanbul'), 'YYYY-MM-DD') AS today," : ""}
-      (SELECT COALESCE(SUM(p.amount), 0) FROM payments p, b
+      ((SELECT COALESCE(SUM(p.amount), 0) FROM payments p, b
          WHERE p.paid_at >= b.p_start AND p.paid_at < b.p_end
-           AND p.source IN ('cash', 'iban') AND p.deleted_at IS NULL)::text AS cash_total,
-      (SELECT COALESCE(SUM(p.amount), 0) FROM payments p, b
+           AND p.source IN ('cash', 'iban') AND p.deleted_at IS NULL)
+       + (SELECT COALESCE(SUM(ep.amount), 0) FROM event_payments ep, b
+           WHERE ep.paid_at >= b.p_start AND ep.paid_at < b.p_end
+             AND ep.cancelled_at IS NULL))::text AS cash_total,
+      ((SELECT COALESCE(SUM(p.amount), 0) FROM payments p, b
          WHERE p.paid_at >= b.p_start AND p.paid_at < b.p_end
-           AND p.source = 'cash' AND p.deleted_at IS NULL)::text AS cash_cash,
-      (SELECT COALESCE(SUM(p.amount), 0) FROM payments p, b
+           AND p.source = 'cash' AND p.deleted_at IS NULL)
+       + (SELECT COALESCE(SUM(ep.amount), 0) FROM event_payments ep, b
+           WHERE ep.paid_at >= b.p_start AND ep.paid_at < b.p_end
+             AND ep.cancelled_at IS NULL AND ep.source = 'cash'))::text AS cash_cash,
+      ((SELECT COALESCE(SUM(p.amount), 0) FROM payments p, b
          WHERE p.paid_at >= b.p_start AND p.paid_at < b.p_end
-           AND p.source = 'iban' AND p.deleted_at IS NULL)::text AS cash_iban,
+           AND p.source = 'iban' AND p.deleted_at IS NULL)
+       + (SELECT COALESCE(SUM(ep.amount), 0) FROM event_payments ep, b
+           WHERE ep.paid_at >= b.p_start AND ep.paid_at < b.p_end
+             AND ep.cancelled_at IS NULL AND ep.source = 'iban'))::text AS cash_iban,
       (SELECT COUNT(*) FROM lessons l, b
          WHERE l.status = 'scheduled' AND l.deleted_at IS NULL
            AND l.starts_at >= b.now_ts AND l.starts_at < b.p_end)::text AS scheduled_remaining,
@@ -459,6 +536,12 @@ function summarySql(unit: Unit, withToday: boolean): string {
         (SELECT COALESCE(SUM(ps.total_amount), 0) FROM product_sales ps, b
            WHERE ps.deleted_at IS NULL
              AND ps.sold_at >= b.prev_start AND ps.sold_at < b.prev_cut)
+        +
+        (SELECT COALESCE(SUM(a.amount), 0)
+           FROM event_payments ep
+           JOIN event_payment_allocations a ON a.payment_id = ep.id, b
+          WHERE ep.cancelled_at IS NULL AND a.is_lesson_fee
+            AND ep.paid_at >= b.prev_start AND ep.paid_at < b.prev_cut)
       )::text AS prev_earnings,
       (SELECT COALESCE(SUM(l.price_snapshot - l.discount_amount), 0) FROM lessons l, b
          WHERE l.status = 'completed' AND l.deleted_at IS NULL AND l.prepaid_package_id IS NULL
@@ -468,7 +551,12 @@ function summarySql(unit: Unit, withToday: boolean): string {
            AND l.starts_at >= b.p_start AND l.starts_at < b.p_end)::text AS src_package,
       (SELECT COALESCE(SUM(ps.total_amount), 0) FROM product_sales ps, b
          WHERE ps.deleted_at IS NULL
-           AND ps.sold_at >= b.p_start AND ps.sold_at < b.p_end)::text AS src_product
+           AND ps.sold_at >= b.p_start AND ps.sold_at < b.p_end)::text AS src_product,
+      (SELECT COALESCE(SUM(a.amount), 0)
+         FROM event_payments ep
+         JOIN event_payment_allocations a ON a.payment_id = ep.id, b
+        WHERE ep.cancelled_at IS NULL AND a.is_lesson_fee
+          AND ep.paid_at >= b.p_start AND ep.paid_at < b.p_end)::text AS src_event_lesson
   `;
 }
 
@@ -476,6 +564,7 @@ function mapSeries(rows: Record<string, unknown>[]): FinanceFlowSeriesPoint[] {
   return rows.map((r) => ({
     start: String(r["start"]),
     lesson: String(r["lesson"]),
+    eventLesson: String(r["event_lesson"]),
     product: String(r["product"]),
     completedLessons: String(r["completed_lessons"]),
     cashTotal: String(r["cash_total"]),
@@ -498,6 +587,7 @@ function mapSummary(r: Record<string, unknown>): Omit<FinanceFlowPeriod, "series
     sources: {
       single: String(r["src_single"]),
       package: String(r["src_package"]),
+      eventLesson: String(r["src_event_lesson"]),
       product: String(r["src_product"]),
     },
   };

@@ -14,6 +14,7 @@ const CAPABILITIES = {
   'users.manage': ['owner'],
   'push.test': ['owner'],
   'notifications.manage': ['owner'], // bildirim ayar modülü (kim ne bildirim alır)
+  'events.delete': ['owner'], // geri alınamaz etkinlik silme + yeniden doğrulama
 
   // Etap 2 — asistan kısıtları. owner/admin/instructor bu fazda aynı veri
   // erişimine sahip; tek dışlanan rol assistant. Yeni bir yetkiyi asistana

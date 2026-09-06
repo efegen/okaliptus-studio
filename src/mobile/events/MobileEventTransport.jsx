@@ -8,6 +8,9 @@ import {
   getEventVehicles,
   addEventParticipant,
   assignEventParticipantVehicle,
+  updateEventParticipant,
+  updateEventVehicle,
+  deleteEventVehicle,
 } from '../../api';
 import { queryKeys } from '../../hooks/queryKeys';
 import { MobileToast } from '../MobileToast';
@@ -68,7 +71,7 @@ function SeatDots({ driverName, total, taken, available }) {
   );
 }
 
-function VehiclePicker({ participant, participants, vehicles, assigning, error, onAssign, onClose, onAddVehicle }) {
+function VehiclePicker({ participant, participants, vehicles, assigning, error, onAssign, onSetMode, onClose, onAddVehicle }) {
   const portalContainer = React.useMemo(getMobilePaletteRoot, []);
   const currentVehicleId = participant?.vehicle_id == null ? null : String(participant.vehicle_id);
   const orderedVehicles = React.useMemo(() => [...vehicles].sort((a, b) => {
@@ -98,6 +101,16 @@ function VehiclePicker({ participant, participants, vehicles, assigning, error, 
           </header>
 
           <div className="evx-transport-sheet-body">
+            <div className="evx-choice" style={{ marginBottom: 12 }}>
+              {[
+                ['needs_vehicle', 'Araç bekliyor'],
+                ['self_arranged', 'Kendi geliyor'],
+                ['unspecified', 'Belirsiz'],
+              ].map(([mode, label]) => (
+                <button key={mode} type="button" className={`evx-choice-btn${participant?.transport_mode === mode && !participant?.vehicle_id ? ' is-on' : ''}`}
+                  disabled={assigning} onClick={() => onSetMode(mode)}>{label}</button>
+              ))}
+            </div>
             {vehicles.length === 0 ? (
               <div className="evx-transport-sheet-empty">
                 <span className="evx-transport-sheet-empty-icon"><Icon.Truck width="22" height="22" /></span>
@@ -163,6 +176,10 @@ export function MobileEventTransport({ eventId, onBack, onOpenAddVehicle }) {
   const [passengerVehicleId, setPassengerVehicleId] = React.useState(null);
   const [passengerSubmitting, setPassengerSubmitting] = React.useState(false);
   const [toast, setToast] = React.useState(null);
+  const [editingVehicleId, setEditingVehicleId] = React.useState(null);
+  const [vehicleDraft, setVehicleDraft] = React.useState(null);
+  const [vehicleBusy, setVehicleBusy] = React.useState(false);
+  const [vehicleError, setVehicleError] = React.useState('');
 
   const eventQuery = useQuery({
     queryKey: queryKeys.eventById(eventId),
@@ -226,6 +243,26 @@ export function MobileEventTransport({ eventId, onBack, onOpenAddVehicle }) {
       ]);
     } catch (error) {
       setAssignmentError(error?.message || 'Kişi araca yerleştirilemedi.');
+    } finally {
+      setAssigning(false);
+    }
+  }
+
+  async function setTransportMode(mode) {
+    if (!selectedParticipant) return;
+    setAssigning(true);
+    setAssignmentError('');
+    const participantName = nameOf(selectedParticipant);
+    try {
+      await updateEventParticipant(selectedParticipant.id, { transportMode: mode });
+      setSelectedParticipantId(null);
+      setToast(`${participantName} ulaşım durumu güncellendi.`);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.eventParticipants(eventId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.eventVehicles(eventId) }),
+      ]);
+    } catch (error) {
+      setAssignmentError(error?.message || 'Ulaşım durumu güncellenemedi.');
     } finally {
       setAssigning(false);
     }
@@ -307,6 +344,62 @@ export function MobileEventTransport({ eventId, onBack, onOpenAddVehicle }) {
       }
     } catch (error) {
       if (error?.name !== 'AbortError') setToast('Plan paylaşılamadı.');
+    }
+  }
+
+  function startVehicleEdit(vehicle) {
+    setVehicleError('');
+    setEditingVehicleId(vehicle.id);
+    setVehicleDraft({
+      driverName: vehicle.driver_name || '',
+      driverPhone: vehicle.driver_phone || '',
+      passengerSeats: String(vehicle.passenger_seats),
+      meetingPlace: vehicle.meeting_place || '',
+      note: vehicle.note || '',
+    });
+  }
+
+  async function saveVehicle(vehicle) {
+    const passengerSeats = Number(vehicleDraft?.passengerSeats);
+    if (!Number.isInteger(passengerSeats) || passengerSeats < Number(vehicle.seats_taken || 0) || passengerSeats <= 0) {
+      setVehicleError(`Koltuk sayısı en az ${Math.max(1, Number(vehicle.seats_taken || 0))} olmalıdır.`);
+      return;
+    }
+    setVehicleBusy(true);
+    setVehicleError('');
+    try {
+      await updateEventVehicle(vehicle.id, {
+        ...(!vehicle.driver_student_id ? { driverName: vehicleDraft.driverName.trim() } : {}),
+        driverPhone: vehicleDraft.driverPhone.trim() || null,
+        passengerSeats,
+        meetingPlace: vehicleDraft.meetingPlace.trim() || null,
+        note: vehicleDraft.note.trim() || null,
+      });
+      setEditingVehicleId(null);
+      setVehicleDraft(null);
+      setToast('Araç bilgileri güncellendi.');
+      await queryClient.invalidateQueries({ queryKey: queryKeys.eventVehicles(eventId) });
+    } catch (error) {
+      setVehicleError(error?.message || 'Araç güncellenemedi.');
+    } finally {
+      setVehicleBusy(false);
+    }
+  }
+
+  async function removeVehicle(vehicle) {
+    if (!window.confirm(`${driverOf(vehicle, participants)} aracı silinsin mi?`)) return;
+    setVehicleBusy(true);
+    setVehicleError('');
+    try {
+      await deleteEventVehicle(vehicle.id);
+      setEditingVehicleId(null);
+      setVehicleDraft(null);
+      setToast('Araç silindi.');
+      await queryClient.invalidateQueries({ queryKey: queryKeys.eventVehicles(eventId) });
+    } catch (error) {
+      setToast(error?.message || 'Araç silinemedi.');
+    } finally {
+      setVehicleBusy(false);
     }
   }
 
@@ -428,6 +521,42 @@ export function MobileEventTransport({ eventId, onBack, onOpenAddVehicle }) {
                       </span>
                     </header>
 
+                    <div className="evx-footer-row" style={{ padding: '8px 0 0' }}>
+                      <button type="button" className="evx-btn-secondary" disabled={vehicleBusy}
+                        onClick={() => startVehicleEdit(vehicle)}>Düzenle</button>
+                      <button type="button" className="evx-btn-secondary evx-btn-danger"
+                        disabled={vehicleBusy || taken > 0} title={taken > 0 ? 'Önce yolcuları araçtan çıkarın' : undefined}
+                        onClick={() => removeVehicle(vehicle)}>Sil</button>
+                    </div>
+
+                    {editingVehicleId === vehicle.id && vehicleDraft && (
+                      <div className="evx-info-expand" style={{ marginTop: 8 }}>
+                        {!vehicle.driver_student_id && (
+                          <label className="evx-field"><span className="evx-field-label">ŞOFÖR</span>
+                            <input value={vehicleDraft.driverName} onChange={(e) => setVehicleDraft((d) => ({ ...d, driverName: e.target.value }))} /></label>
+                        )}
+                        <div className="evx-field-grid">
+                          <label className="evx-field"><span className="evx-field-label">TELEFON</span>
+                            <input value={vehicleDraft.driverPhone} onChange={(e) => setVehicleDraft((d) => ({ ...d, driverPhone: e.target.value }))} /></label>
+                          <label className="evx-field"><span className="evx-field-label">YOLCU KOLTUĞU</span>
+                            <input inputMode="numeric" value={vehicleDraft.passengerSeats}
+                              onChange={(e) => setVehicleDraft((d) => ({ ...d, passengerSeats: e.target.value.replace(/[^0-9]/g, '') }))} /></label>
+                        </div>
+                        <label className="evx-field"><span className="evx-field-label">BULUŞMA YERİ</span>
+                          <input value={vehicleDraft.meetingPlace} onChange={(e) => setVehicleDraft((d) => ({ ...d, meetingPlace: e.target.value }))} /></label>
+                        <label className="evx-field"><span className="evx-field-label">NOT</span>
+                          <input value={vehicleDraft.note} onChange={(e) => setVehicleDraft((d) => ({ ...d, note: e.target.value }))} /></label>
+                        {vehicleError && <p className="evx-transport-error" role="alert">{vehicleError}</p>}
+                        <div className="evx-footer-row" style={{ padding: 0 }}>
+                          <button type="button" className="evx-btn-secondary" disabled={vehicleBusy}
+                            onClick={() => { setEditingVehicleId(null); setVehicleDraft(null); setVehicleError(''); }}>Vazgeç</button>
+                          <button type="button" className="evx-btn-primary" disabled={vehicleBusy} onClick={() => saveVehicle(vehicle)}>
+                            {vehicleBusy ? 'Kaydediliyor…' : 'Kaydet'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
                     {meeting && (
                       <div className="evx-transport-meeting">
                         <span className="evx-transport-meeting-label">Buluşma</span>
@@ -500,16 +629,25 @@ export function MobileEventTransport({ eventId, onBack, onOpenAddVehicle }) {
               <span className="evx-pill tone-neutral">{selfArranged.length} kişi</span>
             </div>
             <div className="evx-transport-name-cloud">
-              {selfArranged.map((participant) => <span key={participant.id}>{nameOf(participant)}</span>)}
+              {selfArranged.map((participant) => (
+                <button key={participant.id} type="button" onClick={() => openVehiclePicker(participant.id)}
+                  aria-label={`${nameOf(participant)} ulaşım durumunu değiştir`}>{nameOf(participant)}</button>
+              ))}
             </div>
           </section>
         )}
 
         {unspecified.length > 0 && (
-          <section className="evx-transport-unresolved" aria-labelledby="transport-unspecified-title">
-            <div>
+          <section className="evx-transport-section evx-transport-unresolved" aria-labelledby="transport-unspecified-title">
+            <div className="evx-transport-section-head is-compact">
               <strong id="transport-unspecified-title">Ulaşımı seçilmemiş</strong>
-              <span>{unspecified.length} kişi · {unspecified.map(nameOf).join(', ')}</span>
+              <span className="evx-pill tone-neutral">{unspecified.length} kişi</span>
+            </div>
+            <div className="evx-transport-name-cloud">
+              {unspecified.map((participant) => (
+                <button key={participant.id} type="button" onClick={() => openVehiclePicker(participant.id)}
+                  aria-label={`${nameOf(participant)} ulaşım durumunu belirle`}>{nameOf(participant)}</button>
+              ))}
             </div>
           </section>
         )}
@@ -528,6 +666,7 @@ export function MobileEventTransport({ eventId, onBack, onOpenAddVehicle }) {
         assigning={assigning}
         error={assignmentError}
         onAssign={assignToVehicle}
+        onSetMode={setTransportMode}
         onClose={closeVehiclePicker}
         onAddVehicle={onOpenAddVehicle}
       />

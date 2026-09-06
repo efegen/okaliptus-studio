@@ -21,6 +21,12 @@ function toLocalInputParts(date) {
   };
 }
 
+function normalizeDecimalInput(value) {
+  const cleaned = value.replace(/[^0-9.,]/g, '').replace(',', '.');
+  const [whole, ...fractions] = cleaned.split('.');
+  return fractions.length === 0 ? whole : `${whole}.${fractions.join('').slice(0, 2)}`;
+}
+
 export function MobileEventCreate({ onClose, onCreated }) {
   const queryClient = useQueryClient();
   const defaultDate = React.useMemo(() => {
@@ -62,7 +68,7 @@ export function MobileEventCreate({ onClose, onCreated }) {
     if (!dateStr || !timeStr) return setError('Tarih ve saat zorunlu.');
     const validItems = feeItems.filter((it) => it.label.trim() && it.amount !== '');
     for (const it of validItems) {
-      if (!Number.isFinite(Number(it.amount)) || Number(it.amount) < 0) {
+      if (!Number.isFinite(Number(normalizeDecimalInput(it.amount))) || Number(normalizeDecimalInput(it.amount)) < 0) {
         return setError(`"${it.label}" için geçerli bir tutar girin.`);
       }
     }
@@ -79,7 +85,7 @@ export function MobileEventCreate({ onClose, onCreated }) {
         note: note.trim() || null,
         feeItems: validItems.map((it) => ({
           label: it.label.trim(),
-          amount: it.amount,
+          amount: normalizeDecimalInput(it.amount),
           isPassThrough: it.isLessonFee ? false : !!it.isPassThrough,
           compQuota: it.compQuota === '' ? null : Number(it.compQuota),
           isLessonFee: !!it.isLessonFee,
@@ -100,7 +106,7 @@ export function MobileEventCreate({ onClose, onCreated }) {
       <header className="evx-header">
         <div className="evx-header-mid">
           <span className="evx-header-title">Yeni etkinlik</span>
-          <span className="evx-header-sub">Fiyatlar ve roller sonradan da düzenlenebilir</span>
+          <span className="evx-header-sub">Ücretsiz etkinlikte ücret alanını boş bırakabilirsiniz</span>
         </div>
         <button type="button" className="evx-header-btn is-outline" onClick={onClose} title="Kapat">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18"><path d="M6 6l12 12M18 6L6 18" /></svg>
@@ -148,7 +154,7 @@ export function MobileEventCreate({ onClose, onCreated }) {
                     className="evx-fee-row-amt"
                     style={{ border: 0, background: 'none', outline: 'none', color: 'inherit', width: 70, textAlign: 'right' }}
                     value={item.amount}
-                    onChange={(e) => updateFeeItem(index, { amount: e.target.value.replace(/[^0-9.]/g, '') })}
+                    onChange={(e) => updateFeeItem(index, { amount: normalizeDecimalInput(e.target.value) })}
                     placeholder="0"
                     inputMode="decimal"
                   />

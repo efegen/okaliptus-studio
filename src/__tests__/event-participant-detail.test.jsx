@@ -8,7 +8,8 @@ import * as api from '../api';
 vi.mock('../api', () => ({
   getEventById: vi.fn(), getEventParticipants: vi.fn(), getEventParticipantFees: vi.fn(), getEventVehicles: vi.fn(),
   updateEventParticipant: vi.fn(), updateEventParticipantFee: vi.fn(),
-  recordEventParticipantPayment: vi.fn(), removeEventParticipant: vi.fn(),
+  recordEventParticipantPayment: vi.fn(), getEventParticipantPayments: vi.fn(),
+  cancelEventParticipantPayment: vi.fn(), removeEventParticipant: vi.fn(),
 }));
 
 let fees;
@@ -20,6 +21,7 @@ beforeEach(() => {
   ];
   api.getEventById.mockResolvedValue({ name: 'Pamucak Etkinliği' });
   api.getEventParticipantFees.mockImplementation(async () => fees.map((f) => ({ ...f })));
+  api.getEventParticipantPayments.mockResolvedValue([]);
   api.getEventParticipants.mockImplementation(async () => [{
     id: '2', student_id: '3', student_name: 'Ayşe', role: 'regular', rsvp_status: 'coming',
     total_due: fees.reduce((sum, f) => sum + Number(f.amount_snapshot), 0), total_paid: '0',
@@ -81,5 +83,28 @@ describe('Etkinlik katılımcısının ücretleri', () => {
     expect(input).toHaveValue('800');
     fireEvent.click(screen.getByRole('button', { name: 'Vazgeç' }));
     expect(screen.getByText('Katılımcıdan alınacak').parentElement).toHaveTextContent('1.700');
+  });
+
+  it('misafirin altına ikinci seviye misafir ekleme eylemi göstermez', async () => {
+    api.getEventParticipants.mockResolvedValue([{
+      id: '2', student_id: '3', student_name: 'Ayşe', role: 'regular', rsvp_status: 'coming',
+      guest_of_participant_id: '1', total_due: '0', total_paid: '0',
+    }]);
+    await openFees();
+    expect(await screen.findByText('Ayşe')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '+ Misafir ekle' })).not.toBeInTheDocument();
+  });
+
+  it('tahsilatta Türkçe ondalığı, ödeme kaynağını ve işlem anahtarını gönderir', async () => {
+    await openFees();
+    fireEvent.click(screen.getByRole('button', { name: /ödeme al/ }));
+    fireEvent.change(screen.getByPlaceholderText('Tutar'), { target: { value: '100,50' } });
+    fireEvent.click(screen.getByRole('button', { name: 'IBAN' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Onayla' }));
+    await waitFor(() => expect(api.recordEventParticipantPayment).toHaveBeenCalledWith('2', {
+      amount: '100.50',
+      source: 'iban',
+      idempotencyKey: expect.any(String),
+    }));
   });
 });

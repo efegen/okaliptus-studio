@@ -15,7 +15,7 @@ function eventCountdownLabel(startsAt) {
 }
 
 /** Ana sayfa hero'sundaki yaklaşan etkinlik kartı (Canvas-2 "4d"). */
-function EventHeroCard({ event, onOpen }) {
+function EventHeroCard({ event, onOpen, showAmount }) {
   const date = new Date(event.starts_at);
   const day = date.getDate();
   const month = MONTHS_TR[date.getMonth()];
@@ -59,7 +59,7 @@ function EventHeroCard({ event, onOpen }) {
         </div>
         <div className="mh-event-foot">
           <span>{event.registeredCount} kayıtlı{event.guestCount > 0 ? ` · +${event.guestCount} misafir` : ''}</span>
-          <span>≈ {fmtTL(event.potentialAmount)}</span>
+          {showAmount && <span>≈ {fmtTL(event.potentialAmount)}</span>}
         </div>
       </div>
     </button>
@@ -162,7 +162,7 @@ export function MobileHomeView({
     : `${plannedLessons} ders`;
   const kpiDim = kpiLoading ? ' is-loading' : '';
   const eventSlide = event
-    ? <EventHeroCard event={event} onOpen={onOpenEvent} />
+    ? <EventHeroCard event={event} onOpen={onOpenEvent} showAmount={canSeeFinance} />
     : <EventHeroEmpty onOpen={onOpenEvent} />;
   // Etkinlik kartı yalnızca yaklaşan/canlı bir etkinlik varken öne (1.
   // sıraya) geçer; yoksa veya yalnız geçmiş etkinlik varsa (event=null)

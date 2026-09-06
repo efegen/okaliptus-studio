@@ -35,7 +35,11 @@ function GuestOfPicker({ eventId, value, onChange, excludeStudentId, participant
   // event_participants satırının id'sini ister — burada karşılığı bulunur.
   const results = (searchQuery.data ?? [])
     .filter((r) => r.already_in_event && r.id !== excludeStudentId)
-    .map((r) => ({ ...r, participantId: participants.find((p) => p.student_id === r.id)?.id }))
+    .map((r) => {
+      const participant = participants.find((p) => p.student_id === r.id);
+      return { ...r, participantId: participant?.id, canHostGuest: participant?.guest_of_participant_id == null };
+    })
+    .filter((r) => r.canHostGuest)
     .filter((r) => r.participantId != null);
 
   return (
@@ -72,7 +76,7 @@ function DetailsForm({ eventId, identity, participants, onSubmit, submitting, er
   const [role, setRole] = React.useState(identity.defaultRole);
   const [isGuest, setIsGuest] = React.useState(identity.defaultIsGuest);
   const [guestOf, setGuestOf] = React.useState(identity.defaultGuestOf ?? null);
-  const [transportMode] = React.useState('needs_vehicle');
+  const [transportMode, setTransportMode] = React.useState('unspecified');
   const [rsvpStatus, setRsvpStatus] = React.useState(identity.defaultRsvp);
 
   const feeItems = event?.feeItems ?? [];
@@ -173,6 +177,22 @@ function DetailsForm({ eventId, identity, participants, onSubmit, submitting, er
             </button>
           </div>
         </div>
+
+        {event?.transport_enabled && (
+          <div className="evx-section">
+            <span className="evx-section-label">Ulaşım</span>
+            <div className="evx-choice">
+              {[
+                ['unspecified', 'Belirsiz'],
+                ['needs_vehicle', 'Araç gerekiyor'],
+                ['self_arranged', 'Kendi geliyor'],
+              ].map(([id, label]) => (
+                <button key={id} type="button" className={`evx-choice-btn${transportMode === id ? ' is-on' : ''}`}
+                  onClick={() => setTransportMode(id)}>{label}</button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {error && <div className="evx-hint" style={{ color: 'oklch(0.5 0.18 30)' }} role="alert">{error}</div>}
       </div>

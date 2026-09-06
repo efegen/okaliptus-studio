@@ -52,4 +52,14 @@ describe('Mobil ana sayfa hero sırası', () => {
     expect(heroSlideOrder()).toEqual(['finance', 'event']);
     expect(screen.getByText('Son 30 günde tahsil edilen')).toBeInTheDocument();
   });
+
+  it('finans yetkisi olmayan asistana etkinlik kartındaki potansiyel tutarı göstermez', () => {
+    render(<MobileHomeView {...baseProps} canSeeFinance={false} event={{
+      id: 'e1', name: 'Kum Saati Retreat', starts_at: '2026-09-10T10:00:00.000Z',
+      coming: 3, unsure: 1, totalParticipants: 4, registeredCount: 4,
+      guestCount: 0, potentialAmount: 9876,
+    }} />);
+    expect(screen.getByText('Kum Saati Retreat')).toBeInTheDocument();
+    expect(screen.queryByText(/9\.876/)).not.toBeInTheDocument();
+  });
 });

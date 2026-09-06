@@ -22,6 +22,7 @@ const MONTH_SHORT = [
 
 const SOURCE_META = [
   { key: 'single', k: 'Ders', color: 'oklch(0.5 0.08 145)' },
+  { key: 'eventLesson', k: 'Etkinlik ders ücreti', color: 'oklch(0.58 0.13 235)' },
   { key: 'product', k: 'Ürün satışı', color: 'oklch(0.62 0.12 70)' },
 ];
 
@@ -102,12 +103,14 @@ function derivePeriod(data, period) {
   const series = raw.series.map((pt) => {
     const ders = num(pt.lesson);
     const urun = num(pt.product);
+    const etkinlik = num(pt.eventLesson);
     const labels = isWeek ? weekBarLabels(pt.start, pt.current) : monthBarLabels(pt.start);
     return {
       id: pt.start,
       ...labels,
-      total: ders + urun,
+      total: ders + etkinlik + urun,
       ders,
+      etkinlik,
       urun,
       dersN: num(pt.completedLessons),
       current: !!pt.current,
@@ -193,7 +196,8 @@ function deriveView(p, idx) {
 
   const sources = [
     { ...SOURCE_META[0], v: it.ders },
-    { ...SOURCE_META[1], v: it.urun },
+    { ...SOURCE_META[1], v: it.etkinlik },
+    { ...SOURCE_META[2], v: it.urun },
   ];
 
   return {
@@ -384,6 +388,10 @@ export function MobileFinance({ onBack, onOpenMovements }) {
                       className="fa3-stack-urun"
                       style={{ height: (it.total > 0 ? Math.round((it.urun / it.total) * 100) : 0) + '%' }}
                     />
+                    <span
+                      className="fa3-stack-event"
+                      style={{ height: (it.total > 0 ? Math.round((it.etkinlik / it.total) * 100) : 0) + '%' }}
+                    />
                     <span className="fa3-stack-ders" />
                   </span>
                   <span className="fax-bar-lbl">{it.lbl}</span>
@@ -392,11 +400,12 @@ export function MobileFinance({ onBack, onOpenMovements }) {
             </div>
             <div className="fa3-legend">
               <span className="fa3-leg"><i className="fa3-leg-sw is-ders" />Ders</span>
+              <span className="fa3-leg"><i className="fax-src-dot" style={{ background: SOURCE_META[1].color }} />Etkinlik dersi</span>
               <span className="fa3-leg"><i className="fa3-leg-sw is-urun" />Ürün</span>
             </div>
             <div className="fax-chart-detail">
               <span className="fax-chart-week">{selItem.full}</span>
-              <span className="fax-chart-meta">Ders {fmtTL(selItem.ders)} · Ürün {fmtTL(selItem.urun)}</span>
+              <span className="fax-chart-meta">Ders {fmtTL(selItem.ders)} · Etkinlik {fmtTL(selItem.etkinlik)} · Ürün {fmtTL(selItem.urun)}</span>
               <span className="fax-chart-val">{fmtTL(selItem.total)}</span>
             </div>
           </section>
