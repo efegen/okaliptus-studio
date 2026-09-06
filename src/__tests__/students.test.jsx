@@ -16,6 +16,7 @@ vi.mock("../api", () => ({
   getStudentLessons: vi.fn(),
   getStudentPackages: vi.fn(),
   getStudentProductSales: vi.fn(),
+  getStudentDeleteImpact: vi.fn(),
   getStudentsKpi: vi.fn(),
   createCashPayment: vi.fn(),
   createStudent: vi.fn(),
@@ -35,6 +36,7 @@ import {
   getStudentLessons,
   getStudentPackages,
   getStudentProductSales,
+  getStudentDeleteImpact,
 } from "../api";
 
 // Etap 3: silme aksiyonu `useCan('students.delete')`'e bağlı → testler
@@ -168,9 +170,11 @@ describe("StudentsPage", () => {
 
   it("geçmişsiz öğrencide 'Kalıcı olarak sil' onay kutusu istemeden deleteStudent çağırır", async () => {
     getStudents.mockResolvedValue(oneStudent({ is_active: false }));
-    getStudentLessons.mockResolvedValue([]);
-    getStudentPackages.mockResolvedValue([]);
-    getStudentProductSales.mockResolvedValue([]);
+    getStudentDeleteImpact.mockResolvedValue({
+      lessons: 0, prepaidPackages: 0, productSales: 0, payments: 0,
+      eventParticipations: 0, eventPayments: 0, eventInteractions: 0,
+      participantNotes: 0, noteMentions: 0, drivenVehicles: 0,
+    });
     deleteStudent.mockResolvedValue({ id: "1" });
     renderWithUser(<StudentsPage onOpenStudent={() => {}} />);
     await screen.findByText(/Menü Kişi/i);
@@ -188,9 +192,11 @@ describe("StudentsPage", () => {
 
   it("geçmişi olan öğrencide silme onay kutusu işaretlenene kadar kilitli", async () => {
     getStudents.mockResolvedValue(oneStudent({ is_active: false }));
-    getStudentLessons.mockResolvedValue([{ id: "9" }, { id: "10" }]); // 2 ders
-    getStudentPackages.mockResolvedValue([]);
-    getStudentProductSales.mockResolvedValue([]);
+    getStudentDeleteImpact.mockResolvedValue({
+      lessons: 2, prepaidPackages: 0, productSales: 0, payments: 0,
+      eventParticipations: 0, eventPayments: 0, eventInteractions: 0,
+      participantNotes: 0, noteMentions: 0, drivenVehicles: 0,
+    });
     deleteStudent.mockResolvedValue({ id: "1" });
     renderWithUser(<StudentsPage onOpenStudent={() => {}} />);
     await screen.findByText(/Menü Kişi/i);
@@ -208,6 +214,40 @@ describe("StudentsPage", () => {
     fireEvent.click(confirmBtn);
 
     await waitFor(() => expect(deleteStudent).toHaveBeenCalledWith("1"));
+  });
+
+  it("yalnız etkinlik/not geçmişi olan öğrencide kapsamı gösterip onay ister", async () => {
+    getStudents.mockResolvedValue(oneStudent({ is_active: false }));
+    getStudentDeleteImpact.mockResolvedValue({
+      lessons: 0, prepaidPackages: 0, productSales: 0, payments: 0,
+      eventParticipations: 1, eventPayments: 1, eventInteractions: 2,
+      participantNotes: 1, noteMentions: 1, drivenVehicles: 1,
+    });
+    renderWithUser(<StudentsPage onOpenStudent={() => {}} />);
+    await screen.findByText(/Menü Kişi/i);
+
+    fireEvent.click(screen.getByLabelText("İşlemler"));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Tamamen sil" }));
+
+    expect(await screen.findByText(/1 etkinlik katılımı/i)).toBeInTheDocument();
+    expect(screen.getByText(/1 not bahsi/i)).toBeInTheDocument();
+    expect(screen.getByText(/şoför bağlantıları anonimleştirilir/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Kalıcı olarak sil" })).toBeDisabled();
+    expect(screen.getByRole("checkbox")).toBeInTheDocument();
+  });
+
+  it("silme etkisi alınamazsa geçmişsiz varsaymayıp onay ister", async () => {
+    getStudents.mockResolvedValue(oneStudent({ is_active: false }));
+    getStudentDeleteImpact.mockRejectedValue(new Error("ağ hatası"));
+    renderWithUser(<StudentsPage onOpenStudent={() => {}} />);
+    await screen.findByText(/Menü Kişi/i);
+
+    fireEvent.click(screen.getByLabelText("İşlemler"));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Tamamen sil" }));
+
+    expect(await screen.findByText(/Bağlı kayıtlar sayılamadı/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Kalıcı olarak sil" })).toBeDisabled();
+    expect(screen.getByRole("checkbox")).toBeInTheDocument();
   });
 
   it("borçsuz aktif öğrencinin menüsünde 'Ödeme al' gösterilmez", async () => {

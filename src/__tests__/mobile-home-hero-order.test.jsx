@@ -45,6 +45,8 @@ describe('Mobil ana sayfa hero sırası', () => {
       />,
     );
     expect(heroSlideOrder()).toEqual(['event', 'finance']);
+    expect(screen.getByText('5 katılımcı')).toBeInTheDocument();
+    expect(screen.getByText('Potansiyel gelir · ≈ 1.000 ₺')).toBeInTheDocument();
   });
 
   it('yaklaşan etkinlik yokken (event=null) tahsilat kartını 1. sıraya koyar', () => {

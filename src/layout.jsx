@@ -47,6 +47,8 @@ export const Icon = {
   Bag: (p) => (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinejoin="round" {...p}><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>),
   Box: (p) => (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinejoin="round" {...p}><path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg>),
   Truck: (p) => (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinejoin="round" {...p}><path d="M1 4h13v11H1zM14 8h4l3 3v4h-7"/><circle cx="6" cy="18" r="1.6"/><circle cx="17.5" cy="18" r="1.6"/></svg>),
+  Car: (p) => (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinejoin="round" strokeLinecap="round" {...p}><path d="M3 16v-3.5a2 2 0 0 1 .34-1.11l1.86-2.8A2 2 0 0 1 6.86 7.6h10.28a2 2 0 0 1 1.66.99l1.86 2.8A2 2 0 0 1 21 12.5V16"/><path d="M3 16h18v2a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1v-1H7v1a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/><path d="M3 11.5h18"/><circle cx="7" cy="16" r="1.6"/><circle cx="17" cy="16" r="1.6"/></svg>),
+  Sparkle: (p) => (<svg viewBox="0 0 24 24" fill="currentColor" stroke="none" {...p}><path d="M12 2c.6 3.6 2.2 5.2 5.8 5.8-3.6.6-5.2 2.2-5.8 5.8-.6-3.6-2.2-5.2-5.8-5.8C9.8 7.2 11.4 5.6 12 2zM19 14c.3 1.8 1.1 2.6 2.9 2.9-1.8.3-2.6 1.1-2.9 2.9-.3-1.8-1.1-2.6-2.9-2.9 1.8-.3 2.6-1.1 2.9-2.9z"/></svg>),
 };
 
 export function Sidebar({ page, setPage }) {

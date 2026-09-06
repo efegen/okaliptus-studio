@@ -23,6 +23,7 @@ function EventHeroCard({ event, onOpen, showAmount }) {
   const unsure = event.unsure;
   const total = event.totalParticipants || 1;
   const notCounted = Math.max(0, total - coming - unsure);
+  const participantCount = event.totalParticipants ?? event.registeredCount ?? 0;
 
   return (
     <button type="button" className="mh-event-card" onClick={() => onOpen(event.id)}>
@@ -58,8 +59,8 @@ function EventHeroCard({ event, onOpen, showAmount }) {
           <span style={{ flexGrow: notCounted, flexBasis: 0, background: 'oklch(1 0 0 / 0.12)' }} />
         </div>
         <div className="mh-event-foot">
-          <span>{event.registeredCount} kayıtlı{event.guestCount > 0 ? ` · +${event.guestCount} misafir` : ''}</span>
-          {showAmount && <span>≈ {fmtTL(event.potentialAmount)}</span>}
+          <span>{participantCount} katılımcı</span>
+          {showAmount && <span>Potansiyel gelir · ≈ {fmtTL(event.potentialAmount)}</span>}
         </div>
       </div>
     </button>

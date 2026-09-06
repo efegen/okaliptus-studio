@@ -27,9 +27,13 @@ export const queryKeys = {
   // Notlar stüdyo geneli tek bir akış — etkinliğe bağlı değil (bkz. backend
   // migration 0273_general_notes.sql).
   notes:              ()      => ['notes'],
+  noteCategories:     ()      => ['notes', 'categories'],
   noteImage:          (id, version) => ['notes', String(id), 'image', version ?? null],
+  noteReminderRecipients: ()  => ['notes', 'reminder-recipients'],
   eventParticipantFees:(id)   => ['eventParticipant', id, 'fees'],
   eventParticipantPayments:(id) => ['eventParticipant', id, 'payments'],
+  eventParticipantNotes:(id)  => ['eventParticipant', id, 'notes'],
   eventVehicles:      (id)    => ['event', id, 'vehicles'],
+  eventActivity:      (id)    => ['event', id, 'activity'],
   studentEventBalances:(id)   => ['student', id, 'events'],
 };

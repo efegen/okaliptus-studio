@@ -11,6 +11,7 @@ import {
   getStudentLessons,
   getStudentPackages,
   getStudentProductSales,
+  getStudentDeleteImpact,
   createCashPayment,
   createStudent,
   updateStudent,
@@ -994,36 +995,27 @@ function RowActionsMenu({ student, hasDebt, onPayment, onEdit, onSetActive, onDe
 }
 
 // ─── Confirm Delete Student Modal ───────────────────────────────────────────
-// "Tamamen sil" = kalıcı (hard) silme: öğrenci + tüm ders/ödeme/paket/satış
-// fiziksel silinir, geri alınamaz ve geçmiş raporlarını etkiler. Bu yüzden modal
-// açılınca silinecek kayıtları (blast radius) sayar ve gösterir; geçmişi olan
-// öğrencide ek bir onay kutusu ister. Profil sayfası da bunu yeniden kullanır.
+// "Tamamen sil" = kalıcı (hard) silme: öğrenci + tüm finansal/etkinlik geçmişi
+// fiziksel silinir; ortak notlardaki bahis bağlantıları kalkar, başka yolcuların
+// kullandığı araçlardaki şoför bağlantısı anonimleştirilir. Modal bu etkiyi tek
+// backend sözleşmesinden gösterir ve etkilenen kaydı olan öğrencide ek onay ister.
 
 export function ConfirmDeleteStudentModal({ student, onClose, onConfirm }) {
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState(null);
-  const [impact, setImpact] = React.useState(null); // { lessons, packages, sales } | null = yükleniyor
+  const [impact, setImpact] = React.useState(null); // null = yükleniyor
   const [ack, setAck] = React.useState(false);
 
-  // Silinecek kayıtları say — mevcut öğrenci-bazlı listeleri yeniden kullanır.
+  // Silinecek/anonymize edilecek tüm domain bağlantılarını tek endpoint'ten say.
   React.useEffect(() => {
     let cancelled = false;
-    Promise.all([
-      getStudentLessons(student.id),
-      getStudentPackages(student.id),
-      getStudentProductSales(student.id),
-    ])
-      .then(([lessons, packages, sales]) => {
-        if (cancelled) return;
-        setImpact({
-          lessons: lessons?.length ?? 0,
-          packages: packages?.length ?? 0,
-          sales: sales?.length ?? 0,
-        });
+    getStudentDeleteImpact(student.id)
+      .then((nextImpact) => {
+        if (!cancelled) setImpact(nextImpact);
       })
       .catch(() => {
-        // Sayım başarısız olsa da silmeyi engelleme; sadece genel uyarı göster.
-        if (!cancelled) setImpact({ lessons: 0, packages: 0, sales: 0, unknown: true });
+        // Etki bilinmiyorsa güvenli tarafta kal: genel uyarı + zorunlu onay.
+        if (!cancelled) setImpact({ unknown: true });
       });
     return () => { cancelled = true; };
   }, [student.id]);
@@ -1035,8 +1027,21 @@ export function ConfirmDeleteStudentModal({ student, onClose, onConfirm }) {
   }, [onClose, submitting]);
 
   const loadingImpact = impact === null;
-  const totalRecords = impact ? impact.lessons + impact.packages + impact.sales : 0;
-  const hasHistory = totalRecords > 0;
+  const totalRecords = impact && !impact.unknown
+    ? [
+        impact.lessons,
+        impact.prepaidPackages,
+        impact.productSales,
+        impact.payments,
+        impact.eventParticipations,
+        impact.eventPayments,
+        impact.eventInteractions,
+        impact.participantNotes,
+        impact.noteMentions,
+        impact.drivenVehicles,
+      ].reduce((sum, value) => sum + (Number(value) || 0), 0)
+    : 0;
+  const hasHistory = Boolean(impact?.unknown) || totalRecords > 0;
   const canConfirm = !submitting && !loadingImpact && (!hasHistory || ack);
 
   async function handleConfirm() {
@@ -1055,8 +1060,15 @@ export function ConfirmDeleteStudentModal({ student, onClose, onConfirm }) {
   function impactParts() {
     const parts = [];
     if (impact.lessons > 0) parts.push(`${impact.lessons} ders`);
-    if (impact.packages > 0) parts.push(`${impact.packages} paket`);
-    if (impact.sales > 0) parts.push(`${impact.sales} ürün satışı`);
+    if (impact.prepaidPackages > 0) parts.push(`${impact.prepaidPackages} paket`);
+    if (impact.productSales > 0) parts.push(`${impact.productSales} ürün satışı`);
+    if (impact.payments > 0) parts.push(`${impact.payments} ödeme`);
+    if (impact.eventParticipations > 0) parts.push(`${impact.eventParticipations} etkinlik katılımı`);
+    if (impact.eventPayments > 0) parts.push(`${impact.eventPayments} etkinlik tahsilatı`);
+    if (impact.eventInteractions > 0) parts.push(`${impact.eventInteractions} etkinlik işlem kaydı`);
+    if (impact.participantNotes > 0) parts.push(`${impact.participantNotes} katılımcı notu`);
+    if (impact.noteMentions > 0) parts.push(`${impact.noteMentions} not bahsi`);
+    if (impact.drivenVehicles > 0) parts.push(`${impact.drivenVehicles} şoför bağlantısı`);
     return parts.join(' · ');
   }
 
@@ -1073,10 +1085,15 @@ export function ConfirmDeleteStudentModal({ student, onClose, onConfirm }) {
         <div className="cds-impact">
           {loadingImpact ? (
             'Silinecek kayıtlar kontrol ediliyor…'
+          ) : impact.unknown ? (
+            'Bağlı kayıtlar sayılamadı. Devam ederseniz öğrencinin tüm bağlı geçmişi yine kalıcı olarak silinecek.'
           ) : hasHistory ? (
-            <>Silinecek: <strong>{impactParts()}</strong> ve bunlara bağlı tüm ödemeler.</>
+            <>
+              Etkilenecek: <strong>{impactParts()}</strong>. Şoför bağlantıları anonimleştirilir;
+              diğer bağlı kayıtlar kalıcı olarak silinir.
+            </>
           ) : (
-            'Bu öğrencinin ders, paket veya satış kaydı yok.'
+            'Bu öğrencinin silinecek veya anonimleştirilecek bağlı kaydı yok.'
           )}
         </div>
 

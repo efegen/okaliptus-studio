@@ -29,6 +29,7 @@ import { MobileEventAddPerson } from './events/MobileEventAddPerson';
 import { MobileEventTransport } from './events/MobileEventTransport';
 import { MobileEventAddVehicle } from './events/MobileEventAddVehicle';
 import { MobileEventSettings } from './events/MobileEventSettings';
+import { MobileEventActivity } from './events/MobileEventActivity';
 import { SettingsPage } from '../settings';
 import { CatalogPage } from '../catalog';
 import { queryKeys } from '../hooks/queryKeys';
@@ -67,7 +68,8 @@ export function MobileApp({
     page === 'event-transport' ||
     page === 'event-add-vehicle' ||
     page === 'event-settings' ||
-    page === 'event-participant';
+    page === 'event-participant' ||
+    page === 'event-activity';
   const showBack = (onStudentsPage && !!studentDetailId) || onMenuChild;
   const hideHeader =
     page === 'home' ||
@@ -281,7 +283,7 @@ export function MobileApp({
   // `page` localStorage'dan restore edilir (bkz. main.jsx) ama eventDetailId
   // edilmez — sayfa 'event-detail' vb. olarak açılıp id'siz kalırsa (yenileme
   // sonrası) kırık bir hata ekranı yerine listeye düşer.
-  const eventDetailPages = ['event-detail', 'event-add-person', 'event-transport', 'event-add-vehicle', 'event-settings', 'event-participant'];
+  const eventDetailPages = ['event-detail', 'event-add-person', 'event-transport', 'event-add-vehicle', 'event-settings', 'event-participant', 'event-activity'];
   React.useEffect(() => {
     if (eventDetailPages.includes(page) && !eventDetailId) {
       setPage('events');
@@ -354,6 +356,15 @@ export function MobileApp({
         onOpenSettings={() => setPage('event-settings')}
         onOpenParticipant={openEventParticipant}
         onOpenNotes={() => { setNotesReturnPage('event-detail'); setPage('notes'); }}
+        onOpenActivity={() => setPage('event-activity')}
+      />
+    );
+  } else if (page === 'event-activity') {
+    body = (
+      <MobileEventActivity
+        eventId={eventDetailId}
+        onBack={() => setPage('event-detail')}
+        onOpenParticipant={openEventParticipant}
       />
     );
   } else if (page === 'notes') {

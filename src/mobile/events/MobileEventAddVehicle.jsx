@@ -133,7 +133,7 @@ export function MobileEventAddVehicle({ eventId, onBack }) {
         </header>
         <div className="evx-body">
           <div className="evx-add-vehicle-result" role="alert">
-            <span><Icon.Truck width="24" height="24" /></span>
+            <span><Icon.Car width="24" height="24" /></span>
             <strong>Araç oluşturuldu</strong>
             <p>{error}</p>
           </div>

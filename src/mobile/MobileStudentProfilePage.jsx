@@ -536,11 +536,12 @@ function EventBalancesCard({ balances }) {
       <div className="mobile-msp-mvlist">
         {withPaymentRemaining.map((b) => {
           const remaining = Number(b.total_due) - Number(b.total_paid);
+          const partiallyPaid = Number(b.total_paid) > 0.01;
           return (
             <div className="mobile-msp-mvrow" key={b.event_id}>
               <div className="mobile-msp-mvrow-body">
                 <span className="mobile-msp-mvrow-title">{b.event_name}</span>
-                <span className="mobile-msp-mvrow-meta">{fmtShortDate(b.starts_at)} · gelirse ödeyeceği tutar</span>
+                <span className="mobile-msp-mvrow-meta">{fmtShortDate(b.starts_at)} · {partiallyPaid ? 'kısmi ödeme' : 'gelirse ödeyeceği tutar'}</span>
               </div>
               <span className="mobile-msp-mvrow-amt open">{fmtTL(remaining)}</span>
             </div>

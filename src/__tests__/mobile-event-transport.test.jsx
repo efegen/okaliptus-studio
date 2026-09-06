@@ -221,4 +221,43 @@ describe('Mobil etkinlik ulaşım planı', () => {
     expect(within(vehicleCard).getByText('Şoför')).toBeInTheDocument();
     expect(within(vehicleCard).getByRole('img', { name: 'Deniz aracında 0 dolu, 3 boş yolcu koltuğu' })).toBeInTheDocument();
   });
+
+  it('özet şeridinde araç/koltuk/bekleyen sayılarını verir ve araç dışındakileri tek kartta toplar', async () => {
+    renderTransport();
+
+    const summary = await screen.findByRole('group', { name: 'Ulaşım özeti' });
+    const statValue = (label) => within(summary).getByText(label).parentElement.textContent.replace(label, '');
+    expect(statValue('araç')).toBe('2');
+    expect(statValue('koltuk')).toBe('3/5');
+    expect(statValue('bekliyor')).toBe('1');
+    expect(statValue('araç dışı')).toBe('2');
+
+    const outside = screen.getByRole('region', { name: 'Araç dışındakiler' });
+    expect(within(outside).getByText('Kendi geliyor · 1')).toBeInTheDocument();
+    expect(within(outside).getByText('Belirsiz · 1')).toBeInTheDocument();
+    expect(within(outside).getByRole('button', { name: 'Selin ulaşım durumunu değiştir' })).toBeInTheDocument();
+    expect(within(outside).getByRole('button', { name: 'Can ulaşım durumunu belirle' })).toBeInTheDocument();
+  });
+
+  it('düzenle/sil aksiyonlarını kart üzerinde saklar, ⋯ ile açar ve koltuk sayısını kaydeder', async () => {
+    renderTransport();
+
+    const vehicleCard = await screen.findByRole('article', { name: 'Deniz' });
+    expect(within(vehicleCard).queryByRole('button', { name: 'Kaydet' })).not.toBeInTheDocument();
+    expect(within(vehicleCard).queryByRole('button', { name: 'Sil' })).not.toBeInTheDocument();
+
+    fireEvent.click(within(vehicleCard).getByRole('button', { name: 'Deniz aracını düzenle' }));
+    // Deniz aracında 1 yolcu var — silme, yolcular çıkarılana dek kapalı kalır.
+    expect(within(vehicleCard).getByRole('button', { name: 'Sil' })).toBeDisabled();
+
+    fireEvent.change(within(vehicleCard).getByLabelText('YOLCU KOLTUĞU'), { target: { value: '5' } });
+    fireEvent.click(within(vehicleCard).getByRole('button', { name: 'Kaydet' }));
+
+    await waitFor(() => expect(api.updateEventVehicle).toHaveBeenCalledWith('10', expect.objectContaining({
+      driverName: 'Deniz',
+      passengerSeats: 5,
+      meetingPlace: 'Stüdyo',
+    })));
+    expect(await screen.findByText('Araç bilgileri güncellendi.')).toBeInTheDocument();
+  });
 });

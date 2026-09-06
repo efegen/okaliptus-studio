@@ -358,6 +358,14 @@ export async function getStudentProductSales(studentId) {
   return payload.data;
 }
 
+export async function getStudentDeleteImpact(studentId) {
+  const payload = await apiGet(`/students/${encodeURIComponent(studentId)}/delete-impact`);
+  if (typeof payload?.data !== 'object' || payload.data === null || Array.isArray(payload.data)) {
+    throw new Error('Silme etkisi alınamadı.');
+  }
+  return payload.data;
+}
+
 // Tek bir ürün satışını kalemleriyle (items[]) birlikte getirir.
 export async function getProductSale(saleId) {
   const payload = await apiGet(`/product-sales/${encodeURIComponent(saleId)}`);
@@ -1167,11 +1175,48 @@ export async function updateEventParticipant(participantId, input) {
   return ensureMutationResult(payload, 'Katılımcı güncellenemedi.');
 }
 
+export async function markEventParticipantContacted(participantId, input = {}) {
+  const payload = await apiRequest(`/events/participants/${encodeURIComponent(participantId)}/contact`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return ensureMutationResult(payload, 'Arama bilgisi kaydedilemedi.');
+}
+
+// Katılımcı profili not akışı: etkinliğe özel notlar + arama notları
+// + genel Notlar'da bu öğrencinin etiketlendiği kayıtlar.
+export async function getEventParticipantNotes(participantId) {
+  const payload = await apiGet(`/events/participants/${encodeURIComponent(participantId)}/notes`);
+  if (!Array.isArray(payload?.data)) throw new Error('Notlar alınamadı.');
+  return payload.data;
+}
+
+export async function addEventParticipantNote(participantId, body) {
+  const payload = await apiRequest(`/events/participants/${encodeURIComponent(participantId)}/notes`, {
+    method: 'POST',
+    body: JSON.stringify({ body }),
+  });
+  return ensureMutationResult(payload, 'Not eklenemedi.');
+}
+
+export async function updateEventParticipantNote(noteId, body) {
+  const payload = await apiRequest(`/events/participant-notes/${encodeURIComponent(noteId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ body }),
+  });
+  return ensureMutationResult(payload, 'Not güncellenemedi.');
+}
+
+export async function deleteEventParticipantNote(noteId) {
+  await apiRequest(`/events/participant-notes/${encodeURIComponent(noteId)}`, { method: 'DELETE' });
+}
+
 // data: null döner (deleteEvent gibi) — ensureMutationResult null'u reddeder,
 // o yüzden burada kullanılmıyor. apiRequest zaten HTTP hatasında fırlatıyor.
-export async function removeEventParticipant(participantId) {
+export async function removeEventParticipant(participantId, input = {}) {
   await apiRequest(`/events/participants/${encodeURIComponent(participantId)}`, {
     method: 'DELETE',
+    body: JSON.stringify(input),
   });
 }
 
@@ -1247,6 +1292,25 @@ export async function assignEventParticipantVehicle(participantId, vehicleId) {
   return payload;
 }
 
+// Etkinlik hareketleri (mobil "Hareketler" ekranı). Yalnız denetim yetkisi olan
+// roller çağırabilir (backend requireCan('audit.read')); asistanda kısayol zaten
+// gizli olduğu için buraya hiç gelinmez.
+export async function getEventActivity(eventId) {
+  const payload = await apiGet(`/events/${encodeURIComponent(eventId)}/activity`);
+  if (!Array.isArray(payload?.data)) throw new Error('Hareket listesi alınamadı.');
+  return payload.data;
+}
+
+// Telafi işlemi sunucuda yapılır ve kendi hareketini yazar; dönen kayıt
+// orijinalin "geri alındı" damgalı hâlidir.
+export async function revertEventActivity(eventId, activityId) {
+  const payload = await apiRequest(
+    `/events/${encodeURIComponent(eventId)}/activity/${encodeURIComponent(activityId)}/revert`,
+    { method: 'POST' },
+  );
+  return ensureMutationResult(payload, 'Hareket geri alınamadı.');
+}
+
 export async function getStudentEventBalances(studentId) {
   const payload = await apiGet(`/students/${encodeURIComponent(studentId)}/events`);
   if (!Array.isArray(payload?.data)) throw new Error('Öğrencinin etkinlik bakiyesi alınamadı.');
@@ -1265,7 +1329,43 @@ export async function getNotes() {
   return payload.data;
 }
 
-// input: { body, parentNoteId?, mentionedStudentIds? } — parentNoteId doluysa
+export async function getNoteCategories() {
+  const payload = await apiGet('/notes/categories');
+  if (!Array.isArray(payload?.data)) throw new Error('Not kategorileri alınamadı.');
+  return payload.data;
+}
+
+// Hatırlatıcı "kime?" seçicisi için aktif kullanıcılar — /users'ın aksine
+// (yalnız owner) tüm roller erişebilir.
+export async function getNoteReminderRecipients() {
+  const payload = await apiGet('/notes/reminder-recipients');
+  if (!Array.isArray(payload?.data)) throw new Error('Hatırlatma alıcıları alınamadı.');
+  return payload.data;
+}
+
+export async function createNoteCategory(name) {
+  const payload = await apiRequest('/notes/categories', {
+    method: 'POST',
+    body: JSON.stringify({ name }),
+  });
+  return ensureMutationResult(payload, 'Not kategorisi eklenemedi.');
+}
+
+export async function updateNoteCategory(categoryId, name) {
+  const payload = await apiRequest(`/notes/categories/${encodeURIComponent(categoryId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ name }),
+  });
+  return ensureMutationResult(payload, 'Not kategorisi güncellenemedi.');
+}
+
+export async function deleteNoteCategory(categoryId) {
+  await apiRequest(`/notes/categories/${encodeURIComponent(categoryId)}`, {
+    method: 'DELETE',
+  });
+}
+
+// input: { body, parentNoteId?, mentionedStudentIds?, categoryId? } — parentNoteId doluysa
 // yanıt olarak eklenir (bkz. MobileNotes.jsx).
 export async function addNote(input) {
   const payload = await apiRequest('/notes', {

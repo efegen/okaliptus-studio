@@ -6,7 +6,11 @@ import { MobileEventDetail } from '../mobile/events/MobileEventDetail';
 import * as api from '../api';
 
 vi.mock('../api', () => ({
-  getEventById: vi.fn(), getEventParticipants: vi.fn(), getNotes: vi.fn(), removeEventParticipant: vi.fn(),
+  getEventById: vi.fn(),
+  getEventParticipants: vi.fn(),
+  getNotes: vi.fn(),
+  markEventParticipantContacted: vi.fn(),
+  removeEventParticipant: vi.fn(),
 }));
 
 let participants;
@@ -21,15 +25,26 @@ beforeEach(() => {
     }
   });
   participants = ['Ayşe', 'Deniz'].map((name, index) => ({
-    id: String(index + 1), student_name: name, role: 'regular', rsvp_status: 'coming',
-    total_due: '0', total_paid: '0',
+    id: String(index + 1), student_name: name, student_phone: index === 0 ? '0555 111 22 33' : null,
+    role: 'regular', rsvp_status: 'coming', total_due: '0', total_paid: '0',
   }));
   api.getEventById.mockResolvedValue({ name: 'Pamucak', starts_at: '2026-09-13T09:00:00+03:00' });
   api.getEventParticipants.mockImplementation(async () => [...participants]);
   api.getNotes.mockResolvedValue([]);
-  api.removeEventParticipant.mockImplementation(async (id) => { participants = participants.filter((p) => p.id !== id); });
-  vi.spyOn(window, 'confirm').mockReturnValue(true);
-  vi.spyOn(window, 'alert').mockImplementation(() => {});
+  api.removeEventParticipant.mockImplementation(async (id) => {
+    participants = participants.filter((participant) => participant.id !== id);
+  });
+  api.markEventParticipantContacted.mockImplementation(async (id, input) => {
+    participants = participants.map((participant) => participant.id === id
+      ? {
+          ...participant,
+          last_contacted_at: '2026-09-06T11:30:00.000Z',
+          contact_note: input.note,
+          contact_count: Number(participant.contact_count || 0) + 1,
+        }
+      : participant);
+    return participants.find((participant) => participant.id === id);
+  });
 });
 afterEach(() => vi.unstubAllGlobals());
 
@@ -51,71 +66,99 @@ function swipe(row, dx, dy = 0, cancelled = false) {
   fireEvent.click(row);
 }
 
-describe('Etkinlik katılımcısını sola kaydırarak kaldırma', () => {
-  it('normal dokunuş detay açar; kısa kaydırma kaldırma alanını gösterir', async () => {
+describe('Etkinlik katılımcısı kaydırma aksiyonları', () => {
+  it('normal dokunuş detay açar; kısa sola kaydırma kaldırma alanını gösterir', async () => {
     const { row, onOpen } = await setup();
-    expect(screen.queryByRole('button', { name: 'Ayşe etkinlikten kaldır' })).not.toBeInTheDocument();
     fireEvent.click(row);
     expect(onOpen).toHaveBeenCalledTimes(1);
+
     swipe(row, -90);
     expect(onOpen).toHaveBeenCalledTimes(1);
-    expect(window.confirm).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Ayşe etkinlikten kaldır' }));
-    await waitFor(() => expect(screen.queryByRole('button', { name: 'Ayşe detayını aç' })).not.toBeInTheDocument());
-    expect(api.removeEventParticipant).toHaveBeenCalledTimes(1);
-    expect(api.removeEventParticipant).toHaveBeenCalledWith('1');
-  });
 
-  it('uzun kaydırma düğmeye basmadan kaldırma onayı açar; iptal satırı korur', async () => {
-    window.confirm.mockReturnValue(false);
-    const { row, onOpen } = await setup();
-    swipe(row, -250);
-    expect(window.confirm).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('Ayşe kaldırılsın mı?')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Listeden kaldır' })).toBeDisabled();
     expect(api.removeEventParticipant).not.toHaveBeenCalled();
-    expect(onOpen).not.toHaveBeenCalled();
-    expect(row).toBeEnabled();
-    expect(screen.queryByRole('button', { name: 'Ayşe etkinlikten kaldır' })).not.toBeInTheDocument();
   });
 
-  it('uzun kaydırma onaylanınca yalnız etkinlik katılımcısını kaldırır', async () => {
+  it('kaldırma nedenini ve notunu kaydeder, sonra yalnız seçilen satırı kaldırır', async () => {
     const { row, onOpen } = await setup();
     swipe(row, -250);
-    await waitFor(() => expect(screen.queryByRole('button', { name: 'Ayşe detayını aç' })).not.toBeInTheDocument());
-    expect(api.removeEventParticipant).toHaveBeenCalledTimes(1);
-    expect(api.removeEventParticipant).toHaveBeenCalledWith('1');
-    expect(screen.getByRole('button', { name: 'Deniz detayını aç' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Öğrenci iptal etti' }));
+    fireEvent.change(screen.getByLabelText(/Kaldırma notu/), { target: { value: 'Ailesiyle programı çakıştı.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Listeden kaldır' }));
+
+    await waitFor(() => expect(api.removeEventParticipant).toHaveBeenCalledWith('1', {
+      reason: 'student_cancelled',
+      note: 'Ailesiyle programı çakıştı.',
+    }));
+    await waitFor(() => expect(screen.queryByLabelText('Ayşe detayını aç')).not.toBeInTheDocument());
+    expect(screen.getByLabelText('Deniz detayını aç')).toBeInTheDocument();
     expect(onOpen).not.toHaveBeenCalled();
   });
 
-  it('dikey, sağa veya iptal edilmiş hareket kaldırmayı tetiklemez', async () => {
+  it('kaldırma penceresinden vazgeçince satırı korur', async () => {
+    const { row } = await setup();
+    swipe(row, -250);
+    fireEvent.click(screen.getByRole('button', { name: 'Vazgeç' }));
+
+    await waitFor(() => expect(screen.queryByText('Ayşe kaldırılsın mı?')).not.toBeInTheDocument());
+    expect(api.removeEventParticipant).not.toHaveBeenCalled();
+    expect(row).toBeInTheDocument();
+  });
+
+  it('sağa kaydırınca telefon kısayoluyla arama notunu kaydeder ve satırı işaretler', async () => {
+    const { row } = await setup();
+    swipe(row, 90);
+    fireEvent.click(screen.getByRole('button', { name: 'Ayşe arandı olarak işaretle' }));
+
+    expect(screen.getByRole('link', { name: /Şimdi ara/ })).toHaveAttribute('href', 'tel:05551112233');
+    fireEvent.change(screen.getByLabelText(/Arama notu/), { target: { value: 'Ulaşılamadı, yarın tekrar.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Arandı olarak kaydet' }));
+
+    await waitFor(() => expect(api.markEventParticipantContacted).toHaveBeenCalledWith('1', {
+      note: 'Ulaşılamadı, yarın tekrar.',
+    }));
+    expect(await screen.findByLabelText('1 kez arandı')).toHaveTextContent('ARANDI· 1');
+  });
+
+  it('telefonu olmayan kişide bilgi verir; uzun sağa kaydırma pencereyi doğrudan açar', async () => {
+    await setup();
+    const deniz = screen.getByRole('button', { name: 'Deniz detayını aç' });
+    vi.spyOn(deniz, 'getBoundingClientRect').mockReturnValue({ width: 330 });
+    swipe(deniz, 250);
+    expect(screen.getByText('Telefon numarası kayıtlı değil')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Şimdi ara/ })).not.toBeInTheDocument();
+  });
+
+  it('dikey veya iptal edilmiş hareket aksiyon tetiklemez', async () => {
     const { row, onOpen } = await setup();
     swipe(row, -20, 180);
-    swipe(row, 150);
     swipe(row, -250, 0, true);
-    expect(window.confirm).not.toHaveBeenCalled();
+    expect(api.removeEventParticipant).not.toHaveBeenCalled();
+    expect(api.markEventParticipantContacted).not.toHaveBeenCalled();
     expect(onOpen).not.toHaveBeenCalled();
-    expect(screen.queryByRole('button', { name: 'Ayşe etkinlikten kaldır' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Ayşe kaldırılsın mı?')).not.toBeInTheDocument();
   });
 
-  it('sağa kaydırma ve dışarı dokunma açık aksiyonu kapatır; klavye ile de erişilir', async () => {
+  it('klavye ile iki aksiyonu da açar ve Escape ile kapatır', async () => {
     const { row } = await setup();
-    swipe(row, -90);
-    swipe(row, 90);
-    expect(screen.queryByRole('button', { name: 'Ayşe etkinlikten kaldır' })).not.toBeInTheDocument();
     fireEvent.keyDown(row, { key: 'ArrowLeft' });
     expect(screen.getByRole('button', { name: 'Ayşe etkinlikten kaldır' })).toBeEnabled();
-    fireEvent.pointerDown(screen.getByRole('button', { name: 'Deniz detayını aç' }), { button: 0 });
+    fireEvent.keyDown(row, { key: 'Escape' });
     expect(screen.queryByRole('button', { name: 'Ayşe etkinlikten kaldır' })).not.toBeInTheDocument();
-    fireEvent.keyDown(row, { key: 'Delete' });
-    await waitFor(() => expect(api.removeEventParticipant).toHaveBeenCalledWith('1'));
+    fireEvent.keyDown(row, { key: 'ArrowRight' });
+    expect(screen.getByRole('button', { name: 'Ayşe arandı olarak işaretle' })).toBeEnabled();
   });
 
-  it('backend kaldırmayı reddederse hata gösterir ve satır kullanılabilir kalır', async () => {
+  it('backend kaldırmayı reddederse hatayı pencerede gösterir ve satırı korur', async () => {
     api.removeEventParticipant.mockRejectedValue(new Error('Ödemesi alınmış katılımcı kaldırılamaz.'));
     const { row } = await setup();
     swipe(row, -250);
-    await waitFor(() => expect(window.alert).toHaveBeenCalledWith('Ödemesi alınmış katılımcı kaldırılamaz.'));
-    expect(row).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Diğer' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Listeden kaldır' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Ödemesi alınmış katılımcı kaldırılamaz.');
     expect(row).toBeInTheDocument();
   });
 });

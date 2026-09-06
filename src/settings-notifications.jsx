@@ -32,8 +32,15 @@ const NOTIF_META = {
     vars: ['{customer}', '{order}'],
     kind: 'event',
   },
+  note_reminder: {
+    title: 'Not hatırlatması',
+    desc: 'Notlar akışında birinin eklediği hatırlatıcının zamanı gelince. Alıcılar burada değil, hatırlatıcı oluşturulurken notu yazan kişi tarafından seçilir — burada yalnız metin ayarlanır.',
+    vars: ['{author}', '{note}'],
+    kind: 'event',
+    hideRecipients: true,
+  },
 };
-const ORDER = ['lesson_reminder', 'stale_lesson', 'new_order'];
+const ORDER = ['lesson_reminder', 'stale_lesson', 'new_order', 'note_reminder'];
 
 function slotOr(s, d) {
   const o = s || {};
@@ -224,26 +231,28 @@ function NotifCard({ row, users, onSaved }) {
         <Toggle checked={enabled} onChange={setEnabled} />
       </div>
 
-      <div className="ntf-field">
-        <label className="ntf-label">Kimler alsın</label>
-        {users.length === 0 ? (
-          <p className="ntf-hint">Aktif kullanıcı yok.</p>
-        ) : (
-          <div className="ntf-recips">
-            {users.map((u) => (
-              <label key={u.id} className="ntf-recip">
-                <input
-                  type="checkbox"
-                  checked={recipients.has(String(u.id))}
-                  onChange={() => toggleRecipient(u.id)}
-                />
-                <span className="ntf-recip-name">{u.displayName}</span>
-                <span className="ntf-recip-role">{roleLabel(u.role)}</span>
-              </label>
-            ))}
-          </div>
-        )}
-      </div>
+      {!meta.hideRecipients && (
+        <div className="ntf-field">
+          <label className="ntf-label">Kimler alsın</label>
+          {users.length === 0 ? (
+            <p className="ntf-hint">Aktif kullanıcı yok.</p>
+          ) : (
+            <div className="ntf-recips">
+              {users.map((u) => (
+                <label key={u.id} className="ntf-recip">
+                  <input
+                    type="checkbox"
+                    checked={recipients.has(String(u.id))}
+                    onChange={() => toggleRecipient(u.id)}
+                  />
+                  <span className="ntf-recip-name">{u.displayName}</span>
+                  <span className="ntf-recip-role">{roleLabel(u.role)}</span>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {meta.kind === 'reminder' && (
         <div className="ntf-field">

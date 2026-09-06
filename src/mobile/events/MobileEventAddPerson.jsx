@@ -1,7 +1,7 @@
 import React from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Icon } from '../../layout';
-import { searchEventStudents, addEventParticipant, getEventById, getEventParticipants } from '../../api';
+import { searchEventStudents, addEventParticipant, updateEventParticipant, getEventById, getEventParticipants } from '../../api';
 import { queryKeys } from '../../hooks/queryKeys';
 import { COVERAGE_PRESET_BY_ROLE, FeeCoverageList, FeeCoverageTotals } from './feeCoverage';
 
@@ -245,6 +245,19 @@ export function MobileEventAddPerson({ eventId, onClose, onAdded, presetGuestOf 
     }
   }
 
+  async function linkAsGuest(existingParticipantId) {
+    setSubmitting(true);
+    setError('');
+    try {
+      await updateEventParticipant(existingParticipantId, { guestOfParticipantId: presetGuestOf.participantId });
+      await refreshAndClose();
+    } catch (err) {
+      setError(err?.message || 'Misafir olarak bağlanamadı.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   async function submitNew(details) {
     if (!newName.trim()) return setError('Ad soyad zorunlu.');
     setSubmitting(true);
@@ -362,18 +375,45 @@ export function MobileEventAddPerson({ eventId, onClose, onAdded, presetGuestOf 
               <span className="evx-group-line" />
             </div>
             <ul className="evx-group-list">
-              {(searchResults.data ?? []).map((r) => (
-                <li key={r.id}>
-                  {r.already_in_event || alreadyAdded.has(r.id) ? (
-                    <div className="evx-row is-muted">
-                      <span className="evx-avatar">{initialsOf(r.full_name)}</span>
-                      <span className="evx-row-body">
-                        <span className="evx-row-name" style={{ color: 'var(--ink-3)' }}>{r.full_name}</span>
-                        <span className="evx-row-sub">{r.phone || ''}</span>
-                      </span>
-                      <span className="evx-badge tone-neutral">Zaten listede</span>
-                    </div>
-                  ) : (
+              {(searchResults.data ?? []).map((r) => {
+                const existingParticipant = participants.find((p) => p.student_id === r.id);
+                // Zaten etkinlikte olan biri, misafir ekleme akışındaysak ve
+                // kendisi ne birinin misafiri ne de birinin ev sahibiyse (kendi
+                // misafiri varsa misafir olamaz) mevcut kaydına bağlanabilir —
+                // ikinci bir öğrenci/katılımcı oluşturulmaz.
+                const canLinkAsGuest = !!presetGuestOf
+                  && !!existingParticipant
+                  && String(existingParticipant.id) !== String(presetGuestOf.participantId)
+                  && existingParticipant.guest_of_participant_id == null
+                  && !participants.some((p) => String(p.guest_of_participant_id) === String(existingParticipant.id));
+                if (r.already_in_event || alreadyAdded.has(r.id)) {
+                  return (
+                    <li key={r.id}>
+                      {canLinkAsGuest ? (
+                        <button type="button" className="evx-row" disabled={submitting}
+                          onClick={() => linkAsGuest(existingParticipant.id)}>
+                          <span className="evx-avatar">{initialsOf(r.full_name)}</span>
+                          <span className="evx-row-body">
+                            <span className="evx-row-name">{r.full_name}</span>
+                            <span className="evx-row-sub">Zaten listede — {presetGuestOf.label} misafiri olarak bağla</span>
+                          </span>
+                          <span className="evx-row-trail">Bağla ›</span>
+                        </button>
+                      ) : (
+                        <div className="evx-row is-muted">
+                          <span className="evx-avatar">{initialsOf(r.full_name)}</span>
+                          <span className="evx-row-body">
+                            <span className="evx-row-name" style={{ color: 'var(--ink-3)' }}>{r.full_name}</span>
+                            <span className="evx-row-sub">{r.phone || ''}</span>
+                          </span>
+                          <span className="evx-badge tone-neutral">Zaten listede</span>
+                        </div>
+                      )}
+                    </li>
+                  );
+                }
+                return (
+                  <li key={r.id}>
                     <button type="button" className="evx-row" onClick={() => { setSelectedStudent(r); setStep('existing'); }}>
                       <span className="evx-avatar">{initialsOf(r.full_name)}</span>
                       <span className="evx-row-body">
@@ -382,10 +422,11 @@ export function MobileEventAddPerson({ eventId, onClose, onAdded, presetGuestOf 
                       </span>
                       <span className="evx-row-trail">Ekle ›</span>
                     </button>
-                  )}
-                </li>
-              ))}
+                  </li>
+                );
+              })}
             </ul>
+            {error && <div className="evx-hint" style={{ color: 'oklch(0.5 0.18 30)' }} role="alert">{error}</div>}
           </div>
         )}
 

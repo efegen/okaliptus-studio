@@ -44,29 +44,41 @@ function meetingOf(vehicle) {
   return vehicle.meeting_place || '';
 }
 
+function fmtHHmm(iso) {
+  try {
+    return new Intl.DateTimeFormat('tr-TR', { timeZone: 'Europe/Istanbul', hour: '2-digit', minute: '2-digit' })
+      .format(new Date(iso));
+  } catch {
+    return '';
+  }
+}
+
+function typeLabelOf(vehicle) {
+  return vehicle.vehicle_type === 'rental_service' ? 'Servis' : '';
+}
+
 function seatsOf(vehicle) {
   const total = Number(vehicle.passenger_seats) || 0;
   const taken = Number(vehicle.seats_taken) || 0;
   return { total, taken, available: Math.max(0, total - taken) };
 }
 
+/* Koltuk pimleri kapasiteyi tek bakışta gösterir; sayısal karşılığı zaten
+ * kartın rozetinde ("2 boş") yazdığı için burada metin tekrarlanmaz. */
 function SeatDots({ driverName, total, taken, available }) {
   return (
-    <div className="evx-transport-seat-map">
-      <div
-        className="evx-transport-seat-dots"
-        role="img"
-        aria-label={`${driverName} aracında ${taken} dolu, ${available} boş yolcu koltuğu`}
-      >
-        {Array.from({ length: total }, (_, index) => (
-          <span
-            key={index}
-            className={`evx-transport-seat-dot${index < taken ? ' is-filled' : ''}`}
-            aria-hidden="true"
-          />
-        ))}
-      </div>
-      <span>{taken} yolcu · {available} boş</span>
+    <div
+      className="evx-tp-seats"
+      role="img"
+      aria-label={`${driverName} aracında ${taken} dolu, ${available} boş yolcu koltuğu`}
+    >
+      {Array.from({ length: total }, (_, index) => (
+        <span
+          key={index}
+          className={`evx-tp-seat${index < taken ? ' is-filled' : ''}`}
+          aria-hidden="true"
+        />
+      ))}
     </div>
   );
 }
@@ -74,10 +86,11 @@ function SeatDots({ driverName, total, taken, available }) {
 function VehiclePicker({ participant, participants, vehicles, assigning, error, onAssign, onSetMode, onClose, onAddVehicle }) {
   const portalContainer = React.useMemo(getMobilePaletteRoot, []);
   const currentVehicleId = participant?.vehicle_id == null ? null : String(participant.vehicle_id);
+  // Mevcut araç en üstte; ardından boş koltuğu çok olandan aza, dolular en sonda.
   const orderedVehicles = React.useMemo(() => [...vehicles].sort((a, b) => {
     if (String(a.id) === currentVehicleId) return -1;
     if (String(b.id) === currentVehicleId) return 1;
-    return Number(seatsOf(a).available === 0) - Number(seatsOf(b).available === 0);
+    return seatsOf(b).available - seatsOf(a).available;
   }), [currentVehicleId, vehicles]);
 
   return (
@@ -101,19 +114,31 @@ function VehiclePicker({ participant, participants, vehicles, assigning, error, 
           </header>
 
           <div className="evx-transport-sheet-body">
-            <div className="evx-choice" style={{ marginBottom: 12 }}>
+            <span className="evx-tp-sheet-label">Ulaşım durumu</span>
+            <div className="evx-choice evx-tp-modes">
               {[
                 ['needs_vehicle', 'Araç bekliyor'],
                 ['self_arranged', 'Kendi geliyor'],
                 ['unspecified', 'Belirsiz'],
               ].map(([mode, label]) => (
-                <button key={mode} type="button" className={`evx-choice-btn${participant?.transport_mode === mode && !participant?.vehicle_id ? ' is-on' : ''}`}
-                  disabled={assigning} onClick={() => onSetMode(mode)}>{label}</button>
+                <button
+                  key={mode}
+                  type="button"
+                  className={`evx-choice-btn${participant?.transport_mode === mode && !participant?.vehicle_id ? ' is-on' : ''}`}
+                  disabled={assigning}
+                  onClick={() => onSetMode(mode)}
+                >
+                  {label}
+                </button>
               ))}
             </div>
+            {currentVehicleId && (
+              <p className="evx-tp-sheet-hint">Durum seçmek kişiyi mevcut araçtan çıkarır.</p>
+            )}
+
             {vehicles.length === 0 ? (
               <div className="evx-transport-sheet-empty">
-                <span className="evx-transport-sheet-empty-icon"><Icon.Truck width="22" height="22" /></span>
+                <span className="evx-transport-sheet-empty-icon"><Icon.Car width="22" height="22" /></span>
                 <strong>Önce bir araç ekleyin</strong>
                 <span>Şoför ve koltuk bilgisi eklendiğinde kişiyi yerleştirebilirsiniz.</span>
                 <button
@@ -125,34 +150,38 @@ function VehiclePicker({ participant, participants, vehicles, assigning, error, 
                 </button>
               </div>
             ) : (
-              <div className="evx-transport-options">
-                {orderedVehicles.map((vehicle) => {
-                  const driver = driverOf(vehicle, participants);
-                  const meeting = meetingOf(vehicle);
-                  const { total, taken, available } = seatsOf(vehicle);
-                  const current = currentVehicleId === String(vehicle.id);
-                  const full = available === 0;
-                  return (
-                    <button
-                      key={vehicle.id}
-                      type="button"
-                      className={`evx-transport-option${current ? ' is-current' : ''}`}
-                      disabled={assigning || current || full}
-                      onClick={() => onAssign(vehicle.id)}
-                    >
-                      <span className="evx-transport-option-icon"><Icon.Truck width="18" height="18" /></span>
-                      <span className="evx-transport-option-copy">
-                        <strong>{driver}</strong>
-                        <span>{meeting || `${total} yolcu koltuğu`}</span>
-                      </span>
-                      <span className={`evx-transport-seat-badge${full ? ' is-full' : ''}${current ? ' is-current' : ''}`}>
-                        {current ? 'Mevcut' : full ? 'Dolu' : `${available} boş`}
-                      </span>
-                      <span className="evx-transport-option-capacity">{taken}/{total}</span>
-                    </button>
-                  );
-                })}
-              </div>
+              <>
+                <span className="evx-tp-sheet-label">Araçlar</span>
+                <div className="evx-transport-options">
+                  {orderedVehicles.map((vehicle) => {
+                    const driver = driverOf(vehicle, participants);
+                    const { total, taken, available } = seatsOf(vehicle);
+                    const current = currentVehicleId === String(vehicle.id);
+                    const full = available === 0;
+                    const meta = [meetingOf(vehicle), typeLabelOf(vehicle), `${taken}/${total} dolu`]
+                      .filter(Boolean)
+                      .join(' · ');
+                    return (
+                      <button
+                        key={vehicle.id}
+                        type="button"
+                        className={`evx-transport-option${current ? ' is-current' : ''}`}
+                        disabled={assigning || current || full}
+                        onClick={() => onAssign(vehicle.id)}
+                      >
+                        <span className="evx-transport-option-icon"><Icon.Car width="18" height="18" /></span>
+                        <span className="evx-transport-option-copy">
+                          <strong>{driver}</strong>
+                          <span>{meta}</span>
+                        </span>
+                        <span className={`evx-transport-seat-badge${full ? ' is-full' : ''}${current ? ' is-current' : ''}`}>
+                          {current ? 'Mevcut' : full ? 'Dolu' : `${available} boş`}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
             )}
             {error && <p className="evx-transport-error" role="alert">{error}</p>}
           </div>
@@ -205,6 +234,9 @@ export function MobileEventTransport({ eventId, onBack, onOpenAddVehicle }) {
   const waiting = participants.filter((participant) => participant.transport_mode === 'needs_vehicle' && !participant.vehicle_id && !isRegisteredDriver(participant));
   const selfArranged = participants.filter((participant) => participant.transport_mode === 'self_arranged' && !isRegisteredDriver(participant));
   const unspecified = participants.filter((participant) => participant.transport_mode === 'unspecified' && !isRegisteredDriver(participant));
+  const outsideCount = selfArranged.length + unspecified.length;
+  const seatTotal = vehicles.reduce((sum, vehicle) => sum + seatsOf(vehicle).total, 0);
+  const seatTaken = vehicles.reduce((sum, vehicle) => sum + seatsOf(vehicle).taken, 0);
   const loading = eventQuery.isLoading || participantsQuery.isLoading || vehiclesQuery.isLoading;
   const failed = eventQuery.isError || participantsQuery.isError || vehiclesQuery.isError;
 
@@ -347,7 +379,15 @@ export function MobileEventTransport({ eventId, onBack, onOpenAddVehicle }) {
     }
   }
 
-  function startVehicleEdit(vehicle) {
+  // Düzenle/Sil kalıcı bir buton satırı yerine "⋯" ile açılan tek panelde:
+  // araç kartı okuma modunda üç kat daha kısa kalıyor.
+  function toggleVehicleEdit(vehicle) {
+    if (editingVehicleId === vehicle.id) {
+      setEditingVehicleId(null);
+      setVehicleDraft(null);
+      setVehicleError('');
+      return;
+    }
     setVehicleError('');
     setEditingVehicleId(vehicle.id);
     setVehicleDraft({
@@ -387,6 +427,11 @@ export function MobileEventTransport({ eventId, onBack, onOpenAddVehicle }) {
   }
 
   async function removeVehicle(vehicle) {
+    const { taken } = seatsOf(vehicle);
+    if (taken > 0) {
+      setVehicleError('Önce yolcuları araçtan çıkarın.');
+      return;
+    }
     if (!window.confirm(`${driverOf(vehicle, participants)} aracı silinsin mi?`)) return;
     setVehicleBusy(true);
     setVehicleError('');
@@ -428,7 +473,7 @@ export function MobileEventTransport({ eventId, onBack, onOpenAddVehicle }) {
         </header>
         <div className="evx-body">
           <div className="evx-empty" role="alert">
-            <Icon.Truck width="28" height="28" />
+            <Icon.Car width="28" height="28" />
             <span className="evx-empty-title">Ulaşım planı alınamadı</span>
             <span className="evx-empty-sub">Bağlantınızı kontrol edip yeniden deneyin.</span>
             <button type="button" className="evx-btn-secondary" onClick={retryQueries}>Yeniden dene</button>
@@ -452,166 +497,200 @@ export function MobileEventTransport({ eventId, onBack, onOpenAddVehicle }) {
       </header>
 
       <div className="evx-body evx-transport-body">
+        {/* Yapışkan sayaç şeridi: uzun araç listesinde bile "kaç kişi hâlâ
+            yerleşmedi" bilgisi ekranın üstünde kalır. */}
+        <div className="evx-tp-summary" role="group" aria-label="Ulaşım özeti">
+          <span className="evx-tp-stat">
+            <strong>{vehicles.length}</strong>
+            <small>araç</small>
+          </span>
+          <span className="evx-tp-stat">
+            <strong>{seatTaken}/{seatTotal}</strong>
+            <small>koltuk</small>
+          </span>
+          <span className={`evx-tp-stat${waiting.length > 0 ? ' is-warn' : ''}`}>
+            <strong>{waiting.length}</strong>
+            <small>bekliyor</small>
+          </span>
+          {outsideCount > 0 && (
+            <span className="evx-tp-stat">
+              <strong>{outsideCount}</strong>
+              <small>araç dışı</small>
+            </span>
+          )}
+        </div>
+
         {waiting.length > 0 && (
-          <section className="evx-transport-section" aria-labelledby="transport-waiting-title">
-            <div className="evx-transport-section-head">
-              <div>
-                <h2 id="transport-waiting-title">Araç bekleyenler</h2>
-                <p>Kişiyi seçip uygun araca yerleştirin.</p>
-              </div>
+          <section className="evx-tp-section" aria-labelledby="transport-waiting-title">
+            <div className="evx-tp-head">
+              <h2 id="transport-waiting-title">Araç bekleyenler</h2>
               <span className="evx-pill tone-amber">{waiting.length} kişi</span>
             </div>
-            <div className="evx-transport-people">
+            {/* İki sütunlu kutucuk ızgarası: tam genişlik satırların yarısı
+                kadar yer kaplar, kimse ekran dışında kalmaz. */}
+            <div className="evx-tp-waiting-grid">
               {waiting.map((participant) => (
                 <button
                   key={participant.id}
                   type="button"
-                  className="evx-transport-person"
+                  className="evx-tp-waiting-tile"
                   onClick={() => openVehiclePicker(participant.id)}
                 >
-                  <span className="evx-transport-avatar tone-amber">{initialsOf(nameOf(participant))}</span>
-                  <span className="evx-transport-person-copy">
+                  <span className="evx-tp-avatar tone-amber">{initialsOf(nameOf(participant))}</span>
+                  <span className="evx-tp-waiting-copy">
                     <strong>{nameOf(participant)}</strong>
-                    <span>{participant.guest_of_name ? `${participant.guest_of_name} misafiri` : 'Henüz araca atanmadı'}</span>
+                    <span>Araç seç</span>
                   </span>
-                  <span className="evx-transport-person-action">Araç seç</span>
-                  <Icon.ChevronR width="17" height="17" aria-hidden="true" />
                 </button>
               ))}
             </div>
           </section>
         )}
 
-        <section className="evx-transport-section" aria-labelledby="transport-vehicles-title">
-          <div className="evx-transport-section-head">
-            <div>
-              <h2 id="transport-vehicles-title">Araçlar</h2>
-              <p>Şoför, buluşma ve araçtakiler.</p>
-            </div>
+        <section className="evx-tp-section" aria-labelledby="transport-vehicles-title">
+          <div className="evx-tp-head">
+            <h2 id="transport-vehicles-title">Araçlar</h2>
             <span className="evx-pill tone-neutral">{vehicles.length} araç</span>
           </div>
 
           {vehicles.length === 0 ? (
-            <div className="evx-transport-no-vehicle">
-              <span className="evx-transport-no-vehicle-icon"><Icon.Truck width="24" height="24" /></span>
-              <span>
+            <div className="evx-tp-no-vehicle">
+              <span className="evx-tp-no-vehicle-icon"><Icon.Car width="22" height="22" /></span>
+              <span className="evx-tp-no-vehicle-copy">
                 <strong>Henüz araç eklenmedi</strong>
                 <small>{waiting.length > 0 ? `${waiting.length} kişi araç bekliyor.` : 'İlk aracı ekleyerek planı başlatın.'}</small>
               </span>
-              <button type="button" className="evx-btn-secondary" onClick={onOpenAddVehicle}>Araç ekle</button>
+              <button type="button" className="evx-tp-no-vehicle-btn" onClick={onOpenAddVehicle}>Araç ekle</button>
             </div>
           ) : (
-            <div className="evx-transport-vehicle-list">
+            <div className="evx-tp-vehicles">
               {vehicles.map((vehicle) => {
                 const riders = participants.filter((participant) => String(participant.vehicle_id) === String(vehicle.id));
                 const { total, taken, available } = seatsOf(vehicle);
                 const meeting = meetingOf(vehicle);
+                const meetingTime = vehicle.meeting_time ? fmtHHmm(vehicle.meeting_time) : '';
+                const typeLabel = typeLabelOf(vehicle);
                 const driverName = driverOf(vehicle, participants);
+                const editing = editingVehicleId === vehicle.id;
                 const vehicleTitleId = `event-vehicle-${vehicle.id}-title`;
                 return (
-                  <article className="evx-transport-vehicle" key={vehicle.id} aria-labelledby={vehicleTitleId}>
-                    <header className="evx-transport-vehicle-head">
-                      <span className="evx-vehicle-icon"><Icon.Truck width="18" height="18" /></span>
-                      <span className="evx-transport-vehicle-copy">
+                  <article className="evx-tp-vehicle" key={vehicle.id} aria-labelledby={vehicleTitleId}>
+                    <div className="evx-tp-vehicle-head">
+                      <span className="evx-tp-vehicle-icon"><Icon.Car width="17" height="17" /></span>
+                      <span className="evx-tp-vehicle-copy">
                         <strong id={vehicleTitleId}>{driverName}</strong>
-                        <span>{total} yolcu koltuğu</span>
+                        <span className="evx-tp-vehicle-meta">
+                          {meeting && <span>{meeting}</span>}
+                          {meetingTime && <span>{meetingTime}</span>}
+                          {typeLabel && <span>{typeLabel}</span>}
+                          {!meeting && !meetingTime && !typeLabel && <span>{total} yolcu koltuğu</span>}
+                        </span>
                       </span>
                       <span className={`evx-transport-seat-badge${available === 0 ? ' is-full' : ''}`}>
                         {available === 0 ? 'Dolu' : `${available} boş`}
                       </span>
-                    </header>
-
-                    <div className="evx-footer-row" style={{ padding: '8px 0 0' }}>
-                      <button type="button" className="evx-btn-secondary" disabled={vehicleBusy}
-                        onClick={() => startVehicleEdit(vehicle)}>Düzenle</button>
-                      <button type="button" className="evx-btn-secondary evx-btn-danger"
-                        disabled={vehicleBusy || taken > 0} title={taken > 0 ? 'Önce yolcuları araçtan çıkarın' : undefined}
-                        onClick={() => removeVehicle(vehicle)}>Sil</button>
+                      <button
+                        type="button"
+                        className={`evx-tp-vehicle-more${editing ? ' is-on' : ''}`}
+                        aria-label={`${driverName} aracını düzenle`}
+                        aria-expanded={editing}
+                        disabled={vehicleBusy && !editing}
+                        onClick={() => toggleVehicleEdit(vehicle)}
+                      >
+                        <Icon.More width="18" height="18" />
+                      </button>
                     </div>
 
-                    {editingVehicleId === vehicle.id && vehicleDraft && (
-                      <div className="evx-info-expand" style={{ marginTop: 8 }}>
+                    <SeatDots driverName={driverName} total={total} taken={taken} available={available} />
+
+                    {/* Şoför + yolcular tek bir sarmalanan çip şeridinde: tam
+                        genişlik satır listesine göre çok daha az dikey alan. */}
+                    <div className="evx-tp-riders">
+                      <span className="evx-tp-chip is-driver">
+                        <span className="evx-tp-avatar is-driver">{initialsOf(driverName)}</span>
+                        <span className="evx-tp-chip-name">{driverName}</span>
+                        <span className="evx-tp-driver-tag">Şoför</span>
+                      </span>
+                      {riders.map((rider) => (
+                        <button
+                          key={rider.id}
+                          type="button"
+                          className="evx-tp-chip"
+                          onClick={() => openVehiclePicker(rider.id)}
+                          aria-label={`${nameOf(rider)} için aracı değiştir`}
+                        >
+                          <span className="evx-tp-avatar">{initialsOf(nameOf(rider))}</span>
+                          <span className="evx-tp-chip-name">{nameOf(rider)}</span>
+                        </button>
+                      ))}
+                      {available > 0 && (
+                        <button
+                          type="button"
+                          className={`evx-tp-chip is-add${riders.length === 0 ? ' is-lead' : ''}`}
+                          onClick={() => openPassengerPicker(vehicle.id)}
+                          aria-label={`Yolcu ekle · ${driverName} aracı`}
+                        >
+                          <Icon.Plus width="15" height="15" aria-hidden="true" />
+                          <span className="evx-tp-chip-name">Yolcu ekle</span>
+                          <span className="evx-tp-chip-hint">{available} boş</span>
+                        </button>
+                      )}
+                    </div>
+
+                    {vehicle.note && !editing && (
+                      <p className="evx-tp-vehicle-note">{vehicle.note}</p>
+                    )}
+
+                    {editing && vehicleDraft && (
+                      <div className="evx-tp-edit">
                         {!vehicle.driver_student_id && (
-                          <label className="evx-field"><span className="evx-field-label">ŞOFÖR</span>
-                            <input value={vehicleDraft.driverName} onChange={(e) => setVehicleDraft((d) => ({ ...d, driverName: e.target.value }))} /></label>
+                          <label className="evx-field">
+                            <span className="evx-field-label">ŞOFÖR</span>
+                            <input value={vehicleDraft.driverName} onChange={(e) => setVehicleDraft((d) => ({ ...d, driverName: e.target.value }))} />
+                          </label>
                         )}
                         <div className="evx-field-grid">
-                          <label className="evx-field"><span className="evx-field-label">TELEFON</span>
-                            <input value={vehicleDraft.driverPhone} onChange={(e) => setVehicleDraft((d) => ({ ...d, driverPhone: e.target.value }))} /></label>
-                          <label className="evx-field"><span className="evx-field-label">YOLCU KOLTUĞU</span>
-                            <input inputMode="numeric" value={vehicleDraft.passengerSeats}
-                              onChange={(e) => setVehicleDraft((d) => ({ ...d, passengerSeats: e.target.value.replace(/[^0-9]/g, '') }))} /></label>
+                          <label className="evx-field">
+                            <span className="evx-field-label">TELEFON</span>
+                            <input inputMode="tel" value={vehicleDraft.driverPhone} onChange={(e) => setVehicleDraft((d) => ({ ...d, driverPhone: e.target.value }))} />
+                          </label>
+                          <label className="evx-field">
+                            <span className="evx-field-label">YOLCU KOLTUĞU</span>
+                            <input
+                              inputMode="numeric"
+                              value={vehicleDraft.passengerSeats}
+                              onChange={(e) => setVehicleDraft((d) => ({ ...d, passengerSeats: e.target.value.replace(/[^0-9]/g, '') }))}
+                            />
+                          </label>
                         </div>
-                        <label className="evx-field"><span className="evx-field-label">BULUŞMA YERİ</span>
-                          <input value={vehicleDraft.meetingPlace} onChange={(e) => setVehicleDraft((d) => ({ ...d, meetingPlace: e.target.value }))} /></label>
-                        <label className="evx-field"><span className="evx-field-label">NOT</span>
-                          <input value={vehicleDraft.note} onChange={(e) => setVehicleDraft((d) => ({ ...d, note: e.target.value }))} /></label>
+                        <label className="evx-field">
+                          <span className="evx-field-label">BULUŞMA YERİ</span>
+                          <input value={vehicleDraft.meetingPlace} onChange={(e) => setVehicleDraft((d) => ({ ...d, meetingPlace: e.target.value }))} />
+                        </label>
+                        <label className="evx-field">
+                          <span className="evx-field-label">NOT</span>
+                          <input value={vehicleDraft.note} onChange={(e) => setVehicleDraft((d) => ({ ...d, note: e.target.value }))} />
+                        </label>
                         {vehicleError && <p className="evx-transport-error" role="alert">{vehicleError}</p>}
-                        <div className="evx-footer-row" style={{ padding: 0 }}>
-                          <button type="button" className="evx-btn-secondary" disabled={vehicleBusy}
-                            onClick={() => { setEditingVehicleId(null); setVehicleDraft(null); setVehicleError(''); }}>Vazgeç</button>
-                          <button type="button" className="evx-btn-primary" disabled={vehicleBusy} onClick={() => saveVehicle(vehicle)}>
+                        <div className="evx-tp-edit-actions">
+                          <button
+                            type="button"
+                            className="evx-tp-edit-danger"
+                            disabled={vehicleBusy || taken > 0}
+                            title={taken > 0 ? 'Önce yolcuları araçtan çıkarın' : undefined}
+                            onClick={() => removeVehicle(vehicle)}
+                          >
+                            <Icon.Trash width="15" height="15" /> Sil
+                          </button>
+                          <button type="button" className="evx-tp-edit-cancel" disabled={vehicleBusy} onClick={() => toggleVehicleEdit(vehicle)}>
+                            Vazgeç
+                          </button>
+                          <button type="button" className="evx-tp-edit-save" disabled={vehicleBusy} onClick={() => saveVehicle(vehicle)}>
                             {vehicleBusy ? 'Kaydediliyor…' : 'Kaydet'}
                           </button>
                         </div>
                       </div>
                     )}
-
-                    {meeting && (
-                      <div className="evx-transport-meeting">
-                        <span className="evx-transport-meeting-label">Buluşma</span>
-                        <strong>{meeting}</strong>
-                      </div>
-                    )}
-
-                    <SeatDots driverName={driverName} total={total} taken={taken} available={available} />
-
-                    <div className="evx-transport-riders">
-                      <span className="evx-transport-riders-label">Araçtakiler</span>
-                      <div className="evx-transport-rider-list">
-                        <div className="evx-transport-driver">
-                          <span className="evx-transport-avatar is-driver">{initialsOf(driverName)}</span>
-                          <span>{driverName}</span>
-                          <span className="evx-transport-driver-badge">Şoför</span>
-                        </div>
-                        {riders.map((rider) => (
-                          <button
-                            key={rider.id}
-                            type="button"
-                            className="evx-transport-rider"
-                            onClick={() => openVehiclePicker(rider.id)}
-                            aria-label={`${nameOf(rider)} için aracı değiştir`}
-                          >
-                            <span className="evx-transport-avatar">{initialsOf(nameOf(rider))}</span>
-                            <span>{nameOf(rider)}</span>
-                            <span className="evx-transport-rider-action">Değiştir</span>
-                          </button>
-                        ))}
-                        {riders.length > 0 && available > 0 && (
-                          <button
-                            type="button"
-                            className="evx-transport-add-rider"
-                            onClick={() => openPassengerPicker(vehicle.id)}
-                          >
-                            <Icon.Plus width="16" height="16" /> Yolcu ekle <span>· {available} boş koltuk</span>
-                          </button>
-                        )}
-                      </div>
-                      {riders.length === 0 && available > 0 && (
-                        <button
-                          type="button"
-                          className="evx-add-passenger-cta is-empty"
-                          onClick={() => openPassengerPicker(vehicle.id)}
-                        >
-                          <span className="evx-add-passenger-cta-icon"><Icon.Plus width="18" height="18" /></span>
-                          <span>
-                            <strong>Yolcu ekle</strong>
-                            <small>Öğrencilerden seçin veya listede olmayan birini ekleyin.</small>
-                          </span>
-                          <Icon.ChevronR width="17" height="17" aria-hidden="true" />
-                        </button>
-                      )}
-                    </div>
                   </article>
                 );
               })}
@@ -619,35 +698,47 @@ export function MobileEventTransport({ eventId, onBack, onOpenAddVehicle }) {
           )}
         </section>
 
-        {selfArranged.length > 0 && (
-          <section className="evx-transport-section" aria-labelledby="transport-self-title">
-            <div className="evx-transport-section-head is-compact">
-              <div>
-                <h2 id="transport-self-title">Kendi gelenler</h2>
-                <p>Araç dağılımına dahil değiller.</p>
-              </div>
-              <span className="evx-pill tone-neutral">{selfArranged.length} kişi</span>
+        {outsideCount > 0 && (
+          <section className="evx-tp-section" aria-labelledby="transport-outside-title">
+            <div className="evx-tp-head">
+              <h2 id="transport-outside-title">Araç dışındakiler</h2>
+              <span className="evx-pill tone-neutral">{outsideCount} kişi</span>
             </div>
-            <div className="evx-transport-name-cloud">
-              {selfArranged.map((participant) => (
-                <button key={participant.id} type="button" onClick={() => openVehiclePicker(participant.id)}
-                  aria-label={`${nameOf(participant)} ulaşım durumunu değiştir`}>{nameOf(participant)}</button>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {unspecified.length > 0 && (
-          <section className="evx-transport-section evx-transport-unresolved" aria-labelledby="transport-unspecified-title">
-            <div className="evx-transport-section-head is-compact">
-              <strong id="transport-unspecified-title">Ulaşımı seçilmemiş</strong>
-              <span className="evx-pill tone-neutral">{unspecified.length} kişi</span>
-            </div>
-            <div className="evx-transport-name-cloud">
-              {unspecified.map((participant) => (
-                <button key={participant.id} type="button" onClick={() => openVehiclePicker(participant.id)}
-                  aria-label={`${nameOf(participant)} ulaşım durumunu belirle`}>{nameOf(participant)}</button>
-              ))}
+            <div className="evx-tp-outside">
+              {selfArranged.length > 0 && (
+                <div className="evx-tp-outside-group">
+                  <span className="evx-tp-outside-label">Kendi geliyor · {selfArranged.length}</span>
+                  <div className="evx-tp-name-cloud">
+                    {selfArranged.map((participant) => (
+                      <button
+                        key={participant.id}
+                        type="button"
+                        onClick={() => openVehiclePicker(participant.id)}
+                        aria-label={`${nameOf(participant)} ulaşım durumunu değiştir`}
+                      >
+                        {nameOf(participant)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {unspecified.length > 0 && (
+                <div className="evx-tp-outside-group is-unset">
+                  <span className="evx-tp-outside-label">Belirsiz · {unspecified.length}</span>
+                  <div className="evx-tp-name-cloud">
+                    {unspecified.map((participant) => (
+                      <button
+                        key={participant.id}
+                        type="button"
+                        onClick={() => openVehiclePicker(participant.id)}
+                        aria-label={`${nameOf(participant)} ulaşım durumunu belirle`}
+                      >
+                        {nameOf(participant)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </section>
         )}

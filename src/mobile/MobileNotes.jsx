@@ -4,7 +4,12 @@ import { Drawer } from 'vaul';
 import { Icon } from '../layout';
 import {
   getNotes,
+  getNoteCategories,
+  createNoteCategory,
+  updateNoteCategory,
+  deleteNoteCategory,
   getStudents,
+  getNoteReminderRecipients,
   addNote,
   updateNote,
   deleteNote,
@@ -26,7 +31,7 @@ import { compressToBoundedWebp } from '../imageCompress';
 // (bkz. notes.service.ts lockOwnedNote).
 //
 // Bilinçli tasarım kararı: ekrana girince direkt bir yazı kutusu ÇIKMAZ —
-// önce not listesi görünür, alttaki "Not ekle" butonu ayrı bir "Yeni not"
+// önce not listesi görünür, sağ altta yüzen "Not yaz" butonu ayrı bir "Yeni not"
 // görünümüne yönlendirir (bkz. MobileEventAddPerson'daki adım tabanlı
 // gezinme örüntüsü). Yanıt yazma ise bağlamdan kopmasın diye ayrı bir ekrana
 // gitmez — yanıtlanan notun hemen altında satır içi açılır.
@@ -39,13 +44,20 @@ function formatNoteTime(iso) {
   const date = new Date(iso);
   const time = new Intl.DateTimeFormat('tr-TR', { timeZone: 'Europe/Istanbul', hour: '2-digit', minute: '2-digit' }).format(date);
   const sameDay = new Date().toDateString() === date.toDateString();
-  if (sameDay) return `Bugün · ${time}`;
+  if (sameDay) return `Bugün ${time}`;
   const dateStr = new Intl.DateTimeFormat('tr-TR', { timeZone: 'Europe/Istanbul', day: 'numeric', month: 'long' }).format(date);
   return `${dateStr} · ${time}`;
 }
 
 function escapeRegExp(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function noteMatchesQuery(note, normalizedQuery) {
+  if ((note.body || '').toLowerCase().includes(normalizedQuery)) return true;
+  if ((note.author_name || '').toLowerCase().includes(normalizedQuery)) return true;
+  if ((note.category?.name || '').toLowerCase().includes(normalizedQuery)) return true;
+  return (note.mentions || []).some((m) => m.name.toLowerCase().includes(normalizedQuery));
 }
 
 // mentions [{studentId, name}] içindeki "@Ad Soyad" dizilerini gövde metninde
@@ -74,6 +86,12 @@ function renderBodyWithMentions(body, mentions, onOpenStudent) {
   ));
 }
 
+const NOTE_SMART_FILTERS = [
+  { id: 'all', label: 'Tümü' },
+  { id: 'photo', label: 'Fotoğraflı' },
+  { id: 'repliedToMe', label: 'Bana yanıt' },
+];
+
 const MENTION_QUERY_RE = /(^|\s)@([^\s@]{0,40})$/;
 const NOTE_BODY_MAX_LEN = 1000;
 const NOTE_REACTIONS = [
@@ -96,19 +114,18 @@ function toTimeInputValue(date) {
   return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 }
 
+// Hızlı zaman preset'leri her zaman öğlen 12:00'a sabitlenir — kullanıcı bir
+// hatırlatma için "ne zaman" derken tam saat önemli değildir, gün önemlidir;
+// öğlen mesai saatleri içinde, uykuyu bölmeyecek nötr bir andır.
 function reminderPreset(kind, now = new Date()) {
   const result = new Date(now);
-  result.setSeconds(0, 0);
-  if (kind === 'hour') {
-    result.setTime(result.getTime() + 60 * 60 * 1000);
-    result.setMinutes(Math.ceil(result.getMinutes() / 5) * 5);
-  } else if (kind === 'tomorrow') {
-    result.setDate(result.getDate() + 1);
-    result.setHours(9, 0, 0, 0);
+  result.setHours(12, 0, 0, 0);
+  if (kind === 'week') {
+    result.setDate(result.getDate() + 7);
+  } else if (kind === 'month') {
+    result.setMonth(result.getMonth() + 1);
   } else {
-    const daysUntilMonday = ((8 - result.getDay()) % 7) || 7;
-    result.setDate(result.getDate() + daysUntilMonday);
-    result.setHours(9, 0, 0, 0);
+    result.setDate(result.getDate() + 1);
   }
   return { date: toDateInputValue(result), time: toTimeInputValue(result) };
 }
@@ -175,9 +192,9 @@ function NoteReminderSheet({ open, onOpenChange, users, value, onSave, onRemove 
   }
 
   const presets = [
-    { id: 'hour', label: '1 saat sonra' },
-    { id: 'tomorrow', label: 'Yarın 09:00' },
-    { id: 'monday', label: 'Pazartesi 09:00' },
+    { id: 'tomorrow', label: 'Yarın' },
+    { id: 'week', label: '1 hafta sonra' },
+    { id: 'month', label: '1 ay sonra' },
   ];
 
   return (
@@ -544,7 +561,7 @@ function MentionComposer({
     const mentionedStudentIds = [...new Set(
       [...root.querySelectorAll('[data-student-id]')].map((el) => el.dataset.studentId).filter(Boolean)
     )];
-    onSubmit(trimmedBody, mentionedStudentIds, photoBlob);
+    onSubmit(trimmedBody, mentionedStudentIds, photoBlob, reminder);
   }
 
   const suggestions = suggestQuery !== null
@@ -666,7 +683,202 @@ function MentionComposer({
   );
 }
 
-function NoteCard({ note, isMine, students, isReply, onOpenStudent }) {
+// Kategori isteğe bağlı ve tek seçimlidir. Seçili chip'e yeniden
+// dokunmak bağı temizler; ayrı bir "Kategorisiz" seçeneği gerekmez.
+function NoteCategoryPicker({ categories, value, onChange, disabled = false }) {
+  if (categories.length === 0) return null;
+
+  function toggle(categoryId) {
+    const id = String(categoryId);
+    onChange(value === id ? null : id);
+  }
+
+  return (
+    <div className="evx-note-category-picker" role="group" aria-label="Not kategorileri">
+      <span className="evx-note-category-picker-label">Kategori</span>
+      <div className="evx-note-category-options">
+        {categories.map((category) => (
+          <button
+            key={category.id}
+            type="button"
+            className={`evx-filter-chip${value === String(category.id) ? ' is-on' : ''}`}
+            onClick={() => toggle(category.id)}
+            aria-pressed={value === String(category.id)}
+            disabled={disabled}
+          >
+            {category.name}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function NoteCategorySettings({ categories, loading, loadError, onBack }) {
+  const queryClient = useQueryClient();
+  const [newName, setNewName] = React.useState('');
+  const [editingId, setEditingId] = React.useState(null);
+  const [editingName, setEditingName] = React.useState('');
+  const [busyId, setBusyId] = React.useState(null);
+  const [error, setError] = React.useState('');
+
+  async function refresh() {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKeys.noteCategories() }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.notes() }),
+    ]);
+  }
+
+  async function handleCreate(event) {
+    event.preventDefault();
+    const name = newName.trim();
+    if (!name) return;
+    setBusyId('new');
+    setError('');
+    try {
+      await createNoteCategory(name);
+      setNewName('');
+      await refresh();
+    } catch (err) {
+      setError(err?.message || 'Kategori eklenemedi.');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleRename(category) {
+    const name = editingName.trim();
+    if (!name || name === category.name) {
+      setEditingId(null);
+      return;
+    }
+    setBusyId(String(category.id));
+    setError('');
+    try {
+      await updateNoteCategory(category.id, name);
+      setEditingId(null);
+      await refresh();
+    } catch (err) {
+      setError(err?.message || 'Kategori güncellenemedi.');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleDelete(category) {
+    const confirmed = window.confirm(`“${category.name}” kategorisi silinsin mi? Notlar silinmez, yalnız kategori bağı temizlenir.`);
+    if (!confirmed) return;
+    setBusyId(String(category.id));
+    setError('');
+    try {
+      await deleteNoteCategory(category.id);
+      if (String(editingId) === String(category.id)) setEditingId(null);
+      await refresh();
+    } catch (err) {
+      setError(err?.message || 'Kategori silinemedi.');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  return (
+    <div className="evx">
+      <header className="evx-header">
+        <button type="button" className="evx-header-btn" onClick={onBack} title="Geri">
+          <Icon.ChevronL width="22" height="22" />
+        </button>
+        <div className="evx-header-mid">
+          <span className="evx-header-title">Not kategorileri</span>
+          <span className="evx-header-sub">{categories.length} kategori</span>
+        </div>
+      </header>
+
+      <div className="evx-body evx-note-category-settings">
+        <form className="evx-note-category-add" onSubmit={handleCreate}>
+          <label htmlFor="new-note-category">Yeni kategori</label>
+          <div>
+            <input
+              id="new-note-category"
+              value={newName}
+              onChange={(event) => setNewName(event.target.value)}
+              maxLength={40}
+              placeholder="Örn. Operasyon"
+              disabled={busyId !== null}
+            />
+            <button type="submit" disabled={!newName.trim() || busyId !== null}>
+              <Icon.Plus width="17" height="17" /> Ekle
+            </button>
+          </div>
+        </form>
+
+        {error && <p className="evx-note-category-error" role="alert">{error}</p>}
+        {loadError && <p className="evx-note-category-error" role="alert">Not kategorileri alınamadı.</p>}
+        {loading && <p className="evx-hint">Kategoriler yükleniyor…</p>}
+        {!loading && categories.length === 0 && (
+          <div className="evx-empty evx-note-category-empty">
+            <Icon.Edit width="26" height="26" />
+            <span className="evx-empty-title">Henüz kategori yok</span>
+            <span className="evx-empty-sub">Notları gruplamak için ilk kategoriyi ekleyin.</span>
+          </div>
+        )}
+
+        {categories.length > 0 && (
+          <ul className="evx-note-category-list">
+            {categories.map((category) => {
+              const isEditing = String(editingId) === String(category.id);
+              const busy = String(busyId) === String(category.id);
+              return (
+                <li key={category.id}>
+                  {isEditing ? (
+                    <form onSubmit={(event) => { event.preventDefault(); handleRename(category); }}>
+                      <input
+                        autoFocus
+                        value={editingName}
+                        onChange={(event) => setEditingName(event.target.value)}
+                        maxLength={40}
+                        aria-label={`${category.name} kategori adı`}
+                        disabled={busy}
+                      />
+                      <button type="submit" className="is-save" disabled={!editingName.trim() || busy}>Kaydet</button>
+                      <button type="button" onClick={() => setEditingId(null)} disabled={busy}>Vazgeç</button>
+                    </form>
+                  ) : (
+                    <>
+                      <span className="evx-note-category-row-copy">
+                        <strong>{category.name}</strong>
+                        <small>{Number(category.note_count || 0)} not</small>
+                      </span>
+                      <button
+                        type="button"
+                        className="evx-note-category-icon-btn"
+                        aria-label={`${category.name} kategorisini düzenle`}
+                        onClick={() => { setEditingId(String(category.id)); setEditingName(category.name); setError(''); }}
+                        disabled={busyId !== null}
+                      >
+                        <Icon.Edit width="17" height="17" />
+                      </button>
+                      <button
+                        type="button"
+                        className="evx-note-category-icon-btn is-danger"
+                        aria-label={`${category.name} kategorisini sil`}
+                        onClick={() => handleDelete(category)}
+                        disabled={busyId !== null}
+                      >
+                        <Icon.Trash width="17" height="17" />
+                      </button>
+                    </>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function NoteCard({ note, isMine, students, categories, isReply = false, replies = [], currentUser, onOpenStudent }) {
   const queryClient = useQueryClient();
   const reactionButtonRef = React.useRef(null);
   const reactionPickerRef = React.useRef(null);
@@ -676,6 +888,7 @@ function NoteCard({ note, isMine, students, isReply, onOpenStudent }) {
   const [replying, setReplying] = React.useState(false);
   const [reactionOpen, setReactionOpen] = React.useState(false);
   const [moreOpen, setMoreOpen] = React.useState(false);
+  const [editCategoryId, setEditCategoryId] = React.useState(note.category ? String(note.category.id) : null);
   const [reactionBusy, setReactionBusy] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const [actionError, setActionError] = React.useState('');
@@ -736,7 +949,7 @@ function NoteCard({ note, isMine, students, isReply, onOpenStudent }) {
     setBusy(true);
     setActionError('');
     try {
-      await updateNote(note.id, { body, mentionedStudentIds });
+      await updateNote(note.id, { body, mentionedStudentIds, categoryId: editCategoryId });
       await refresh();
       setEditing(false);
     } catch (err) {
@@ -746,11 +959,28 @@ function NoteCard({ note, isMine, students, isReply, onOpenStudent }) {
     }
   }
 
-  async function handleReplySubmit(body, mentionedStudentIds) {
+  async function handleReplySubmit(body, mentionedStudentIds, photoBlob) {
     setBusy(true);
     setActionError('');
     try {
-      await addNote({ body, parentNoteId: note.id, mentionedStudentIds });
+      const created = await addNote({ body, parentNoteId: note.id, mentionedStudentIds });
+      if (photoBlob) {
+        try {
+          await uploadNoteImage(created.id, photoBlob);
+        } catch (imageError) {
+          let rolledBack = true;
+          try {
+            await deleteNote(created.id);
+          } catch {
+            rolledBack = false;
+          }
+          await refresh();
+          if (!rolledBack) {
+            throw new Error('Yanıt kaydedildi ancak fotoğraf yüklenemedi. Notlar listesinden kaydı kontrol edin.');
+          }
+          throw new Error(imageError?.message || 'Fotoğraf yüklenemedi; yanıt paylaşılmadı.');
+        }
+      }
       await refresh();
       setReplying(false);
     } catch (err) {
@@ -793,132 +1023,49 @@ function NoteCard({ note, isMine, students, isReply, onOpenStudent }) {
 
   const edited = note.updated_at !== note.created_at;
   const reactions = note.reactions ?? [];
+  const CardRoot = isReply ? 'article' : 'li';
 
   return (
-    <li className={`evx-note-card${isReply ? ' is-reply' : ''}`}>
+    <CardRoot className={`evx-note-card${isReply ? ' is-reply' : ''}`}>
       <div className="evx-note-card-head">
-        <span className="evx-avatar" style={{ width: 30, height: 30, fontSize: 11, flexShrink: 0 }}>
+        <span
+          className="evx-avatar"
+          style={isReply
+            ? { width: 26, height: 26, fontSize: 9.5, flexShrink: 0 }
+            : { width: 36, height: 36, fontSize: 12.5, flexShrink: 0 }}
+        >
           {initialsOf(note.author_name)}
         </span>
-        <span className="evx-note-author">
-          {note.author_name}
-          {isMine && <span className="evx-badge tone-neutral" style={{ marginLeft: 6 }}>SEN</span>}
+        <span className="evx-note-author-col">
+          <span className="evx-note-author">
+            <span className="evx-note-author-name">{note.author_name}</span>
+          </span>
+          <span className="evx-note-time">{formatNoteTime(note.created_at)}{edited ? ' · düzenlendi' : ''}</span>
         </span>
-        <span className="evx-note-time">{formatNoteTime(note.created_at)}{edited ? ' · düzenlendi' : ''}</span>
-      </div>
-
-      {editing ? (
-        <MentionComposer
-          students={students}
-          initialBody={note.body}
-          initialMentions={note.mentions}
-          rows={3}
-          autoFocus
-          submitLabel="Kaydet"
-          submitting={busy}
-          error={actionError}
-          onCancel={() => { setEditing(false); setActionError(''); }}
-          onSubmit={handleSaveEdit}
-        />
-      ) : (
-        <p className="evx-note-body">{renderBodyWithMentions(note.body, note.mentions, onOpenStudent)}</p>
-      )}
-
-      <NotePhoto note={note} />
-
-      {!editing && (
-        <div className="evx-note-interactions">
-          {reactions.length > 0 && (
-            <div className="evx-note-reaction-strip" aria-label="Tepkiler">
-              {reactions.map((reaction) => (
-                <button
-                  key={reaction.emoji}
-                  type="button"
-                  className={`evx-note-reaction${reaction.reactedByMe ? ' is-mine' : ''}`}
-                  onClick={() => handleReaction(reaction.emoji)}
-                  disabled={reactionBusy}
-                  aria-label={`${reaction.emoji} tepkisi, ${reaction.count} kişi`}
-                >
-                  <span>{reaction.emoji}</span>
-                  <span>{reaction.count}</span>
-                </button>
-              ))}
-            </div>
-          )}
-
-          <div className="evx-note-actionbar-wrap">
-            <div className="evx-note-actionbar">
-              <div className="evx-note-actionbar-main">
-                {!isReply && (
-                  <button
-                    type="button"
-                    className="evx-note-action-btn"
-                    onClick={() => {
-                      setReactionOpen(false);
-                      setMoreOpen(false);
-                      setReplying((value) => !value);
-                    }}
-                  >
-                    <Icon.MessageCircle width="14" height="14" /> Yanıtla
-                  </button>
-                )}
-                <button
-                  ref={reactionButtonRef}
-                  type="button"
-                  className={`evx-note-reaction-add${reactionOpen ? ' is-open' : ''}`}
-                  onClick={() => {
-                    setMoreOpen(false);
-                    setReactionOpen((value) => !value);
-                  }}
-                  aria-label="Tepki ekle"
-                  aria-expanded={reactionOpen}
-                >
-                  <Icon.SmilePlus width="17" height="17" />
-                  Tepki
-                </button>
-              </div>
-
-              {isMine && (
-                <button
-                  ref={moreButtonRef}
-                  type="button"
-                  className={`evx-note-more-btn${moreOpen ? ' is-open' : ''}`}
-                  onClick={() => {
-                    setReactionOpen(false);
-                    setMoreOpen((value) => !value);
-                  }}
-                  aria-label="Not işlemleri"
-                  aria-haspopup="menu"
-                  aria-expanded={moreOpen}
-                >
-                  <Icon.More width="17" height="17" />
-                </button>
-              )}
-            </div>
-
-            {reactionOpen && (
-              <div ref={reactionPickerRef} className="evx-note-reaction-picker" aria-label="Emoji tepkisi seç">
-                {NOTE_REACTIONS.map(({ emoji, label }) => (
-                  <button
-                    key={emoji}
-                    type="button"
-                    onClick={() => handleReaction(emoji)}
-                    disabled={reactionBusy}
-                    aria-label={label}
-                  >
-                    {emoji}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {moreOpen && isMine && (
+        {isMine && (
+          <span className="evx-note-menu-wrap">
+            <button
+              ref={moreButtonRef}
+              type="button"
+              className={`evx-note-more-btn${moreOpen ? ' is-open' : ''}`}
+              onClick={() => {
+                setReactionOpen(false);
+                setMoreOpen((value) => !value);
+              }}
+              aria-label="Not işlemleri"
+              aria-haspopup="menu"
+              aria-expanded={moreOpen}
+            >
+              <Icon.More width="18" height="18" />
+            </button>
+            {moreOpen && (
               <div ref={moreMenuRef} className="evx-note-more-menu" role="menu" aria-label="Not işlemleri">
                 <button
                   type="button"
                   role="menuitem"
                   onClick={() => {
                     setMoreOpen(false);
+                    setEditCategoryId(note.category ? String(note.category.id) : null);
                     setEditing(true);
                   }}
                 >
@@ -938,6 +1085,108 @@ function NoteCard({ note, isMine, students, isReply, onOpenStudent }) {
                 </button>
               </div>
             )}
+          </span>
+        )}
+      </div>
+
+      {editing ? (
+        <div className="evx-note-edit-wrap">
+          {!isReply && (
+            <NoteCategoryPicker
+              categories={categories}
+              value={editCategoryId}
+              onChange={setEditCategoryId}
+              disabled={busy}
+            />
+          )}
+          <MentionComposer
+            students={students}
+            initialBody={note.body}
+            initialMentions={note.mentions}
+            rows={3}
+            autoFocus
+            submitLabel="Kaydet"
+            submitting={busy}
+            error={actionError}
+            onCancel={() => { setEditing(false); setActionError(''); }}
+            onSubmit={handleSaveEdit}
+          />
+        </div>
+      ) : (
+        <>
+          {note.category && (
+            <div className="evx-note-category-badges">
+              <span className="evx-note-category-badge">{note.category.name}</span>
+            </div>
+          )}
+          <p className="evx-note-body">{renderBodyWithMentions(note.body, note.mentions, onOpenStudent)}</p>
+        </>
+      )}
+
+      <NotePhoto note={note} />
+
+      {!editing && (
+        <div className="evx-note-interactions">
+          <div className="evx-note-actionbar-wrap">
+            <div className="evx-note-actionbar">
+              <div className="evx-note-reaction-strip" aria-label="Tepkiler">
+              {reactions.map((reaction) => (
+                <button
+                  key={reaction.emoji}
+                  type="button"
+                  className={`evx-note-reaction${reaction.reactedByMe ? ' is-mine' : ''}`}
+                  onClick={() => handleReaction(reaction.emoji)}
+                  disabled={reactionBusy}
+                  aria-label={`${reaction.emoji} tepkisi, ${reaction.count} kişi`}
+                >
+                  <span>{reaction.emoji}</span>
+                  <span>{reaction.count}</span>
+                </button>
+              ))}
+                <button
+                  ref={reactionButtonRef}
+                  type="button"
+                  className={`evx-note-reaction-add${reactionOpen ? ' is-open' : ''}`}
+                  onClick={() => {
+                    setMoreOpen(false);
+                    setReactionOpen((value) => !value);
+                  }}
+                  aria-label="Tepki ekle"
+                  aria-expanded={reactionOpen}
+                >
+                  <Icon.SmilePlus width="17" height="17" />
+                </button>
+              </div>
+              {!isReply && (
+                <button
+                  type="button"
+                  className="evx-note-action-btn"
+                  onClick={() => {
+                    setReactionOpen(false);
+                    setMoreOpen(false);
+                    setReplying((value) => !value);
+                  }}
+                >
+                  Yanıtla
+                </button>
+              )}
+            </div>
+
+            {reactionOpen && (
+              <div ref={reactionPickerRef} className="evx-note-reaction-picker" aria-label="Emoji tepkisi seç">
+                {NOTE_REACTIONS.map(({ emoji, label }) => (
+                  <button
+                    key={emoji}
+                    type="button"
+                    onClick={() => handleReaction(emoji)}
+                    disabled={reactionBusy}
+                    aria-label={label}
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -953,15 +1202,26 @@ function NoteCard({ note, isMine, students, isReply, onOpenStudent }) {
           submitLabel="Gönder"
           submitting={busy}
           error={actionError}
+          allowPhoto
           onCancel={() => { setReplying(false); setActionError(''); }}
           onSubmit={handleReplySubmit}
         />
       )}
-    </li>
+
+      {!isReply && (
+        <ReplyThread
+          replies={replies}
+          currentUser={currentUser}
+          students={students}
+          categories={categories}
+          onOpenStudent={onOpenStudent}
+        />
+      )}
+    </CardRoot>
   );
 }
 
-function ReplyThread({ replies, currentUser, students, onOpenStudent }) {
+function ReplyThread({ replies, currentUser, students, categories, onOpenStudent }) {
   const [expanded, setExpanded] = React.useState(false);
   if (replies.length === 0) return null;
 
@@ -969,9 +1229,9 @@ function ReplyThread({ replies, currentUser, students, onOpenStudent }) {
   const visibleReplies = isCollapsed ? [replies[replies.length - 1]] : replies;
 
   return (
-    <>
+    <div className="evx-note-thread">
       {replies.length > 1 && (
-        <li className="evx-note-reply-toggle-row">
+        <div className="evx-note-reply-toggle-row">
           <button
             type="button"
             className="evx-note-reply-toggle"
@@ -981,19 +1241,22 @@ function ReplyThread({ replies, currentUser, students, onOpenStudent }) {
             <Icon.ChevronDown width="14" height="14" />
             {expanded ? 'Yanıtları gizle' : `${replies.length} yanıt · Tümünü göster`}
           </button>
-        </li>
+        </div>
       )}
-      {visibleReplies.map((reply) => (
-        <NoteCard
-          key={reply.id}
-          note={reply}
-          students={students}
-          isMine={!!currentUser && String(currentUser.id) === String(reply.author_user_id)}
-          isReply
-          onOpenStudent={onOpenStudent}
-        />
-      ))}
-    </>
+      <div className="evx-note-reply-list">
+        {visibleReplies.map((reply) => (
+          <NoteCard
+            key={reply.id}
+            note={reply}
+            students={students}
+            categories={categories}
+            isMine={!!currentUser && String(currentUser.id) === String(reply.author_user_id)}
+            isReply
+            onOpenStudent={onOpenStudent}
+          />
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -1003,13 +1266,36 @@ export function MobileNotes({ onBack, onOpenStudent }) {
   const [view, setView] = React.useState('list');
   const [posting, setPosting] = React.useState(false);
   const [composeError, setComposeError] = React.useState('');
+  const [searchOpen, setSearchOpen] = React.useState(false);
+  const [searchQuery, setSearchQuery] = React.useState('');
+  const [categoryFilter, setCategoryFilter] = React.useState('all');
+  const [composeCategoryId, setComposeCategoryId] = React.useState(null);
+
+  function toggleSearch() {
+    setSearchOpen((open) => {
+      if (open) setSearchQuery('');
+      return !open;
+    });
+  }
 
   const notesQuery = useQuery({ queryKey: queryKeys.notes(), queryFn: getNotes });
+  const categoriesQuery = useQuery({ queryKey: queryKeys.noteCategories(), queryFn: getNoteCategories });
   // "@" tamamlaması artık etkinlik katılımcılarıyla değil, tüm öğrenci
   // listesiyle beslenir — not akışı stüdyo geneli (bkz. üstteki header notu).
   const studentsQuery = useQuery({ queryKey: queryKeys.students(), queryFn: getStudents });
+  const reminderRecipientsQuery = useQuery({
+    queryKey: queryKeys.noteReminderRecipients(),
+    queryFn: getNoteReminderRecipients,
+  });
 
   const notes = notesQuery.data ?? [];
+  const categories = categoriesQuery.data ?? [];
+
+  React.useEffect(() => {
+    if (!categoryFilter.startsWith('category:') || categoriesQuery.isLoading) return;
+    const selectedId = categoryFilter.slice('category:'.length);
+    if (!categories.some((category) => String(category.id) === selectedId)) setCategoryFilter('all');
+  }, [categories, categoriesQuery.isLoading, categoryFilter]);
 
   const students = React.useMemo(() => (
     (studentsQuery.data ?? [])
@@ -1017,28 +1303,18 @@ export function MobileNotes({ onBack, onOpenStudent }) {
       .sort((a, b) => a.label.localeCompare(b.label, 'tr'))
   ), [studentsQuery.data]);
 
-  // Hatırlatıcı alıcıları bu turda yalnız frontend prototipidir. Ayrı bir
-  // kullanıcı-listeleme API'si eklemeden görünümü gerçek veriye yakın tutmak
-  // için mevcut kullanıcı + not akışında görülen yazarlar kullanılır. Kalıcı
-  // özellikte bu kaynak, yetkiye açık reminder-recipient endpoint'i olacaktır.
-  const reminderUsers = React.useMemo(() => {
-    const byId = new Map();
-    if (currentUser?.id) {
-      byId.set(String(currentUser.id), {
-        userId: String(currentUser.id),
-        label: currentUser.displayName || currentUser.username || 'Ben',
-        isMe: true,
-      });
-    }
-    for (const note of notes) {
-      if (!note.author_user_id || !note.author_name) continue;
-      const id = String(note.author_user_id);
-      if (!byId.has(id)) byId.set(id, { userId: id, label: note.author_name, isMe: false });
-    }
-    return [...byId.values()].sort((a, b) => (
-      Number(b.isMe) - Number(a.isMe) || a.label.localeCompare(b.label, 'tr')
-    ));
-  }, [currentUser, notes]);
+  // Hatırlatıcı "kime?" seçicisi /notes/reminder-recipients'ten gelir (tüm
+  // aktif kullanıcılar — /users'ın aksine yalnız owner değil, bkz.
+  // notes.service.ts listNoteReminderRecipients).
+  const reminderUsers = React.useMemo(() => (
+    (reminderRecipientsQuery.data ?? [])
+      .map((u) => ({
+        userId: String(u.id),
+        label: u.displayName,
+        isMe: !!currentUser?.id && String(currentUser.id) === String(u.id),
+      }))
+      .sort((a, b) => Number(b.isMe) - Number(a.isMe) || a.label.localeCompare(b.label, 'tr'))
+  ), [reminderRecipientsQuery.data, currentUser]);
 
   const topLevelNotes = notes.filter((n) => !n.parent_note_id);
   const activeNoteCount = topLevelNotes.filter((n) => !n.deleted_at).length;
@@ -1060,11 +1336,43 @@ export function MobileNotes({ onBack, onOpenStudent }) {
   }, [notes]);
   const visibleTopLevelNotes = topLevelNotes.filter((n) => !n.deleted_at || (repliesByParent.get(n.id) ?? []).length > 0);
 
-  async function handleAddNote(body, mentionedStudentIds, photoBlob) {
+  const categoryFilteredNotes = visibleTopLevelNotes.filter((n) => {
+    if (categoryFilter.startsWith('category:')) {
+      const id = categoryFilter.slice('category:'.length);
+      return String(n.category?.id ?? '') === id;
+    }
+    if (categoryFilter === 'photo') return !n.deleted_at && n.has_image;
+    if (categoryFilter === 'repliedToMe') {
+      if (n.deleted_at) return false;
+      const isMine = !!currentUser && String(currentUser.id) === String(n.author_user_id);
+      return isMine && (repliesByParent.get(n.id) ?? []).length > 0;
+    }
+    return true;
+  });
+
+  const normalizedSearch = searchQuery.trim().toLowerCase();
+  const searchedTopLevelNotes = normalizedSearch
+    ? categoryFilteredNotes.filter((n) => {
+        if (!n.deleted_at && noteMatchesQuery(n, normalizedSearch)) return true;
+        return (repliesByParent.get(n.id) ?? []).some((reply) => noteMatchesQuery(reply, normalizedSearch));
+      })
+    : categoryFilteredNotes;
+
+  async function handleAddNote(body, mentionedStudentIds, photoBlob, reminder) {
     setPosting(true);
     setComposeError('');
     try {
-      const created = await addNote({ body, mentionedStudentIds });
+      const created = await addNote({
+        body,
+        mentionedStudentIds,
+        categoryId: composeCategoryId,
+        reminder: reminder
+          ? {
+              remindAt: new Date(`${reminder.date}T${reminder.time}:00`).toISOString(),
+              recipientUserIds: reminder.recipientIds,
+            }
+          : undefined,
+      });
       if (photoBlob) {
         try {
           await uploadNoteImage(created.id, photoBlob);
@@ -1085,6 +1393,7 @@ export function MobileNotes({ onBack, onOpenStudent }) {
         }
       }
       await queryClient.invalidateQueries({ queryKey: queryKeys.notes() });
+      setComposeCategoryId(null);
       setView('list');
     } catch (err) {
       setComposeError(err?.message || 'Not eklenemedi.');
@@ -1117,6 +1426,12 @@ export function MobileNotes({ onBack, onOpenStudent }) {
           </div>
         </header>
         <div className="evx-body">
+          <NoteCategoryPicker
+            categories={categories}
+            value={composeCategoryId}
+            onChange={setComposeCategoryId}
+            disabled={posting}
+          />
           <MentionComposer
             students={students}
             placeholder="Bir not yazın… (ör. malzeme durumu, hatırlatma, değişiklik)"
@@ -1136,6 +1451,17 @@ export function MobileNotes({ onBack, onOpenStudent }) {
     );
   }
 
+  if (view === 'settings') {
+    return (
+      <NoteCategorySettings
+        categories={categories}
+        loading={categoriesQuery.isLoading}
+        loadError={categoriesQuery.isError}
+        onBack={() => setView('list')}
+      />
+    );
+  }
+
   return (
     <div className="evx">
       <header className="evx-header">
@@ -1146,49 +1472,142 @@ export function MobileNotes({ onBack, onOpenStudent }) {
           <span className="evx-header-title">Notlar</span>
           <span className="evx-header-sub">{activeNoteCount > 0 ? `${activeNoteCount} not` : 'Stüdyo geneli'}</span>
         </div>
+        <button
+          type="button"
+          className="evx-header-btn"
+          onClick={toggleSearch}
+          title="Notlarda ara"
+          aria-expanded={searchOpen}
+        >
+          <Icon.Search width="20" height="20" />
+        </button>
+        <button
+          type="button"
+          className="evx-header-btn"
+          onClick={() => setView('settings')}
+          title="Not kategorilerini düzenle"
+          aria-label="Not kategorilerini düzenle"
+        >
+          <Icon.Settings width="20" height="20" />
+        </button>
       </header>
 
       <div className="evx-body">
+        <div className="evx-scroller">
+          {NOTE_SMART_FILTERS.slice(0, 1).map((filter) => (
+            <button
+              key={filter.id}
+              type="button"
+              className={`evx-filter-chip${categoryFilter === filter.id ? ' is-on' : ''}`}
+              onClick={() => setCategoryFilter(filter.id)}
+              aria-pressed={categoryFilter === filter.id}
+            >
+              {filter.label}
+            </button>
+          ))}
+          {categories.map((category) => (
+            <button
+              key={category.id}
+              type="button"
+              className={`evx-filter-chip${categoryFilter === `category:${category.id}` ? ' is-on' : ''}`}
+              onClick={() => setCategoryFilter(`category:${category.id}`)}
+              aria-pressed={categoryFilter === `category:${category.id}`}
+            >
+              {category.name}
+            </button>
+          ))}
+          {NOTE_SMART_FILTERS.slice(1).map((filter) => (
+            <button
+              key={filter.id}
+              type="button"
+              className={`evx-filter-chip${categoryFilter === filter.id ? ' is-on' : ''}`}
+              onClick={() => setCategoryFilter(filter.id)}
+              aria-pressed={categoryFilter === filter.id}
+            >
+              {filter.label}
+            </button>
+          ))}
+        </div>
+
+        {searchOpen && (
+          <div className="evx-toggle-row" style={{ minHeight: 44 }}>
+            <Icon.Search width="17" height="17" style={{ color: 'var(--ink-3)', flexShrink: 0 }} />
+            <input
+              autoFocus
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Not veya kişi ara…"
+              style={{ border: 0, background: 'none', outline: 'none', flex: 1, fontSize: 14, color: 'var(--ink)' }}
+            />
+          </div>
+        )}
+
         {notesQuery.isLoading && <p className="evx-hint">Notlar yükleniyor…</p>}
 
         {!notesQuery.isLoading && visibleTopLevelNotes.length === 0 && (
           <div className="evx-empty">
             <Icon.Edit width="28" height="28" />
             <span className="evx-empty-title">Henüz not yok</span>
-            <span className="evx-empty-sub">Aşağıdaki "Not ekle" ile ilk notu paylaşın — tüm ekip görebilecek.</span>
+            <span className="evx-empty-sub">Sağ alttaki "Not yaz" ile ilk notu paylaşın — tüm ekip görebilecek.</span>
           </div>
         )}
 
-        {visibleTopLevelNotes.length > 0 && (
+        {!notesQuery.isLoading && visibleTopLevelNotes.length > 0 && normalizedSearch && searchedTopLevelNotes.length === 0 && (
+          <div className="evx-empty">
+            <Icon.Search width="28" height="28" />
+            <span className="evx-empty-title">Sonuç bulunamadı</span>
+            <span className="evx-empty-sub">"{searchQuery.trim()}" ile eşleşen not yok.</span>
+          </div>
+        )}
+
+        {!notesQuery.isLoading && !normalizedSearch && visibleTopLevelNotes.length > 0 && categoryFilteredNotes.length === 0 && (
+          <div className="evx-empty">
+            <Icon.Edit width="28" height="28" />
+            <span className="evx-empty-title">Bu kategoride not yok</span>
+            <span className="evx-empty-sub">
+              {categoryFilter.startsWith('category:')
+                ? `“${categories.find((item) => `category:${item.id}` === categoryFilter)?.name ?? 'Kategori'}” kategorisinde not yok.`
+                : `“${NOTE_SMART_FILTERS.find((f) => f.id === categoryFilter)?.label}” ile eşleşen not yok.`}
+            </span>
+          </div>
+        )}
+
+        {searchedTopLevelNotes.length > 0 && (
           <ul className="evx-note-list">
-            {visibleTopLevelNotes.map((n) => (
-              <React.Fragment key={n.id}>
-                {!n.deleted_at && (
-                  <NoteCard
-                    note={n}
-                    students={students}
-                    isMine={!!currentUser && String(currentUser.id) === String(n.author_user_id)}
-                    onOpenStudent={onOpenStudent}
-                  />
-                )}
-                <ReplyThread
-                  replies={repliesByParent.get(n.id) ?? []}
-                  currentUser={currentUser}
-                  students={students}
-                  onOpenStudent={onOpenStudent}
-                />
-              </React.Fragment>
+            {searchedTopLevelNotes.map((n) => (
+              n.deleted_at
+                ? (
+                    <li key={n.id} className="evx-note-card is-thread-only">
+                      <ReplyThread
+                        replies={repliesByParent.get(n.id) ?? []}
+                        currentUser={currentUser}
+                        students={students}
+                        categories={categories}
+                        onOpenStudent={onOpenStudent}
+                      />
+                    </li>
+                  )
+                : (
+                    <NoteCard
+                      key={n.id}
+                      note={n}
+                      students={students}
+                      categories={categories}
+                      isMine={!!currentUser && String(currentUser.id) === String(n.author_user_id)}
+                      replies={repliesByParent.get(n.id) ?? []}
+                      currentUser={currentUser}
+                      onOpenStudent={onOpenStudent}
+                    />
+                  )
             ))}
           </ul>
         )}
       </div>
 
-      <div className="evx-footer">
-        <button type="button" className="evx-btn-primary" onClick={() => setView('compose')}>
-          <Icon.Plus width="16" height="16" />
-          Not ekle
-        </button>
-      </div>
+      <button type="button" className="evx-notes-fab" onClick={() => setView('compose')}>
+        <Icon.Edit width="18" height="18" />
+        Not yaz
+      </button>
     </div>
   );
 }

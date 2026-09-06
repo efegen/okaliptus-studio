@@ -70,8 +70,41 @@ describe("apiRequest", () => {
     await expect(api.getStudents()).rejects.toThrow(/öğrenci listesi/i);
   });
 
+  it("öğrenci silme etkisini kapsam endpoint'inden alır", async () => {
+    const impact = {
+      lessons: 1,
+      eventParticipations: 2,
+      noteMentions: 3,
+      drivenVehicles: 1,
+    };
+    fetch.mockResolvedValueOnce(jsonResponse({ data: impact }));
+
+    await expect(api.getStudentDeleteImpact("7/8")).resolves.toEqual(impact);
+    expect(fetch.mock.calls[0][0]).toMatch(/\/students\/7%2F8\/delete-impact$/);
+  });
+
   it("getMe throws when payload has no data", async () => {
     fetch.mockResolvedValueOnce(jsonResponse({}));
     await expect(api.getMe()).rejects.toThrow(/kullanıcı bilgisi/i);
+  });
+
+  it("etkinlik katılımcısı arama ve kaldırma ayrıntılarını gönderir", async () => {
+    fetch
+      .mockResolvedValueOnce(jsonResponse({ data: { id: "9", last_contacted_at: "2026-09-06T10:00:00Z" } }))
+      .mockResolvedValueOnce(jsonResponse({ data: null }));
+
+    await api.markEventParticipantContacted("9", { note: "Tekrar aranacak" });
+    await api.removeEventParticipant("9", { reason: "student_cancelled", note: "Programı değişti" });
+
+    expect(fetch.mock.calls[0][0]).toMatch(/\/events\/participants\/9\/contact$/);
+    expect(fetch.mock.calls[0][1]).toMatchObject({
+      method: "POST",
+      body: JSON.stringify({ note: "Tekrar aranacak" }),
+    });
+    expect(fetch.mock.calls[1][0]).toMatch(/\/events\/participants\/9$/);
+    expect(fetch.mock.calls[1][1]).toMatchObject({
+      method: "DELETE",
+      body: JSON.stringify({ reason: "student_cancelled", note: "Programı değişti" }),
+    });
   });
 });
