@@ -1317,6 +1317,50 @@ export async function getStudentEventBalances(studentId) {
   return payload.data;
 }
 
+// Etkinlik günü ekranı (0284): kapıda tutulan düz giriş listesi + özet.
+// Tüm roller kullanır; eski katılımcı/ücret/tahsilat uçlarından bağımsızdır.
+export async function getEventDay(eventId) {
+  const payload = await apiGet(`/events/${encodeURIComponent(eventId)}/day`);
+  if (typeof payload?.data !== 'object' || payload.data === null) {
+    throw new Error('Etkinlik günü bilgisi alınamadı.');
+  }
+  return payload.data;
+}
+
+export async function searchEventDay(eventId, q) {
+  const payload = await apiGet(`/events/${encodeURIComponent(eventId)}/day/search?q=${encodeURIComponent(q)}`);
+  if (!Array.isArray(payload?.data)) throw new Error('Arama sonucu alınamadı.');
+  return payload.data;
+}
+
+export async function createEventDayEntry(eventId, input) {
+  const payload = await apiRequest(`/events/${encodeURIComponent(eventId)}/day/entries`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return ensureMutationResult(payload, 'Kayıt eklenemedi.');
+}
+
+export async function updateEventDayEntry(entryId, input) {
+  const payload = await apiRequest(`/events/day-entries/${encodeURIComponent(entryId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+  return ensureMutationResult(payload, 'Kayıt güncellenemedi.');
+}
+
+// data: null döner (deleteEvent gibi) — ensureMutationResult kullanılmaz.
+export async function deleteEventDayEntry(entryId) {
+  await apiRequest(`/events/day-entries/${encodeURIComponent(entryId)}`, { method: 'DELETE' });
+}
+
+export async function restoreEventDayEntry(entryId) {
+  const payload = await apiRequest(`/events/day-entries/${encodeURIComponent(entryId)}/restore`, {
+    method: 'POST',
+  });
+  return ensureMutationResult(payload, 'Kayıt geri getirilemedi.');
+}
+
 
 // ─── Notlar (stüdyo geneli) ─────────────────────────────────────────────────
 // Tek bir paylaşılan not akışı — etkinliğe bağlı değil. Mobil ana sayfadaki

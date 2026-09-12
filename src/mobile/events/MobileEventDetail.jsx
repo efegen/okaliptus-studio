@@ -8,6 +8,7 @@ import {
   getNotes,
   markEventParticipantContacted,
   removeEventParticipant,
+  updateEvent,
 } from '../../api';
 import { queryKeys } from '../../hooks/queryKeys';
 import { useCan } from '../../currentUser';
@@ -36,6 +37,10 @@ const ROLE_LABEL = { regular: null, invited: 'DAVETLİ', volunteer: 'GÖNÜLLÜ'
 const ROLE_TONE = { invited: 'tone-role-invited', volunteer: 'tone-role-volunteer' };
 const RSVP_DOT = { coming: 'oklch(0.5 0.08 145)', unsure: 'oklch(0.8 0.13 80)' };
 const RSVP_LABEL = { coming: 'Geliyor', unsure: 'Belirsiz' };
+// Kapı ekranı butonu (bkz. MobileEventDay): yaklaşan etkinlikte "başlat"
+// durumu canlıya çeker; canlıda yalnız ekrana döner; tamamlanmış/iptal
+// etkinlikte kayıtları açar.
+const DAY_BUTTON_LABEL = { upcoming: 'Etkinlik gününü başlat', live: 'Etkinlik gününe dön' };
 
 function initialsOf(name) {
   return (name || '?').split(' ').map((s) => s[0]).slice(0, 2).join('').toUpperCase();
@@ -117,7 +122,7 @@ function ParticipantRow({ participant, guestOfName, onOpen, swipeSide, onSwipeSi
   );
 }
 
-export function MobileEventDetail({ eventId, onBack, onOpenAddPerson, onOpenTransport, onOpenSettings, onOpenParticipant, onOpenNotes, onOpenActivity }) {
+export function MobileEventDetail({ eventId, onBack, onOpenAddPerson, onOpenTransport, onOpenSettings, onOpenParticipant, onOpenNotes, onOpenActivity, onOpenDay }) {
   const queryClient = useQueryClient();
   // "Hareketler" tahsilat tutarlarını da gösterir; asistan rolüne kapalı
   // (backend requireCan('audit.read')). Gizleme kozmetik, güvenlik sunucuda.
@@ -128,6 +133,8 @@ export function MobileEventDetail({ eventId, onBack, onOpenAddPerson, onOpenTran
   const [actionState, setActionState] = React.useState(null);
   const [actionBusy, setActionBusy] = React.useState(false);
   const [actionError, setActionError] = React.useState('');
+  const [dayBusy, setDayBusy] = React.useState(false);
+  const [dayError, setDayError] = React.useState('');
 
   React.useEffect(() => { setOpenSwipe(null); }, [eventId, search, filter]);
 
@@ -182,6 +189,31 @@ export function MobileEventDetail({ eventId, onBack, onOpenAddPerson, onOpenTran
 
   const event = eventQuery.data;
   const participants = participantsQuery.data ?? [];
+
+  // "Etkinlik gününü başlat": yaklaşan etkinliği canlıya çeker (ana sayfa
+  // kartı da artık doğrudan kapı ekranını açar) ve etkinlik günü ekranına
+  // geçer. Canlı/tamamlanmış etkinlikte durum değişmez, yalnız ekran açılır.
+  async function openDay() {
+    if (dayBusy) return;
+    setDayError('');
+    if (event?.status === 'upcoming') {
+      setDayBusy(true);
+      try {
+        await updateEvent(eventId, { status: 'live' });
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: queryKeys.eventById(eventId) }),
+          queryClient.invalidateQueries({ queryKey: queryKeys.upcomingEvent() }),
+          queryClient.invalidateQueries({ queryKey: queryKeys.events() }),
+        ]);
+      } catch (err) {
+        setDayError(err?.message || 'Etkinlik günü başlatılamadı.');
+        return;
+      } finally {
+        setDayBusy(false);
+      }
+    }
+    onOpenDay?.();
+  }
   // Rozette yalnız üst seviye + silinmemiş notlar sayılır — yanıtlar ve
   // "silindi" placeholder'ına dönmüş notlar burada bir not gibi görünmez.
   const activeNoteCount = (notesQuery.data ?? []).filter((n) => !n.parent_note_id && !n.deleted_at).length;
@@ -406,11 +438,14 @@ export function MobileEventDetail({ eventId, onBack, onOpenAddPerson, onOpenTran
             <Icon.Plus width="16" height="16" />
             Ekle
           </button>
-          <button type="button" className="evx-btn-primary" disabled title="Etkinlik günü modu yakında">
+          <button type="button" className="evx-btn-primary" onClick={openDay} disabled={dayBusy}>
             <Icon.Clock width="17" height="17" />
-            Etkinlik gününü başlat
+            {dayBusy ? 'Başlatılıyor…' : DAY_BUTTON_LABEL[event.status] ?? 'Etkinlik günü kayıtları'}
           </button>
         </div>
+        {dayError && (
+          <p className="evx-footer-note" role="alert" style={{ color: 'oklch(0.5 0.18 30)' }}>{dayError}</p>
+        )}
       </div>
 
       <EventParticipantActionSheet

@@ -30,6 +30,8 @@ import { MobileEventTransport } from './events/MobileEventTransport';
 import { MobileEventAddVehicle } from './events/MobileEventAddVehicle';
 import { MobileEventSettings } from './events/MobileEventSettings';
 import { MobileEventActivity } from './events/MobileEventActivity';
+import { MobileEventDay } from './events/MobileEventDay';
+import { MobileEventDayBreakfast } from './events/MobileEventDayBreakfast';
 import { SettingsPage } from '../settings';
 import { CatalogPage } from '../catalog';
 import { queryKeys } from '../hooks/queryKeys';
@@ -47,6 +49,27 @@ function PagePlaceholder({ title, children }) {
       {children}
     </div>
   );
+}
+
+// Etkinlik günü ekranı yenilemede de açık kalsın diye (telefon arka plandaki
+// sekmeyi kapatabilir) o ekranın etkinlik kimliği ayrıca saklanır. Diğer
+// etkinlik sayfaları yenilemede listeye düşmeye devam eder.
+const EVENT_DAY_STORAGE_KEY = 'okaliptus-event-day-id';
+
+function readStoredEventDayId() {
+  try {
+    return localStorage.getItem(EVENT_DAY_STORAGE_KEY) || null;
+  } catch {
+    return null;
+  }
+}
+
+function storeEventDayId(eventId) {
+  try {
+    localStorage.setItem(EVENT_DAY_STORAGE_KEY, String(eventId));
+  } catch {
+    // Depolama kapalıysa yenilemede etkinlik listesine düşülür; akış bozulmaz.
+  }
 }
 
 export function MobileApp({
@@ -69,7 +92,9 @@ export function MobileApp({
     page === 'event-add-vehicle' ||
     page === 'event-settings' ||
     page === 'event-participant' ||
-    page === 'event-activity';
+    page === 'event-activity' ||
+    page === 'event-day' ||
+    page === 'event-day-breakfast';
   const showBack = (onStudentsPage && !!studentDetailId) || onMenuChild;
   const hideHeader =
     page === 'home' ||
@@ -106,8 +131,13 @@ export function MobileApp({
   const [calendarNavNonce, setCalendarNavNonce] = React.useState(0);
   // Etkinlik modülü: hangi etkinlik açık (5a/3d/7a/6a-c hepsi bunun üzerinde
   // çalışır), ana sayfa kartından mı menüden mi açıldığı (geri tuşu için).
-  const [eventDetailId, setEventDetailId] = React.useState(null);
+  const [eventDetailId, setEventDetailId] = React.useState(
+    () => (page === 'event-day' || page === 'event-day-breakfast' ? readStoredEventDayId() : null),
+  );
   const [eventEntryPage, setEventEntryPage] = React.useState('events');
+  // Etkinlik günü ekranından geri: detaydan açıldıysa detaya, ana sayfadaki
+  // canlı etkinlik kartından açıldıysa ana sayfaya.
+  const [eventDayReturnPage, setEventDayReturnPage] = React.useState('event-detail');
   // Etkinliğe özel katılımcı profili (MobileEventParticipantDetail) hangi
   // katılımcı için açık.
   const [eventParticipantId, setEventParticipantId] = React.useState(null);
@@ -146,6 +176,14 @@ export function MobileApp({
     setEventParticipantId(null);
     setStudentDetailId(null);
     setPage('event-detail');
+  }
+
+  function openEventDay(eventId, returnPage) {
+    setEventDetailId(eventId);
+    setEventDayReturnPage(returnPage);
+    setStudentDetailId(null);
+    storeEventDayId(eventId);
+    setPage('event-day');
   }
 
   function openEventParticipant(participantId) {
@@ -283,7 +321,7 @@ export function MobileApp({
   // `page` localStorage'dan restore edilir (bkz. main.jsx) ama eventDetailId
   // edilmez — sayfa 'event-detail' vb. olarak açılıp id'siz kalırsa (yenileme
   // sonrası) kırık bir hata ekranı yerine listeye düşer.
-  const eventDetailPages = ['event-detail', 'event-add-person', 'event-transport', 'event-add-vehicle', 'event-settings', 'event-participant', 'event-activity'];
+  const eventDetailPages = ['event-detail', 'event-add-person', 'event-transport', 'event-add-vehicle', 'event-settings', 'event-participant', 'event-activity', 'event-day', 'event-day-breakfast'];
   React.useEffect(() => {
     if (eventDetailPages.includes(page) && !eventDetailId) {
       setPage('events');
@@ -329,7 +367,11 @@ export function MobileApp({
         onOpenOccupancy={() => { setStudentDetailId(null); setPage('occupancy'); }}
         onOpenOrders={() => { setStudentDetailId(null); setPage('orders'); }}
         onOpenNotes={() => { setStudentDetailId(null); setNotesReturnPage('home'); setPage('notes'); }}
-        onOpenEvent={(eventId) => (eventId ? openEventDetail(eventId, 'home') : setPage('event-create'))}
+        onOpenEvent={(eventId, status) => {
+          if (!eventId) setPage('event-create');
+          else if (status === 'live') openEventDay(eventId, 'home');
+          else openEventDetail(eventId, 'home');
+        }}
       />
     );
   } else if (page === 'events') {
@@ -357,6 +399,31 @@ export function MobileApp({
         onOpenParticipant={openEventParticipant}
         onOpenNotes={() => { setNotesReturnPage('event-detail'); setPage('notes'); }}
         onOpenActivity={() => setPage('event-activity')}
+        onOpenDay={() => openEventDay(eventDetailId, 'event-detail')}
+      />
+    );
+  } else if (page === 'event-day') {
+    body = (
+      <MobileEventDay
+        eventId={eventDetailId}
+        onBack={() => setPage(eventDayReturnPage)}
+        onOpenParticipants={() => {
+          // Etkinlik günü ana sayfadaki canlı karttan doğrudan açılmışsa
+          // (event-detail'e hiç uğramadan) o ekranın geri tuşu buradan
+          // gelindiğini bilmiyor — burada kaydediyoruz. Zaten event-detail
+          // üzerinden gelindiyse eventEntryPage olduğu gibi kalır, yoksa
+          // event-detail'in geri tuşu kendine döner (döngü).
+          if (eventDayReturnPage !== 'event-detail') setEventEntryPage(eventDayReturnPage);
+          setPage('event-detail');
+        }}
+        onOpenBreakfast={() => setPage('event-day-breakfast')}
+      />
+    );
+  } else if (page === 'event-day-breakfast') {
+    body = (
+      <MobileEventDayBreakfast
+        eventId={eventDetailId}
+        onBack={() => setPage('event-day')}
       />
     );
   } else if (page === 'event-activity') {

@@ -36,6 +36,15 @@ import {
   updateParticipantNote,
   updateVehicle,
 } from "../../services/events.service.js";
+import {
+  createEventDayEntry,
+  deleteEventDayEntry,
+  getEventDay,
+  restoreEventDayEntry,
+  searchEventDay,
+  updateEventDayEntry,
+  type EventDayEntryInput,
+} from "../../services/event-day.service.js";
 import { sendError, parseId } from "../middleware/response.js";
 import { requireCan } from "../middleware/requireRole.js";
 
@@ -500,6 +509,91 @@ eventsRouter.post("/participants/:participantId/vehicle", async (req, res) => {
     const { vehicleId } = req.body as Record<string, unknown>;
     await assignParticipantToVehicle(participantId, vehicleId as string | number, req.currentUser.id);
     res.json({ data: null });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+// ── Etkinlik günü ekranı (0284) ─────────────────────────────────────────────
+// Kapıda tutulan düz giriş listesi (bkz. event-day.service.ts). Tüm roller
+// kullanır — kullanıcı kararıyla asistan bu ekrandaki toplamları da görür.
+
+function eventDayEntryInputFrom(body: Record<string, unknown>): EventDayEntryInput {
+  const text = (value: unknown): string | null => (value == null ? null : String(value));
+  return {
+    ...(body.studentId !== undefined && {
+      studentId: body.studentId === null || body.studentId === "" ? null : (body.studentId as string | number),
+    }),
+    ...(body.fullName !== undefined && { fullName: text(body.fullName) }),
+    ...(body.phone !== undefined && { phone: text(body.phone) }),
+    ...(body.amount !== undefined && { amount: body.amount as string | number | null }),
+    ...(body.paymentMethod !== undefined && { paymentMethod: text(body.paymentMethod) }),
+    ...(body.breakfast !== undefined && { breakfast: text(body.breakfast) }),
+    ...(body.note !== undefined && { note: text(body.note) }),
+    ...(body.checked !== undefined && { checked: body.checked === true }),
+    ...(body.breakfastConfirmed !== undefined && { breakfastConfirmed: body.breakfastConfirmed === true }),
+    ...(body.breakfastOnly !== undefined && { breakfastOnly: body.breakfastOnly === true }),
+  };
+}
+
+eventsRouter.get("/:id/day", async (req, res) => {
+  try {
+    const id = parseId(req.params.id);
+    const data = await getEventDay(id);
+    res.json({ data });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+eventsRouter.get("/:id/day/search", async (req, res) => {
+  try {
+    const id = parseId(req.params.id);
+    const q = typeof req.query.q === "string" ? req.query.q : "";
+    const data = await searchEventDay(id, q);
+    res.json({ data });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+eventsRouter.post("/:id/day/entries", async (req, res) => {
+  try {
+    const id = parseId(req.params.id);
+    const input = eventDayEntryInputFrom((req.body ?? {}) as Record<string, unknown>);
+    const data = await createEventDayEntry(id, input, req.currentUser.id);
+    res.status(201).json({ data });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+eventsRouter.patch("/day-entries/:entryId", async (req, res) => {
+  try {
+    const entryId = parseId(req.params.entryId);
+    const input = eventDayEntryInputFrom((req.body ?? {}) as Record<string, unknown>);
+    const data = await updateEventDayEntry(entryId, input, req.currentUser.id);
+    res.json({ data });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+eventsRouter.delete("/day-entries/:entryId", async (req, res) => {
+  try {
+    const entryId = parseId(req.params.entryId);
+    await deleteEventDayEntry(entryId, req.currentUser.id);
+    res.json({ data: null });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+eventsRouter.post("/day-entries/:entryId/restore", async (req, res) => {
+  try {
+    const entryId = parseId(req.params.entryId);
+    const data = await restoreEventDayEntry(entryId, req.currentUser.id);
+    res.json({ data });
   } catch (err) {
     sendError(res, err);
   }

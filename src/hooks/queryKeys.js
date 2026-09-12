@@ -35,5 +35,9 @@ export const queryKeys = {
   eventParticipantNotes:(id)  => ['eventParticipant', id, 'notes'],
   eventVehicles:      (id)    => ['event', id, 'vehicles'],
   eventActivity:      (id)    => ['event', id, 'activity'],
+  // Etkinlik günü ekranı (0284). Arama anahtarı günün altında durur ki
+  // listeyi tazelemek (eventDay prefix'i) aramaları da tazelesin.
+  eventDay:           (id)    => ['event', id, 'day'],
+  eventDaySearch:     (id, q) => ['event', id, 'day', 'search', q],
   studentEventBalances:(id)   => ['student', id, 'events'],
 };

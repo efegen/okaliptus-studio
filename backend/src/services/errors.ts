@@ -134,6 +134,18 @@ export class DuplicateParticipantError extends AppError {
   }
 }
 
+export class DuplicateEventDayEntryError extends AppError {
+  constructor(message = "Bu kişi etkinlik günü listesinde zaten var.") {
+    super("DUPLICATE_EVENT_DAY_ENTRY", message, 409);
+  }
+}
+
+export class EventDayEntryNotFoundError extends AppError {
+  constructor(message = "Etkinlik günü kaydı bulunamadı.") {
+    super("EVENT_DAY_ENTRY_NOT_FOUND", message, 404);
+  }
+}
+
 export class CompQuotaExceededError extends AppError {
   constructor(message = "Bu ücret kaleminin ücretsiz kontenjanı dolu.") {
     super("COMP_QUOTA_EXCEEDED", message, 409);
@@ -354,6 +366,8 @@ export function toServiceError(error: unknown): Error {
       return new UsernameTakenError();
     case "event_participants_event_id_student_id_key":
       return new DuplicateParticipantError();
+    case "event_day_entries_one_per_student_idx":
+      return new DuplicateEventDayEntryError();
     case "note_categories_name_unique_idx":
       return new NoteCategoryNameTakenError();
     default:

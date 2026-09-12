@@ -24,9 +24,11 @@ function EventHeroCard({ event, onOpen, showAmount }) {
   const total = event.totalParticipants || 1;
   const notCounted = Math.max(0, total - coming - unsure);
   const participantCount = event.totalParticipants ?? event.registeredCount ?? 0;
+  // Canlı etkinlikte kart doğrudan kapı ekranını (etkinlik günü) açar.
+  const isLive = event.status === 'live';
 
   return (
-    <button type="button" className="mh-event-card" onClick={() => onOpen(event.id)}>
+    <button type="button" className="mh-event-card" onClick={() => onOpen(event.id, event.status)}>
       <span className="mh-event-card-bg" aria-hidden="true" />
       <div className="mh-event-top">
         <div className="mh-event-datebadge" aria-hidden="true">
@@ -34,10 +36,10 @@ function EventHeroCard({ event, onOpen, showAmount }) {
           <span className="mh-event-datebadge-month">{month}</span>
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <p className="mh-event-eyebrow">Yaklaşan etkinlik</p>
+          <p className="mh-event-eyebrow">{isLive ? 'Etkinlik günü · kayda devam' : 'Yaklaşan etkinlik'}</p>
           <p className="mh-event-name">{event.name}</p>
         </div>
-        <span className="mh-event-countdown">{eventCountdownLabel(event.starts_at)}</span>
+        <span className="mh-event-countdown">{isLive ? 'CANLI' : eventCountdownLabel(event.starts_at)}</span>
       </div>
       <p className="mh-event-meta">
         {WEEKDAY_LONG.format(date)} · {TIME_FMT.format(date)}{event.location ? ` · ${event.location}` : ''}
