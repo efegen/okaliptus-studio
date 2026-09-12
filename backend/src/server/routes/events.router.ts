@@ -515,8 +515,9 @@ eventsRouter.post("/participants/:participantId/vehicle", async (req, res) => {
 });
 
 // ── Etkinlik günü ekranı (0284) ─────────────────────────────────────────────
-// Kapıda tutulan düz giriş listesi (bkz. event-day.service.ts). Tüm roller
-// kullanır — kullanıcı kararıyla asistan bu ekrandaki toplamları da görür.
+// Kapıda tutulan düz giriş listesi (bkz. event-day.service.ts). Asistan ön
+// kayıt (katılımcı listesi) ekranını görür ama bu kapı ekranını göremez —
+// bkz. permissions.ts 'events.day.read'.
 
 function eventDayEntryInputFrom(body: Record<string, unknown>): EventDayEntryInput {
   const text = (value: unknown): string | null => (value == null ? null : String(value));
@@ -536,7 +537,7 @@ function eventDayEntryInputFrom(body: Record<string, unknown>): EventDayEntryInp
   };
 }
 
-eventsRouter.get("/:id/day", async (req, res) => {
+eventsRouter.get("/:id/day", requireCan("events.day.read"), async (req, res) => {
   try {
     const id = parseId(req.params.id);
     const data = await getEventDay(id);
@@ -546,7 +547,7 @@ eventsRouter.get("/:id/day", async (req, res) => {
   }
 });
 
-eventsRouter.get("/:id/day/search", async (req, res) => {
+eventsRouter.get("/:id/day/search", requireCan("events.day.read"), async (req, res) => {
   try {
     const id = parseId(req.params.id);
     const q = typeof req.query.q === "string" ? req.query.q : "";
@@ -557,7 +558,7 @@ eventsRouter.get("/:id/day/search", async (req, res) => {
   }
 });
 
-eventsRouter.post("/:id/day/entries", async (req, res) => {
+eventsRouter.post("/:id/day/entries", requireCan("events.day.read"), async (req, res) => {
   try {
     const id = parseId(req.params.id);
     const input = eventDayEntryInputFrom((req.body ?? {}) as Record<string, unknown>);
@@ -568,7 +569,7 @@ eventsRouter.post("/:id/day/entries", async (req, res) => {
   }
 });
 
-eventsRouter.patch("/day-entries/:entryId", async (req, res) => {
+eventsRouter.patch("/day-entries/:entryId", requireCan("events.day.read"), async (req, res) => {
   try {
     const entryId = parseId(req.params.entryId);
     const input = eventDayEntryInputFrom((req.body ?? {}) as Record<string, unknown>);
@@ -579,7 +580,7 @@ eventsRouter.patch("/day-entries/:entryId", async (req, res) => {
   }
 });
 
-eventsRouter.delete("/day-entries/:entryId", async (req, res) => {
+eventsRouter.delete("/day-entries/:entryId", requireCan("events.day.read"), async (req, res) => {
   try {
     const entryId = parseId(req.params.entryId);
     await deleteEventDayEntry(entryId, req.currentUser.id);
@@ -589,7 +590,7 @@ eventsRouter.delete("/day-entries/:entryId", async (req, res) => {
   }
 });
 
-eventsRouter.post("/day-entries/:entryId/restore", async (req, res) => {
+eventsRouter.post("/day-entries/:entryId/restore", requireCan("events.day.read"), async (req, res) => {
   try {
     const entryId = parseId(req.params.entryId);
     const data = await restoreEventDayEntry(entryId, req.currentUser.id);

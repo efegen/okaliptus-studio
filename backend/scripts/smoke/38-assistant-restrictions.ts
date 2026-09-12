@@ -19,6 +19,8 @@
  *   G. Öğrenci → liste + öğrenci-bazlı hareket açık; kalıcı silme assistant 403,
  *      owner 200.
  *   H. /products → assistant açık (katalog yönetimi, kullanıcı kararı).
+ *   I. /events/:id/day → assistant 403 (etkinlik günü/kapı ekranı), ön kayıt
+ *      uçları (/events/:id, /events/:id/participants) açık; admin 200.
  *
  * Bastırma DEĞİL erişim kapısı test edilir; gerçek push/harici çağrı yok.
  *
@@ -33,6 +35,7 @@ import { createApp } from "../../src/server/app.js";
 import { login, logout } from "../../src/services/auth.service.js";
 import { createUser } from "../../src/services/users.service.js";
 import { createStudent } from "../../src/services/students.service.js";
+import { createEvent, deleteEvent } from "../../src/services/events.service.js";
 import { pool } from "../../src/db/connection.js";
 import {
   section,
@@ -80,6 +83,7 @@ async function run(): Promise<void> {
   let originalRole: string | null = null;
   let ownerId: string | null = null;
   let studentId: string | null = null;
+  let eventId: string | null = null;
 
   try {
     section("SMOKE 38 — Etap 2: asistan backend yetki kısıtları");
@@ -189,6 +193,23 @@ async function run(): Promise<void> {
     section("H — /products: assistant açık (katalog yönetimi)");
     assertEqual((await req("GET", "/products", { token: tokenAssistant })).status, 200, "H: assistant GET /products → 200");
 
+    // ── I. Etkinlik günü (kapı): assistant 403, ön kayıt açık, admin 200 ─────
+    section("I — /events/:id/day: assistant 403, ön kayıt açık, admin 200");
+    const event = await createEvent({
+      name: "SMOKE38_event",
+      startsAt: new Date(Date.now() + 86_400_000).toISOString(),
+      location: null,
+      capacityLimit: null,
+      transportEnabled: false,
+      note: null,
+      actorUserId: ownerId,
+    });
+    eventId = event.id;
+    assertEqual((await req("GET", `/events/${eventId}`, { token: tokenAssistant })).status, 200, "I: assistant GET /events/:id (ön kayıt) → 200");
+    assertEqual((await req("GET", `/events/${eventId}/participants`, { token: tokenAssistant })).status, 200, "I: assistant GET /events/:id/participants (ön kayıt) → 200");
+    assertEqual((await req("GET", `/events/${eventId}/day`, { token: tokenAssistant })).status, 403, "I: assistant GET /events/:id/day → 403");
+    assertEqual((await req("GET", `/events/${eventId}/day`, { token: tokenAdmin })).status, 200, "I: admin GET /events/:id/day → 200");
+
     ok("\nSMOKE 38 — ASİSTAN KISITLARI TÜM ADIMLAR BAŞARILI ✓");
   } finally {
     for (const token of tokensToCleanup) {
@@ -196,6 +217,9 @@ async function run(): Promise<void> {
     }
     if (studentId) {
       await cleanupSmoke([studentId]);
+    }
+    if (eventId && ownerId) {
+      await deleteEvent(eventId, ownerId).catch(() => undefined);
     }
     if (createdUserIds.length > 0) {
       // smoke 36 ile aynı: test kullanıcılarının login/logout audit satırlarını

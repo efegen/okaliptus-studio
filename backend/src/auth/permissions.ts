@@ -25,6 +25,7 @@ const CAPABILITIES = {
   'settings.manage': ['owner', 'admin', 'instructor'], // ayarlar + katalog (eğitmen/ders türü) yazma
   'students.delete': ['owner', 'admin', 'instructor'], // öğrenci kalıcı silme
   'audit.read': ['owner', 'admin', 'instructor'], // etkinlik/denetim kayıtları
+  'events.day.read': ['owner', 'admin', 'instructor'], // etkinlik günü (kapı) ekranı — ön kayıt hariç
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Capability = keyof typeof CAPABILITIES;

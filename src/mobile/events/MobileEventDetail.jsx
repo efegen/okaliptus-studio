@@ -127,6 +127,9 @@ export function MobileEventDetail({ eventId, onBack, onOpenAddPerson, onOpenTran
   // "Hareketler" tahsilat tutarlarını da gösterir; asistan rolüne kapalı
   // (backend requireCan('audit.read')). Gizleme kozmetik, güvenlik sunucuda.
   const canSeeActivity = useCan('audit.read');
+  // Etkinlik günü (kapı) ekranı: asistan ön kaydı (bu ekran) görür ama
+  // başladıktan sonraki bölgeyi göremez (backend requireCan('events.day.read')).
+  const canSeeDay = useCan('events.day.read');
   const [search, setSearch] = React.useState('');
   const [filter, setFilter] = React.useState('all');
   const [openSwipe, setOpenSwipe] = React.useState(null);
@@ -438,10 +441,12 @@ export function MobileEventDetail({ eventId, onBack, onOpenAddPerson, onOpenTran
             <Icon.Plus width="16" height="16" />
             Ekle
           </button>
-          <button type="button" className="evx-btn-primary" onClick={openDay} disabled={dayBusy}>
-            <Icon.Clock width="17" height="17" />
-            {dayBusy ? 'Başlatılıyor…' : DAY_BUTTON_LABEL[event.status] ?? 'Etkinlik günü kayıtları'}
-          </button>
+          {canSeeDay && (
+            <button type="button" className="evx-btn-primary" onClick={openDay} disabled={dayBusy}>
+              <Icon.Clock width="17" height="17" />
+              {dayBusy ? 'Başlatılıyor…' : DAY_BUTTON_LABEL[event.status] ?? 'Etkinlik günü kayıtları'}
+            </button>
+          )}
         </div>
         {dayError && (
           <p className="evx-footer-note" role="alert" style={{ color: 'oklch(0.5 0.18 30)' }}>{dayError}</p>

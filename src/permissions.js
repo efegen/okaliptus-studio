@@ -14,6 +14,7 @@ const CAPABILITIES = {
   'settings.manage': ['owner', 'admin', 'instructor'],
   'students.delete': ['owner', 'admin', 'instructor'],
   'audit.read': ['owner', 'admin', 'instructor'],
+  'events.day.read': ['owner', 'admin', 'instructor'], // etkinlik günü (kapı) ekranı — asistan ön kaydı görür, kapıyı görmez
 };
 
 // Rol verilen yetkiye sahip mi? Rol tanımsız/bilinmeyense false (en kısıtlı).
