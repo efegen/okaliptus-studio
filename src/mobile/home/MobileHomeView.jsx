@@ -2,83 +2,6 @@ import React from 'react';
 import { Avatar, Icon } from '../../layout';
 import { fmtTL } from '../../data';
 
-const MONTHS_TR = ['OCA', 'ŞUB', 'MAR', 'NİS', 'MAY', 'HAZ', 'TEM', 'AĞU', 'EYL', 'EKİ', 'KAS', 'ARA'];
-const WEEKDAY_LONG = new Intl.DateTimeFormat('tr-TR', { timeZone: 'Europe/Istanbul', weekday: 'long' });
-const MONTH_LONG = new Intl.DateTimeFormat('tr-TR', { timeZone: 'Europe/Istanbul', day: 'numeric', month: 'long' });
-const TIME_FMT = new Intl.DateTimeFormat('tr-TR', { timeZone: 'Europe/Istanbul', hour: '2-digit', minute: '2-digit' });
-
-function eventCountdownLabel(startsAt) {
-  const days = Math.ceil((new Date(startsAt).getTime() - Date.now()) / 86_400_000);
-  if (days <= 0) return 'BUGÜN';
-  if (days === 1) return 'YARIN';
-  return `${days} GÜN`;
-}
-
-/** Ana sayfa hero'sundaki yaklaşan etkinlik kartı (Canvas-2 "4d"). */
-function EventHeroCard({ event, onOpen, showAmount }) {
-  const date = new Date(event.starts_at);
-  const day = date.getDate();
-  const month = MONTHS_TR[date.getMonth()];
-  const coming = event.coming;
-  const unsure = event.unsure;
-  const total = event.totalParticipants || 1;
-  const notCounted = Math.max(0, total - coming - unsure);
-  const participantCount = event.totalParticipants ?? event.registeredCount ?? 0;
-  // Canlı etkinlikte kart doğrudan kapı ekranını (etkinlik günü) açar.
-  const isLive = event.status === 'live';
-
-  return (
-    <button type="button" className="mh-event-card" onClick={() => onOpen(event.id, event.status)}>
-      <span className="mh-event-card-bg" aria-hidden="true" />
-      <div className="mh-event-top">
-        <div className="mh-event-datebadge" aria-hidden="true">
-          <span className="mh-event-datebadge-day">{day}</span>
-          <span className="mh-event-datebadge-month">{month}</span>
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <p className="mh-event-eyebrow">{isLive ? 'Etkinlik günü · kayda devam' : 'Yaklaşan etkinlik'}</p>
-          <p className="mh-event-name">{event.name}</p>
-        </div>
-        <span className="mh-event-countdown">{isLive ? 'CANLI' : eventCountdownLabel(event.starts_at)}</span>
-      </div>
-      <p className="mh-event-meta">
-        {WEEKDAY_LONG.format(date)} · {TIME_FMT.format(date)}{event.location ? ` · ${event.location}` : ''}
-      </p>
-      <div className="mh-event-tear" aria-hidden="true">
-        <span className="mh-event-notch mh-event-notch-l" />
-        <span className="mh-event-notch mh-event-notch-r" />
-      </div>
-      <div className="mh-event-bottom">
-        <div className="mh-event-stat-row">
-          <span className="mh-event-stat-num">{coming}</span>
-          <span className="mh-event-stat-label">kişi geliyor</span>
-          <span style={{ flex: 1 }} />
-          {unsure > 0 && <span className="mh-event-stat-unsure">{unsure} belirsiz</span>}
-        </div>
-        <div className="mh-event-bar">
-          <span style={{ flexGrow: coming, flexBasis: 0, background: 'oklch(0.68 0.13 150)' }} />
-          <span style={{ flexGrow: unsure, flexBasis: 0, background: 'oklch(0.78 0.13 78)' }} />
-          <span style={{ flexGrow: notCounted, flexBasis: 0, background: 'oklch(1 0 0 / 0.12)' }} />
-        </div>
-        <div className="mh-event-foot">
-          <span>{participantCount} katılımcı</span>
-          {showAmount && <span>Potansiyel gelir · ≈ {fmtTL(event.potentialAmount)}</span>}
-        </div>
-      </div>
-    </button>
-  );
-}
-
-function EventHeroEmpty({ onOpen }) {
-  return (
-    <button type="button" className="mh-event-empty" onClick={() => onOpen()}>
-      <Icon.Calendar width="22" height="22" aria-hidden="true" />
-      <span className="mh-event-empty-title">Yaklaşan etkinlik yok</span>
-      <span>Etkinlik oluşturmak için dokunun</span>
-    </button>
-  );
-}
-
 // Türkçe iyelik eki: "%53'ü", "%50'si", "%40'ı" ... Son okunan sözcüğün
 // ünlü uyumuna göre. 0–100 arası yüzdeler için doğru ek üretir.
 function percentSuffix(n) {
@@ -139,15 +62,6 @@ function ProfileMenu({ user, onLogout }) {
  * "B Temel" mobil ana sayfa üst kısmı — başlık + hero (son 30 gün tahsilat) + iki pill.
  * Bugünün dersleri ayrı bir bileşendir (MobileAgenda). Veri MobileHome'dan gelir.
  */
-function HeroScroller({ slideCount, children }) {
-  if (slideCount <= 1) return children;
-
-  return (
-    <div className="mh-hero-scroll">
-      {React.Children.map(children, (child) => <div className="mh-hero-slide">{child}</div>)}
-    </div>
-  );
-}
 
 export function MobileHomeView({
   dateLabel, headline, user, onLogout, onOpenFinance, onOpenOccupancy, onOpenOrders, onOpenNotes,
@@ -157,20 +71,12 @@ export function MobileHomeView({
   kpiLoading = false,
   ordersPending = 0, ordersUrgent = 0,
   canSeeFinance = true, canSeeOrders = true,
-  event = null, onOpenEvent,
 }) {
   const barWidth = Math.max(0, Math.min(100, collectionRate));
   const occupancyTag = capacity != null
     ? `${plannedLessons}/${capacity} ders`
     : `${plannedLessons} ders`;
   const kpiDim = kpiLoading ? ' is-loading' : '';
-  const eventSlide = event
-    ? <EventHeroCard event={event} onOpen={onOpenEvent} showAmount={canSeeFinance} />
-    : <EventHeroEmpty onOpen={onOpenEvent} />;
-  // Etkinlik kartı yalnızca yaklaşan/canlı bir etkinlik varken öne (1.
-  // sıraya) geçer; yoksa veya yalnız geçmiş etkinlik varsa (event=null)
-  // "son 30 gün tahsilat" hero'su öne alınır, etkinlik 2. sıraya düşer.
-  const eventFirst = Boolean(event);
 
   return (
     <div className="mobile-home mh-wrap">
@@ -181,8 +87,6 @@ export function MobileHomeView({
         </div>
         <ProfileMenu user={user} onLogout={onLogout} />
       </div>
-
-      {!canSeeFinance && eventSlide}
 
       {canSeeFinance && (() => {
         const heroInner = (
@@ -218,12 +122,7 @@ export function MobileHomeView({
         ) : (
           <div className={`mh-hero${kpiDim}`}>{heroInner}</div>
         );
-        return (
-          <HeroScroller slideCount={2}>
-            {eventFirst ? eventSlide : financeSlide}
-            {eventFirst ? financeSlide : eventSlide}
-          </HeroScroller>
-        );
+        return financeSlide;
       })()}
 
       <div className={`mh-pills${canSeeFinance ? '' : ' mh-pills-solo'}`}>

@@ -37,7 +37,6 @@ import { CatalogPage } from '../catalog';
 import { queryKeys } from '../hooks/queryKeys';
 import { fmtTL } from '../data';
 import { Icon } from '../layout';
-import { useCan } from '../currentUser';
 
 // Mobile shell: header (when shown) + page body + fixed bottom tab bar. The
 // center "+" FAB opens the QuickAdd action sheet (Ödeme al · Ürün sat · Ders
@@ -82,9 +81,6 @@ export function MobileApp({
   onLogout,
 }) {
   const queryClient = useQueryClient();
-  // Asistan etkinlik günü (kapı) ekranını göremez; canlı etkinlik kartı ana
-  // sayfada tıklanınca doğrudan kapıya değil, ön kayıt ekranına açılır.
-  const canSeeEventDay = useCan('events.day.read');
   const onStudentsPage = page === 'students';
   const onMenuChild = page === 'settings' || page === 'catalog' || page === 'products' || page === 'movements' || page === 'events';
   const onProductSale = page === 'product-sale' || page === 'product-sale-checkout';
@@ -371,11 +367,6 @@ export function MobileApp({
         onOpenOccupancy={() => { setStudentDetailId(null); setPage('occupancy'); }}
         onOpenOrders={() => { setStudentDetailId(null); setPage('orders'); }}
         onOpenNotes={() => { setStudentDetailId(null); setNotesReturnPage('home'); setPage('notes'); }}
-        onOpenEvent={(eventId, status) => {
-          if (!eventId) setPage('event-create');
-          else if (status === 'live' && canSeeEventDay) openEventDay(eventId, 'home');
-          else openEventDetail(eventId, 'home');
-        }}
       />
     );
   } else if (page === 'events') {
