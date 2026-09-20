@@ -8027,7 +8027,9 @@ button.evx-tp-chip:focus-visible,
   color: white; font: inherit; font-size: 25px; line-height: 1;
 }
 .evx-note-interactions { min-width: 0; }
-.evx-note-card.is-reply .evx-note-interactions { display: none; }
+/* Yanıtlarda tepki şeridi gizli; yalnız sağ altta "Yanıtla" görünür. */
+.evx-note-card.is-reply .evx-note-reaction-strip { display: none; }
+.evx-note-card.is-reply .evx-note-actionbar { min-height: 26px; justify-content: flex-end; }
 .evx-note-reaction-strip { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 .evx-note-reaction {
   min-height: 32px; padding: 0 11px 0 9px; display: inline-flex; align-items: center; gap: 6px;
