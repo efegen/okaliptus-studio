@@ -2749,6 +2749,13 @@ export function HomePage({ layout, onNavigate }) {
   const [weekStart, setWeekStart] = React.useState(() => getCurrentMonday());
   const [weekSessions, setWeekSessions] = React.useState([]);
   const [weekEvents, setWeekEvents] = React.useState([]);
+  const shownLessonCount = weekSessions.length;
+  const shownOccupancy = weeklyCapacity ? Math.round(shownLessonCount / weeklyCapacity * 100) : null;
+  const weekSummary = (
+    <span className="card-sub" style={{marginLeft: 12, marginRight: 'auto'}}>
+      <strong>{shownLessonCount}</strong> ders{shownOccupancy !== null && <> · doluluk <strong>%{shownOccupancy}</strong></>}
+    </span>
+  );
   function goToPrevWeek() { setWeekStart(ws => addWeeks(ws, -1)); }
   function goToNextWeek() { setWeekStart(ws => addWeeks(ws, 1)); }
   function goToCurrentWeek() { setWeekStart(getCurrentMonday()); }
@@ -2784,6 +2791,7 @@ export function HomePage({ layout, onNavigate }) {
         <div className="card card-flat">
           <div className="card-head">
             <h3 className="card-title">Haftalık takvim</h3>
+            {weekSummary}
             <div className="card-actions">
               <WeekNavBar weekStart={weekStart} onPrev={goToPrevWeek} onNext={goToNextWeek} onToday={goToCurrentWeek} onWeekSelect={setWeekStart} sessions={weekSessions} events={weekEvents} />
             </div>
@@ -2939,6 +2947,7 @@ export function HomePage({ layout, onNavigate }) {
         <div className="card card-cal" style={{padding: 0}}>
           <div className="card-head" style={{padding: "16px 18px 0"}}>
             <h3 className="card-title">Haftalık takvim</h3>
+            {weekSummary}
             <div className="card-actions">
               <WeekNavBar weekStart={weekStart} onPrev={goToPrevWeek} onNext={goToNextWeek} onToday={goToCurrentWeek} onWeekSelect={setWeekStart} sessions={weekSessions} events={weekEvents} />
             </div>
