@@ -238,6 +238,7 @@ describe('Mobil notlar', () => {
     await waitFor(() => expect(api.addNote).toHaveBeenCalledWith({
       body: 'Yeni operasyon notu',
       mentionedStudentIds: [],
+      mentionedUserIds: [],
       categoryId: '22',
     }));
   });
@@ -255,6 +256,7 @@ describe('Mobil notlar', () => {
     await waitFor(() => expect(api.addNote).toHaveBeenCalledWith({
       body: 'Kategorisiz yeni not',
       mentionedStudentIds: [],
+      mentionedUserIds: [],
       categoryId: null,
     }));
   });
@@ -281,8 +283,54 @@ describe('Mobil notlar', () => {
       body: 'Fotoğraflı yanıt',
       parentNoteId: '1',
       mentionedStudentIds: [],
+      mentionedUserIds: [],
     }));
     expect(api.uploadNoteImage).toHaveBeenCalledWith('9', expect.any(Blob));
+  });
+
+  it('başkasının notuna yanıtta yazarı otomatik etiketler ve id ile gönderir', async () => {
+    api.getNotes.mockResolvedValue([note({ id: '5', author_user_id: '11', author_name: 'Ceren', body: 'Ceren notu' })]);
+    api.addNote.mockResolvedValue(note({ id: '6', parent_note_id: '5' }));
+    renderNotes();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Yanıtla' }));
+    const editor = screen.getByRole('textbox');
+    const chip = editor.querySelector('.evx-mention-chip.is-user');
+    expect(chip).not.toBeNull();
+    expect(chip).toHaveTextContent('Ceren');
+
+    editor.appendChild(document.createTextNode('Tamamdır'));
+    fireEvent.input(editor);
+    fireEvent.click(screen.getByRole('button', { name: 'Gönder' }));
+
+    await waitFor(() => expect(api.addNote).toHaveBeenCalledWith({
+      body: '@{u:11} Tamamdır',
+      parentNoteId: '5',
+      mentionedStudentIds: [],
+      mentionedUserIds: ['11'],
+    }));
+  });
+
+  it('kullanıcı etiketini güncel adla ve turuncu vurguyla gösterir', async () => {
+    api.getNotes.mockResolvedValue([
+      note({ id: '7', body: 'Selam @{u:11} bakar mısın', user_mentions: [{ userId: '11', name: 'Ceren' }] }),
+    ]);
+    renderNotes();
+
+    const mention = await screen.findByText('Ceren');
+    expect(mention).toHaveClass('evx-note-mention', 'is-user');
+    expect(screen.queryByText(/@\{u:11\}/)).toBeNull();
+  });
+
+  it('nota dokununca detay sayfasını açar ve geri ile listeye döner', async () => {
+    api.getNotes.mockResolvedValue([note({ id: '8', body: 'Detaya gidecek not' })]);
+    renderNotes();
+
+    fireEvent.click(await screen.findByText('Detaya gidecek not'));
+    expect(await screen.findByText('Not')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Geri' }));
+    expect(await screen.findByRole('button', { name: /Not yaz/ })).toBeInTheDocument();
   });
 
   it('yeni notta kişi, hızlı zaman ve özel tarih-saat içeren hatırlatıcı önizlemesi sunar', async () => {

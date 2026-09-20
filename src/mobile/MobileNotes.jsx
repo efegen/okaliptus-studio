@@ -28,7 +28,10 @@ import { setLastSeenNoteId } from './shared/notesSeen';
 // da etkinlik detayındaki "Notlar" kısayolu da aynı listeyi açar. Düzenleme,
 // silme, daraltılabilir tek seviye yanıt, emoji tepkisi, fotoğraf ve "@" ile
 // öğrenci bahsi destekler. Okuma görünümünde bahis "@" olmadan profil bağlantısı
-// olur. Herkes görebilir; düzenleme/silme yalnız notun kendi yazarına açık
+// olur. Kullanıcı etiketi de aynı yolla çalışır ama turuncu görünür ve gövdede
+// ad değil `@{u:<id>}` belirteci saklanır (ad okuma anında çözülür, bkz.
+// USER_TOKEN_SRC / migration 0290); yanıtta notun yazarı otomatik etiketlenir.
+// Bir nota dokunmak tam ekran detay görünümünü açar. Herkes görebilir; düzenleme/silme yalnız notun kendi yazarına açık
 // (bkz. notes.service.ts lockOwnedNote).
 //
 // Bilinçli tasarım kararı: ekrana girince direkt bir yazı kutusu ÇIKMAZ —
@@ -54,21 +57,49 @@ function escapeRegExp(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+// Gövdede kullanıcı etiketi `@{u:12}` olarak saklanır; görünen ad users'tan
+// (note.user_mentions) çözülür ki kullanıcı adı değişince notlar da güncellensin.
+const USER_TOKEN_SRC = '@\\{u:\\d+\\}';
+const USER_TOKEN_RE = /^@\{u:(\d+)\}$/;
+
+function userNameMap(userMentions) {
+  return new Map((userMentions || []).map((m) => [String(m.userId), m.name]));
+}
+
+function stripUserTokens(text) {
+  return (text || '').replace(new RegExp(USER_TOKEN_SRC, 'g'), '');
+}
+
+// Arama ve düz metin için: belirteçleri "@Ad" yapar.
+function plainNoteBody(body, userMentions) {
+  const names = userNameMap(userMentions);
+  return (body || '').replace(/@\{u:(\d+)\}/g, (_m, id) => `@${names.get(id) ?? 'Kullanıcı'}`);
+}
+
 function noteMatchesQuery(note, normalizedQuery) {
-  if ((note.body || '').toLowerCase().includes(normalizedQuery)) return true;
+  if (plainNoteBody(note.body, note.user_mentions).toLowerCase().includes(normalizedQuery)) return true;
   if ((note.author_name || '').toLowerCase().includes(normalizedQuery)) return true;
   if ((note.category?.name || '').toLowerCase().includes(normalizedQuery)) return true;
+  if ((note.user_mentions || []).some((m) => m.name.toLowerCase().includes(normalizedQuery))) return true;
   return (note.mentions || []).some((m) => m.name.toLowerCase().includes(normalizedQuery));
 }
 
 // mentions [{studentId, name}] içindeki "@Ad Soyad" dizilerini gövde metninde
 // bulup vurgular. En uzun ada göre sıralanır ki bir ad başka bir adın alt
 // dizisi olduğunda (ör. "Ali" / "Ali Veli") yanlış eşleşme olmasın.
-function renderBodyWithMentions(body, mentions, onOpenStudent) {
-  if (!mentions || mentions.length === 0) return body;
-  const tokens = [...new Set(mentions.map((m) => `@${m.name}`))].sort((a, b) => b.length - a.length);
-  const pattern = new RegExp(`(${tokens.map(escapeRegExp).join('|')})`, 'g');
-  return body.split(pattern).map((part, i) => (
+function renderBodyWithMentions(body, mentions, onOpenStudent, userMentions) {
+  const hasStudents = mentions && mentions.length > 0;
+  const hasUsers = new RegExp(USER_TOKEN_SRC).test(body || '');
+  if (!hasStudents && !hasUsers) return body;
+  const names = userNameMap(userMentions);
+  const tokens = [...new Set((mentions || []).map((m) => `@${m.name}`))].sort((a, b) => b.length - a.length);
+  const pattern = new RegExp(`(${[USER_TOKEN_SRC, ...tokens.map(escapeRegExp)].join('|')})`, 'g');
+  return body.split(pattern).map((part, i) => {
+    const userMatch = USER_TOKEN_RE.exec(part);
+    if (userMatch) {
+      return <span key={i} className="evx-note-mention is-user">{names.get(userMatch[1]) ?? 'Kullanıcı'}</span>;
+    }
+    return (
     tokens.includes(part)
       ? (
           <button
@@ -84,7 +115,8 @@ function renderBodyWithMentions(body, mentions, onOpenStudent) {
           </button>
         )
       : <React.Fragment key={i}>{part}</React.Fragment>
-  ));
+    );
+  });
 }
 
 const NOTE_SMART_FILTERS = [
@@ -302,6 +334,8 @@ function serializeComposerNodes(nodes) {
     } else if (node.nodeType === Node.ELEMENT_NODE) {
       if (node.tagName === 'BR') {
         out += '\n';
+      } else if (node.dataset && node.dataset.userId) {
+        out += `@{u:${node.dataset.userId}}`;
       } else if (node.dataset && node.dataset.name) {
         out += `@${node.dataset.name}`;
       } else {
@@ -332,26 +366,36 @@ function appendTextWithBreaks(root, text) {
   });
 }
 
-function makeMentionChip(studentId, name) {
+// kind: 'student' (yeşil, gövdede "@Ad Soyad") | 'user' (turuncu, gövdede
+// `@{u:id}` belirteci — serializeComposerNodes).
+function makeMentionChip(id, name, kind = 'student') {
   const chip = document.createElement('span');
-  chip.className = 'evx-mention-chip';
+  chip.className = kind === 'user' ? 'evx-mention-chip is-user' : 'evx-mention-chip';
   chip.setAttribute('contenteditable', 'false');
-  chip.dataset.studentId = String(studentId);
-  chip.dataset.name = name;
+  if (kind === 'user') {
+    chip.dataset.userId = String(id);
+  } else {
+    chip.dataset.studentId = String(id);
+    chip.dataset.name = name;
+  }
   chip.textContent = name;
   return chip;
 }
 
 // initialBody içindeki "@Ad Soyad" dizilerini initialMentions'a bakarak chip
 // düğümlerine çevirir (düzenleme/yanıt akışında composer ilk açıldığında).
-function buildInitialContent(root, body, mentions) {
+function buildInitialContent(root, body, mentions, userMentions) {
   root.innerHTML = '';
   if (!body) return;
   const byName = new Map((mentions || []).map((m) => [m.name, m]));
+  const names = userNameMap(userMentions);
   const tokens = [...new Set((mentions || []).map((m) => `@${m.name}`))].sort((a, b) => b.length - a.length);
-  const parts = tokens.length ? body.split(new RegExp(`(${tokens.map(escapeRegExp).join('|')})`, 'g')) : [body];
-  for (const part of parts) {
-    if (tokens.includes(part)) {
+  const pattern = new RegExp(`(${[USER_TOKEN_SRC, ...tokens.map(escapeRegExp)].join('|')})`, 'g');
+  for (const part of body.split(pattern)) {
+    const userMatch = USER_TOKEN_RE.exec(part);
+    if (userMatch) {
+      root.appendChild(makeMentionChip(userMatch[1], names.get(userMatch[1]) ?? 'Kullanıcı', 'user'));
+    } else if (tokens.includes(part)) {
       const name = part.slice(1);
       const m = byName.get(name);
       root.appendChild(makeMentionChip(m ? m.studentId : '', name));
@@ -412,8 +456,10 @@ function NotePhoto({ note }) {
 // yalnız initialBody/initialMentions ve submit etiketiyle farklılaşır.
 function MentionComposer({
   students,
+  users = [],
   initialBody = '',
   initialMentions = [],
+  initialUserMentions = [],
   placeholder,
   rows = 3,
   autoFocus = false,
@@ -429,7 +475,7 @@ function MentionComposer({
 }) {
   const editorRef = React.useRef(null);
   const photoInputRef = React.useRef(null);
-  const [hasContent, setHasContent] = React.useState(() => !!initialBody.trim());
+  const [hasContent, setHasContent] = React.useState(() => !!stripUserTokens(initialBody).trim());
   const [suggestQuery, setSuggestQuery] = React.useState(null);
   const [photoBlob, setPhotoBlob] = React.useState(null);
   const [photoPreview, setPhotoPreview] = React.useState('');
@@ -441,8 +487,19 @@ function MentionComposer({
   React.useEffect(() => {
     const root = editorRef.current;
     if (!root) return;
-    buildInitialContent(root, initialBody, initialMentions);
-    if (autoFocus) root.focus();
+    buildInitialContent(root, initialBody, initialMentions, initialUserMentions);
+    if (autoFocus) {
+      root.focus();
+      // Yanıtta hazır gelen etiketin arkasına yazılsın: imleç sona.
+      const sel = window.getSelection();
+      if (sel) {
+        const endRange = document.createRange();
+        endRange.selectNodeContents(root);
+        endRange.collapse(false);
+        sel.removeAllRanges();
+        sel.addRange(endRange);
+      }
+    }
     // Yalnız mount'ta çalışır — initialBody/initialMentions sonradan değişmez
     // (composer, editing/replying açılıp kapandığında yeniden mount olur).
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -465,7 +522,7 @@ function MentionComposer({
       if (after.length < text.length) return updateDerivedState();
       text = after;
     }
-    setHasContent(!!text.trim());
+    setHasContent(!!stripUserTokens(text).trim());
     const beforeCaret = getTextBeforeCaret(root);
     const match = beforeCaret.match(MENTION_QUERY_RE);
     setSuggestQuery(match ? match[2] : null);
@@ -518,7 +575,7 @@ function MentionComposer({
     setPhotoError('');
   }
 
-  function handlePickMention(student) {
+  function handlePickMention(item) {
     if (suggestQuery === null) return;
     const root = editorRef.current;
     const sel = window.getSelection();
@@ -537,7 +594,9 @@ function MentionComposer({
     }
     const range = sel.getRangeAt(0);
     range.deleteContents();
-    const chip = makeMentionChip(student.studentId, student.label);
+    const chip = item.kind === 'user'
+      ? makeMentionChip(item.userId, item.label, 'user')
+      : makeMentionChip(item.studentId, item.label);
     const space = document.createTextNode(' ');
     const frag = document.createDocumentFragment();
     frag.appendChild(chip);
@@ -562,11 +621,18 @@ function MentionComposer({
     const mentionedStudentIds = [...new Set(
       [...root.querySelectorAll('[data-student-id]')].map((el) => el.dataset.studentId).filter(Boolean)
     )];
-    onSubmit(trimmedBody, mentionedStudentIds, photoBlob, reminder);
+    const mentionedUserIds = [...new Set(
+      [...root.querySelectorAll('[data-user-id]')].map((el) => el.dataset.userId).filter(Boolean)
+    )];
+    onSubmit(trimmedBody, mentionedStudentIds, photoBlob, reminder, mentionedUserIds);
   }
 
+  // Kullanıcılar (turuncu) öğrencilerden (yeşil) önce listelenir.
   const suggestions = suggestQuery !== null
-    ? students.filter((p) => p.label.toLowerCase().includes(suggestQuery.toLowerCase())).slice(0, 6)
+    ? [
+        ...users.map((u) => ({ ...u, kind: 'user' })),
+        ...students.map((s) => ({ ...s, kind: 'student' })),
+      ].filter((p) => p.label.toLowerCase().includes(suggestQuery.toLowerCase())).slice(0, 6)
     : [];
 
   return (
@@ -587,8 +653,13 @@ function MentionComposer({
       {suggestions.length > 0 && (
         <ul className="evx-mention-list">
           {suggestions.map((p) => (
-            <li key={p.studentId}>
-              <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => handlePickMention(p)}>
+            <li key={`${p.kind}:${p.kind === 'user' ? p.userId : p.studentId}`}>
+              <button
+                type="button"
+                className={p.kind === 'user' ? 'is-user' : undefined}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => handlePickMention(p)}
+              >
                 <span className="evx-avatar" style={{ width: 24, height: 24, fontSize: 10 }}>{initialsOf(p.label)}</span>
                 <span>{p.label}</span>
               </button>
@@ -879,7 +950,7 @@ function NoteCategorySettings({ categories, loading, loadError, onBack }) {
   );
 }
 
-function NoteCard({ note, isMine, students, categories, isReply = false, replies = [], currentUser, onOpenStudent }) {
+function NoteCard({ note, isMine, students, users = [], categories, isReply = false, replies = [], currentUser, onOpenStudent, onOpen, detail = false }) {
   const queryClient = useQueryClient();
   const reactionButtonRef = React.useRef(null);
   const reactionPickerRef = React.useRef(null);
@@ -946,11 +1017,11 @@ function NoteCard({ note, isMine, students, categories, isReply = false, replies
     await queryClient.invalidateQueries({ queryKey: queryKeys.notes() });
   }
 
-  async function handleSaveEdit(body, mentionedStudentIds) {
+  async function handleSaveEdit(body, mentionedStudentIds, _photoBlob, _reminder, mentionedUserIds) {
     setBusy(true);
     setActionError('');
     try {
-      await updateNote(note.id, { body, mentionedStudentIds, categoryId: editCategoryId });
+      await updateNote(note.id, { body, mentionedStudentIds, mentionedUserIds, categoryId: editCategoryId });
       await refresh();
       setEditing(false);
     } catch (err) {
@@ -960,11 +1031,11 @@ function NoteCard({ note, isMine, students, categories, isReply = false, replies
     }
   }
 
-  async function handleReplySubmit(body, mentionedStudentIds, photoBlob) {
+  async function handleReplySubmit(body, mentionedStudentIds, photoBlob, _reminder, mentionedUserIds) {
     setBusy(true);
     setActionError('');
     try {
-      const created = await addNote({ body, parentNoteId: note.id, mentionedStudentIds });
+      const created = await addNote({ body, parentNoteId: note.id, mentionedStudentIds, mentionedUserIds });
       if (photoBlob) {
         try {
           await uploadNoteImage(created.id, photoBlob);
@@ -1025,9 +1096,33 @@ function NoteCard({ note, isMine, students, categories, isReply = false, replies
   const edited = note.updated_at !== note.created_at;
   const reactions = note.reactions ?? [];
   const CardRoot = isReply ? 'article' : 'li';
+  const openable = !isReply && !detail && !!onOpen;
+  // Yanıtta notun yazarı otomatik etiketlenir (kendi notuna yanıtta değil).
+  const replyPrefill = !isMine
+    ? { body: `@{u:${note.author_user_id}} `, userMentions: [{ userId: String(note.author_user_id), name: note.author_name }] }
+    : { body: '', userMentions: [] };
+
+  // Kartın boş yerine dokunmak detay görünümünü açar; içindeki düğme/bağlantı/
+  // yazı alanı etkileşimleri (tepki, menü, etiket, fotoğraf, composer) hariç.
+  function handleCardClick(event) {
+    if (!openable) return;
+    if (event.target.closest('button, a, input, textarea, select, [contenteditable], .evx-note-composer, .evx-note-photo-lightbox')) return;
+    onOpen(note.id);
+  }
+
+  function handleCardKeyDown(event) {
+    if (!openable || event.target !== event.currentTarget) return;
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      onOpen(note.id);
+    }
+  }
 
   return (
-    <CardRoot className={`evx-note-card${isReply ? ' is-reply' : ''}`}>
+    <CardRoot
+      className={`evx-note-card${isReply ? ' is-reply' : ''}${detail ? ' is-detail' : ''}${openable ? ' is-clickable' : ''}`}
+      {...(openable ? { onClick: handleCardClick, onKeyDown: handleCardKeyDown, tabIndex: 0, role: 'link', 'aria-label': `${note.author_name} notunu aç` } : {})}
+    >
       <div className="evx-note-card-head">
         <span
           className="evx-avatar"
@@ -1102,8 +1197,10 @@ function NoteCard({ note, isMine, students, categories, isReply = false, replies
           )}
           <MentionComposer
             students={students}
+            users={users}
             initialBody={note.body}
             initialMentions={note.mentions}
+            initialUserMentions={note.user_mentions}
             rows={3}
             autoFocus
             submitLabel="Kaydet"
@@ -1120,7 +1217,7 @@ function NoteCard({ note, isMine, students, categories, isReply = false, replies
               <span className="evx-note-category-badge">{note.category.name}</span>
             </div>
           )}
-          <p className="evx-note-body">{renderBodyWithMentions(note.body, note.mentions, onOpenStudent)}</p>
+          <p className="evx-note-body">{renderBodyWithMentions(note.body, note.mentions, onOpenStudent, note.user_mentions)}</p>
         </>
       )}
 
@@ -1197,6 +1294,9 @@ function NoteCard({ note, isMine, students, categories, isReply = false, replies
       {replying && (
         <MentionComposer
           students={students}
+          users={users}
+          initialBody={replyPrefill.body}
+          initialUserMentions={replyPrefill.userMentions}
           placeholder="Yanıt yazın…"
           rows={2}
           autoFocus
@@ -1214,16 +1314,18 @@ function NoteCard({ note, isMine, students, categories, isReply = false, replies
           replies={replies}
           currentUser={currentUser}
           students={students}
+          users={users}
           categories={categories}
           onOpenStudent={onOpenStudent}
+          defaultExpanded={detail}
         />
       )}
     </CardRoot>
   );
 }
 
-function ReplyThread({ replies, currentUser, students, categories, onOpenStudent }) {
-  const [expanded, setExpanded] = React.useState(false);
+function ReplyThread({ replies, currentUser, students, users = [], categories, onOpenStudent, defaultExpanded = false }) {
+  const [expanded, setExpanded] = React.useState(defaultExpanded);
   if (replies.length === 0) return null;
 
   const isCollapsed = replies.length > 1 && !expanded;
@@ -1250,6 +1352,7 @@ function ReplyThread({ replies, currentUser, students, categories, onOpenStudent
             key={reply.id}
             note={reply}
             students={students}
+            users={users}
             categories={categories}
             isMine={!!currentUser && String(currentUser.id) === String(reply.author_user_id)}
             isReply
@@ -1271,6 +1374,25 @@ export function MobileNotes({ onBack, onOpenStudent }) {
   const [searchQuery, setSearchQuery] = React.useState('');
   const [categoryFilter, setCategoryFilter] = React.useState('all');
   const [composeCategoryId, setComposeCategoryId] = React.useState(null);
+  const [openNoteId, setOpenNoteId] = React.useState(null);
+  const listScrollRef = React.useRef(0);
+
+  // Detay görünümünden dönünce liste, açılmadan önceki kaydırma konumuna gelir.
+  function openDetail(noteId) {
+    listScrollRef.current = document.querySelector('.evx-body')?.scrollTop ?? 0;
+    setOpenNoteId(noteId);
+    setView('detail');
+  }
+
+  function closeDetail() {
+    setView('list');
+  }
+
+  React.useLayoutEffect(() => {
+    if (view !== 'list') return;
+    const el = document.querySelector('.evx-body');
+    if (el) el.scrollTop = listScrollRef.current;
+  }, [view]);
 
   function toggleSearch() {
     setSearchOpen((open) => {
@@ -1324,6 +1446,20 @@ export function MobileNotes({ onBack, onOpenStudent }) {
       .sort((a, b) => Number(b.isMe) - Number(a.isMe) || a.label.localeCompare(b.label, 'tr'))
   ), [reminderRecipientsQuery.data, currentUser]);
 
+  // "@" tamamlamasındaki kullanıcılar: kendimiz hariç (kendini etiketlemenin
+  // anlamı yok).
+  const mentionUsers = React.useMemo(
+    () => reminderUsers.filter((u) => !u.isMe).map((u) => ({ userId: u.userId, label: u.label })),
+    [reminderUsers],
+  );
+
+  const detailNote = view === 'detail' ? notes.find((n) => String(n.id) === String(openNoteId)) : null;
+  // Açık not silindiyse/kaybolduysa (ör. yazarı sildi) listeye dön.
+  React.useEffect(() => {
+    if (view !== 'detail' || notesQuery.isLoading) return;
+    if (!detailNote || detailNote.deleted_at) setView('list');
+  }, [view, detailNote, notesQuery.isLoading]);
+
   const topLevelNotes = notes.filter((n) => !n.parent_note_id);
   const activeNoteCount = topLevelNotes.filter((n) => !n.deleted_at).length;
   const repliesByParent = React.useMemo(() => {
@@ -1366,13 +1502,14 @@ export function MobileNotes({ onBack, onOpenStudent }) {
       })
     : categoryFilteredNotes;
 
-  async function handleAddNote(body, mentionedStudentIds, photoBlob, reminder) {
+  async function handleAddNote(body, mentionedStudentIds, photoBlob, reminder, mentionedUserIds) {
     setPosting(true);
     setComposeError('');
     try {
       const created = await addNote({
         body,
         mentionedStudentIds,
+        mentionedUserIds,
         categoryId: composeCategoryId,
         reminder: reminder
           ? {
@@ -1442,18 +1579,50 @@ export function MobileNotes({ onBack, onOpenStudent }) {
           />
           <MentionComposer
             students={students}
+            users={mentionUsers}
             placeholder="Bir not yazın… (ör. malzeme durumu, hatırlatma, değişiklik)"
             rows={7}
             autoFocus
             submitLabel="Paylaş"
             submitting={posting}
             error={composeError}
-            hint="Tüm ekip görür. @ ile eklediğiniz öğrenci profiline bağlanır."
+            hint="Tüm ekip görür. @ ile öğrenci (yeşil) veya ekip arkadaşı (turuncu) etiketleyebilirsiniz."
             allowPhoto
             allowReminder
             reminderUsers={reminderUsers}
             onSubmit={handleAddNote}
           />
+        </div>
+      </div>
+    );
+  }
+
+  if (view === 'detail' && detailNote && !detailNote.deleted_at) {
+    return (
+      <div className="evx">
+        <header className="evx-header">
+          <button type="button" className="evx-header-btn" onClick={closeDetail} title="Geri">
+            <Icon.ChevronL width="22" height="22" />
+          </button>
+          <div className="evx-header-mid">
+            <span className="evx-header-title">Not</span>
+            <span className="evx-header-sub">{detailNote.author_name}</span>
+          </div>
+        </header>
+        <div className="evx-body">
+          <ul className="evx-note-list">
+            <NoteCard
+              note={detailNote}
+              students={students}
+              users={mentionUsers}
+              categories={categories}
+              isMine={!!currentUser && String(currentUser.id) === String(detailNote.author_user_id)}
+              replies={repliesByParent.get(detailNote.id) ?? []}
+              currentUser={currentUser}
+              onOpenStudent={onOpenStudent}
+              detail
+            />
+          </ul>
         </div>
       </div>
     );
@@ -1590,6 +1759,7 @@ export function MobileNotes({ onBack, onOpenStudent }) {
                         replies={repliesByParent.get(n.id) ?? []}
                         currentUser={currentUser}
                         students={students}
+                        users={mentionUsers}
                         categories={categories}
                         onOpenStudent={onOpenStudent}
                       />
@@ -1600,11 +1770,13 @@ export function MobileNotes({ onBack, onOpenStudent }) {
                       key={n.id}
                       note={n}
                       students={students}
+                      users={mentionUsers}
                       categories={categories}
                       isMine={!!currentUser && String(currentUser.id) === String(n.author_user_id)}
                       replies={repliesByParent.get(n.id) ?? []}
                       currentUser={currentUser}
                       onOpenStudent={onOpenStudent}
+                      onOpen={openDetail}
                     />
                   )
             ))}
