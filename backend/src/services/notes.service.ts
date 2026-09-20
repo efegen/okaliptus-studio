@@ -373,6 +373,10 @@ export async function addNote(input: {
   parentNoteId?: EntityId | null;
   mentionedStudentIds?: EntityId[];
   mentionedUserIds?: EntityId[];
+  // Bir YANITA yanıt verilirken yanıtlanan yanıtın id'si. Kayıt yine tek seviye
+  // (parent = kök not); yalnız bildirimin doğru kişiye ("size yanıt verdi")
+  // gitmesi için kullanılır, saklanmaz.
+  replyToNoteId?: EntityId | null;
   categoryId?: EntityId | null;
   reminder?: { remindAt: string; recipientUserIds: EntityId[] } | null;
 }): Promise<NoteRow> {
@@ -399,6 +403,15 @@ export async function addNote(input: {
       }
       parentNoteId = parent.id;
       parentAuthorUserId = String(parent.author_user_id);
+
+      if (input.replyToNoteId != null && String(input.replyToNoteId) !== String(parent.id)) {
+        const target = await client.query<{ author_user_id: string }>(
+          `SELECT author_user_id FROM notes WHERE id = $1 AND parent_note_id = $2 AND deleted_at IS NULL`,
+          [input.replyToNoteId, parent.id],
+        );
+        if (!target.rows[0]) throw new NoteNotFoundError();
+        parentAuthorUserId = String(target.rows[0].author_user_id);
+      }
     }
 
     if (parentNoteId && input.categoryId != null) {

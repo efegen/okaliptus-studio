@@ -98,6 +98,22 @@ async function run(): Promise<void> {
     const bad = await req("POST", "/notes", tokenOwner, { body: "x @{u:999999999}", mentionedUserIds: ["999999999"] });
     assert(bad.status >= 400 && bad.status < 500, "E: 4xx");
 
+    section("F — yanıta yanıt: kök nota bağlanır, replyToNoteId doğrulanır");
+    const rootNote = await req("POST", "/notes", tokenOwner, { body: "Kök not S45" });
+    noteIds.push(rootNote.json.data.id);
+    const firstReply = await req("POST", "/notes", tokenOwner, { body: "Yanıt 1", parentNoteId: rootNote.json.data.id });
+    noteIds.push(firstReply.json.data.id);
+    const nested = await req("POST", "/notes", tokenOwner, {
+      body: "Yanıta yanıt", parentNoteId: rootNote.json.data.id, replyToNoteId: firstReply.json.data.id,
+    });
+    assertEqual(nested.status, 201, "F: yanıta yanıt 201");
+    noteIds.push(nested.json.data.id);
+    assertEqual(nested.json.data.parent_note_id, String(rootNote.json.data.id), "F: kök nota bağlı (tek seviye)");
+    const wrongTarget = await req("POST", "/notes", tokenOwner, {
+      body: "x", parentNoteId: rootNote.json.data.id, replyToNoteId: "999999999",
+    });
+    assertEqual(wrongTarget.status, 404, "F: var olmayan replyToNoteId → 404");
+
     ok("\nSMOKE 45 — KULLANICI ETİKETİ TÜM ADIMLAR BAŞARILI ✓");
   } finally {
     for (const t of tokens) await logout(t).catch(() => undefined);

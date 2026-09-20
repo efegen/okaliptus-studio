@@ -142,12 +142,13 @@ function parseReminderInput(raw: unknown): { remindAt: string; recipientUserIds:
 
 notesRouter.post("/", async (req, res) => {
   try {
-    const { body, parentNoteId, mentionedStudentIds, mentionedUserIds, categoryId, reminder } = req.body as Record<string, unknown>;
+    const { body, parentNoteId, mentionedStudentIds, mentionedUserIds, replyToNoteId, categoryId, reminder } = req.body as Record<string, unknown>;
     const data = await addNote({
       body: String(body ?? ""),
       parentNoteId: parentNoteId != null && parentNoteId !== "" ? (parentNoteId as string | number) : null,
       mentionedStudentIds: parseMentionedStudentIds(mentionedStudentIds),
       mentionedUserIds: parseMentionedStudentIds(mentionedUserIds),
+      replyToNoteId: replyToNoteId != null && replyToNoteId !== "" ? (replyToNoteId as string | number) : null,
       categoryId: parseCategoryId(categoryId),
       reminder: parseReminderInput(reminder),
       actorUserId: req.currentUser.id,
