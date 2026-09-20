@@ -541,6 +541,14 @@
   }
   .mod-tileu-urgent { color: var(--ty-ink); font-weight: 600; }
 
+  /* Notlar kutusundaki "yeni not" rozeti — aynı bildirim noktası deseni,
+     Trendyol tonu yerine genel accent rengiyle (bkz. shared/notesSeen.js). */
+  .mod-tilen .mod-tile-icon { position: relative; overflow: visible; }
+  .mod-tilen-dot {
+    position: absolute; top: -3px; right: -3px; width: 10px; height: 10px;
+    border-radius: 50%; background: var(--accent); border: 2px solid var(--surface);
+  }
+
   /* ---------- Agenda (home) ---------- */
 
   .mobile-agenda {

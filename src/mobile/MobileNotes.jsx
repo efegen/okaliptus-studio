@@ -20,6 +20,7 @@ import {
 import { queryKeys } from '../hooks/queryKeys';
 import { useCurrentUser } from '../currentUser';
 import { compressToBoundedWebp } from '../imageCompress';
+import { setLastSeenNoteId } from './shared/notesSeen';
 
 // Notlar — stüdyo geneli TEK bir paylaşılan not akışı. Önce etkinlik detayının
 // bir alt ekranı olarak doğdu (etkinlik başına ayrı liste), kullanıcı isteğiyle
@@ -1290,6 +1291,13 @@ export function MobileNotes({ onBack, onOpenStudent }) {
 
   const notes = notesQuery.data ?? [];
   const categories = categoriesQuery.data ?? [];
+
+  // Not listesi görüldüğünde ana sayfadaki "yeni not" rozetini kapat (bkz.
+  // shared/notesSeen.js). Notlar en yeniden en eskiye geldiği için ilk eleman
+  // en güncel not id'sidir.
+  React.useEffect(() => {
+    if (notes.length > 0) setLastSeenNoteId(notes[0].id);
+  }, [notes]);
 
   React.useEffect(() => {
     if (!categoryFilter.startsWith('category:') || categoriesQuery.isLoading) return;

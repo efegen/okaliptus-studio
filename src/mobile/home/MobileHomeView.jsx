@@ -69,7 +69,7 @@ export function MobileHomeView({
   receivable = 0, debtorCount = 0,
   occupancy = 0, plannedLessons = 0, capacity = null,
   kpiLoading = false,
-  ordersPending = 0, ordersUrgent = 0,
+  ordersPending = 0, ordersUrgent = 0, notesHasNew = false,
   canSeeFinance = true, canSeeOrders = true,
 }) {
   const barWidth = Math.max(0, Math.min(100, collectionRate));
@@ -199,13 +199,14 @@ export function MobileHomeView({
             </span>
           </button>
         )}
-        <button type="button" className="mod-tile" onClick={onOpenNotes}>
+        <button type="button" className="mod-tile mod-tilen" onClick={onOpenNotes}>
           <span className="mod-tile-icon">
             <Icon.Edit width="16" height="16" aria-hidden="true" />
+            {notesHasNew && <span className="mod-tilen-dot" />}
           </span>
           <span className="mod-tile-body">
             <span className="mod-tile-title">Notlar</span>
-            <span className="mod-tile-sub">Ekip notları</span>
+            <span className="mod-tile-sub">{notesHasNew ? 'Yeni not eklendi' : 'Ekip notları'}</span>
           </span>
         </button>
       </div>

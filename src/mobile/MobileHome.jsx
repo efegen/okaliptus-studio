@@ -4,7 +4,8 @@ import { MobileHomeView } from './home/MobileHomeView';
 import { MobileAgenda } from './home/MobileAgenda';
 import { useWeeklyKpi, parseNumericValue } from './shared/useWeeklyKpi';
 import { useWeekLessons } from './shared/useWeekLessons';
-import { getSettings, getTrendyolOrdersList } from '../api';
+import { getLastSeenNoteId } from './shared/notesSeen';
+import { getSettings, getTrendyolOrdersList, getNotes } from '../api';
 import { queryKeys } from '../hooks/queryKeys';
 import { can } from '../permissions';
 
@@ -74,6 +75,17 @@ export function MobileHome({ user, onLogout, onOpenFinance, onOpenOccupancy, onO
     ).length;
   }, [ordersData]);
 
+  // "Yeni not" rozeti: en son not id'si cihazda görülen son id'den farklıysa
+  // gösterilir (bkz. shared/notesSeen.js). Notlar stüdyo geneli, tüm roller
+  // görebildiği için burada rol kontrolü yok (Siparişler'in aksine).
+  const { data: notesData } = useQuery({
+    queryKey: queryKeys.notes(),
+    queryFn: getNotes,
+    staleTime: 30 * 1000,
+  });
+  const latestNoteId = notesData?.[0]?.id ?? null;
+  const notesHasNew = latestNoteId != null && String(latestNoteId) !== String(getLastSeenNoteId() ?? '');
+
   const today = React.useMemo(getIstanbulToday, []);
   const thisMonday = React.useMemo(() => getWeekStart(today), [today]);
   const { sessions } = useWeekLessons(thisMonday);
@@ -123,6 +135,7 @@ export function MobileHome({ user, onLogout, onOpenFinance, onOpenOccupancy, onO
         kpiLoading={kpiLoading}
         ordersPending={ordersPending}
         ordersUrgent={ordersUrgent}
+        notesHasNew={notesHasNew}
         canSeeFinance={canSeeFinance}
         canSeeOrders={canSeeOrders}
       />
