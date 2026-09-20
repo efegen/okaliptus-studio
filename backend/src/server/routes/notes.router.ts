@@ -7,8 +7,10 @@ import {
   deleteNote,
   getNoteImage,
   listNoteCategories,
+  listNoteViewers,
   listNoteReminderRecipients,
   listNotes,
+  recordNoteViews,
   setNoteImage,
   toggleNoteReaction,
   updateNoteCategory,
@@ -26,6 +28,31 @@ export const notesRouter = Router();
 notesRouter.get("/", async (_req, res) => {
   try {
     const data = await listNotes(_req.currentUser.id);
+    res.json({ data });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+// POST /notes/views — istemci ekranda gerçekten görünen notları toplu bildirir.
+notesRouter.post("/views", async (req, res) => {
+  try {
+    const { noteIds } = req.body as Record<string, unknown>;
+    if (!Array.isArray(noteIds)) throw new ValidationError("noteIds dizi olmalı.");
+    await recordNoteViews(
+      req.currentUser.id,
+      noteIds.filter((id): id is string | number => typeof id === "string" || typeof id === "number"),
+    );
+    res.status(204).end();
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+// GET /notes/:noteId/views — notu kimlerin gördüğü (yazar hariç).
+notesRouter.get("/:noteId/views", async (req, res) => {
+  try {
+    const data = await listNoteViewers(parseId(req.params.noteId));
     res.json({ data });
   } catch (err) {
     sendError(res, err);

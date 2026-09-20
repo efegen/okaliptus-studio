@@ -80,6 +80,9 @@ export type NoteRow = {
   reactions: NoteReaction[];
   has_image: boolean;
   image_updated_at: string | null;
+  // Yazar hariç kaç kişi gördü + istek yapan kişi gördü mü (bkz. 0291).
+  seen_count: number;
+  seen_by_me: boolean;
 };
 
 // author_name ve bahsedilen öğrenci adları sorgu anında JOIN edilir, satıra
@@ -101,6 +104,8 @@ function noteSelect(actorPlaceholder: string): string {
          COALESCE(user_mentions.list, '[]'::json) AS user_mentions,
          COALESCE(reactions.list, '[]'::json) AS reactions,
          (ni.note_id IS NOT NULL) AS has_image,
+         (SELECT count(*)::int FROM note_views v WHERE v.note_id = n.id AND v.user_id <> n.author_user_id) AS seen_count,
+         EXISTS (SELECT 1 FROM note_views v WHERE v.note_id = n.id AND v.user_id = ${actorPlaceholder}::bigint) AS seen_by_me,
          ni.updated_at AS image_updated_at
     FROM notes n
     JOIN users u ON u.id = n.author_user_id
@@ -672,4 +677,49 @@ export async function deleteNote(noteId: EntityId, actorUserId: number | string)
   } finally {
     client.release();
   }
+}
+
+// ─── Görüntülenme (migration 0291) ───────────────────────────────────────────
+const MAX_VIEW_BATCH = 200;
+
+// Görünür bulunan notları "gördü" olarak işaretler. Yazarın kendi notu ve silinmiş
+// notlar atlanır; zaten görmüşse ilk görülme zamanı korunur.
+export async function recordNoteViews(userId: number | string, noteIds: EntityId[]): Promise<void> {
+  const ids = [...new Set(noteIds.map((id) => String(id)))]
+    .filter((id) => /^\d+$/.test(id))
+    .slice(0, MAX_VIEW_BATCH);
+  if (ids.length === 0) return;
+
+  await pool.query(
+    `INSERT INTO note_views (note_id, user_id)
+     SELECT n.id, $1::bigint
+       FROM notes n
+      WHERE n.id = ANY($2::bigint[])
+        AND n.deleted_at IS NULL
+        AND n.author_user_id <> $1::bigint
+     ON CONFLICT (note_id, user_id) DO NOTHING`,
+    [userId, ids],
+  );
+}
+
+export type NoteViewer = { userId: string; name: string; seenAt: string };
+
+// Notu (yazar hariç) görenler, en son görenden başlayarak.
+export async function listNoteViewers(noteId: EntityId): Promise<NoteViewer[]> {
+  const note = await pool.query<{ id: string }>(
+    `SELECT id FROM notes WHERE id = $1 AND deleted_at IS NULL`,
+    [noteId],
+  );
+  if (!note.rows[0]) throw new NoteNotFoundError();
+
+  const result = await pool.query<{ user_id: string; name: string; seen_at: string }>(
+    `SELECT v.user_id, u.display_name AS name, v.first_seen_at AS seen_at
+       FROM note_views v
+       JOIN notes n ON n.id = v.note_id
+       JOIN users u ON u.id = v.user_id
+      WHERE v.note_id = $1 AND v.user_id <> n.author_user_id
+      ORDER BY v.first_seen_at DESC`,
+    [noteId],
+  );
+  return result.rows.map((r) => ({ userId: String(r.user_id), name: r.name, seenAt: r.seen_at }));
 }
