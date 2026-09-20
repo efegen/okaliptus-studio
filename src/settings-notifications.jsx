@@ -39,8 +39,15 @@ const NOTIF_META = {
     kind: 'event',
     hideRecipients: true,
   },
+  note_added: {
+    title: 'Yeni not',
+    desc: 'Notlar akışına yeni not veya yanıt eklendiğinde (düzenleme ve etkinlik notları hariç). Notu yazan kişiye gitmez.',
+    vars: ['{author}', '{note}'],
+    kind: 'event',
+    allUsersToggle: true,
+  },
 };
-const ORDER = ['lesson_reminder', 'stale_lesson', 'new_order', 'note_reminder'];
+const ORDER = ['lesson_reminder', 'stale_lesson', 'new_order', 'note_reminder', 'note_added'];
 
 function slotOr(s, d) {
   const o = s || {};
@@ -68,6 +75,13 @@ function normalizeCfg(key, config) {
       bodyTemplate: c.bodyTemplate ?? '{student} ile {time} dersi hâlâ "planlandı" — gerçekleşti mi? Durumu işaretle.',
     };
   }
+  if (key === 'note_added') {
+    return {
+      allUsers: typeof c.allUsers === 'boolean' ? c.allUsers : true,
+      titleTemplate: c.titleTemplate ?? '{author} yeni not ekledi',
+      bodyTemplate: c.bodyTemplate ?? '{note}',
+    };
+  }
   return {
     titleTemplate: c.titleTemplate ?? 'Yeni sipariş',
     bodyTemplate: c.bodyTemplate ?? 'Trendyol’dan yeni sipariş: {customer} — #{order}',
@@ -89,6 +103,9 @@ function cfgToPayload(key, cfg) {
       titleTemplate: cfg.titleTemplate,
       bodyTemplate: cfg.bodyTemplate,
     };
+  }
+  if (key === 'note_added') {
+    return { allUsers: cfg.allUsers, titleTemplate: cfg.titleTemplate, bodyTemplate: cfg.bodyTemplate };
   }
   return { titleTemplate: cfg.titleTemplate, bodyTemplate: cfg.bodyTemplate };
 }
@@ -234,7 +251,17 @@ function NotifCard({ row, users, onSaved }) {
       {!meta.hideRecipients && (
         <div className="ntf-field">
           <label className="ntf-label">Kimler alsın</label>
-          {users.length === 0 ? (
+          {meta.allUsersToggle && (
+            <label className="ntf-recip">
+              <input
+                type="checkbox"
+                checked={cfg.allUsers}
+                onChange={(e) => setCfg((c) => ({ ...c, allUsers: e.target.checked }))}
+              />
+              <span className="ntf-recip-name">Herkes (sonradan eklenenler dahil)</span>
+            </label>
+          )}
+          {meta.allUsersToggle && cfg.allUsers ? null : users.length === 0 ? (
             <p className="ntf-hint">Aktif kullanıcı yok.</p>
           ) : (
             <div className="ntf-recips">

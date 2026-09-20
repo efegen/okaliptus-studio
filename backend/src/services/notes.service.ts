@@ -15,6 +15,7 @@
 import type { PoolClient } from "pg";
 
 import { pool } from "../db/connection.js";
+import { notifyNoteAdded } from "./notification-settings.service.js";
 import {
   NoteForbiddenError,
   NoteCategoryNotFoundError,
@@ -385,6 +386,9 @@ export async function addNote(input: {
     });
 
     await client.query("COMMIT");
+
+    // Bildirim fire-and-forget: hata/gecikme not kaydını etkilemez.
+    void notifyNoteAdded({ authorUserId: input.actorUserId, body });
 
     return await fetchNoteById(client, noteId, input.actorUserId);
   } catch (error) {
