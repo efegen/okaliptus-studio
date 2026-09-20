@@ -298,6 +298,7 @@ describe('Mobil notlar', () => {
     const chip = editor.querySelector('.evx-mention-chip.is-user');
     expect(chip).not.toBeNull();
     expect(chip).toHaveTextContent('Ceren');
+    expect(editor).not.toHaveClass('is-empty');
 
     editor.appendChild(document.createTextNode('Tamamdır'));
     fireEvent.input(editor);

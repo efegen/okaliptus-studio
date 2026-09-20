@@ -475,7 +475,11 @@ function MentionComposer({
 }) {
   const editorRef = React.useRef(null);
   const photoInputRef = React.useRef(null);
+  // hasContent gönderilebilirliği (yalnız etiketten oluşan yanıt geçersiz),
+  // isEmpty ise yer tutucu metnin görünürlüğünü belirler: etiket chip'i de
+  // içerik sayılır, yoksa yer tutucu chip'in önünde kalır.
   const [hasContent, setHasContent] = React.useState(() => !!stripUserTokens(initialBody).trim());
+  const [isEmpty, setIsEmpty] = React.useState(() => !initialBody.trim());
   const [suggestQuery, setSuggestQuery] = React.useState(null);
   const [photoBlob, setPhotoBlob] = React.useState(null);
   const [photoPreview, setPhotoPreview] = React.useState('');
@@ -523,6 +527,7 @@ function MentionComposer({
       text = after;
     }
     setHasContent(!!stripUserTokens(text).trim());
+    setIsEmpty(!text.trim());
     const beforeCaret = getTextBeforeCaret(root);
     const match = beforeCaret.match(MENTION_QUERY_RE);
     setSuggestQuery(match ? match[2] : null);
@@ -639,7 +644,7 @@ function MentionComposer({
     <div className="evx-note-composer">
       <div
         ref={editorRef}
-        className={`evx-note-input${hasContent ? '' : ' is-empty'}`}
+        className={`evx-note-input${isEmpty ? ' is-empty' : ''}`}
         contentEditable
         suppressContentEditableWarning
         data-placeholder={placeholder}
