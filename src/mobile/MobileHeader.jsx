@@ -8,6 +8,7 @@ const PAGE_TITLES = {
   settings: 'Ayarlar',
   catalog: 'Dersler ve Eğitmenler',
   products: 'Ürünler',
+  users: 'Kullanıcılar',
   movements: 'Hareketler',
   menu: 'Menü',
   events: 'Etkinlikler',

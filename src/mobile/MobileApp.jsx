@@ -25,6 +25,7 @@ import { MobileEventCreate } from './events/MobileEventCreate';
 import { MobileEventDetail } from './events/MobileEventDetail';
 import { MobileEventParticipantDetail } from './events/MobileEventParticipantDetail';
 import { MobileNotes } from './MobileNotes';
+import { MobileUsers } from './MobileUsers';
 import { MobileEventAddPerson } from './events/MobileEventAddPerson';
 import { MobileEventTransport } from './events/MobileEventTransport';
 import { MobileEventAddVehicle } from './events/MobileEventAddVehicle';
@@ -82,7 +83,7 @@ export function MobileApp({
 }) {
   const queryClient = useQueryClient();
   const onStudentsPage = page === 'students';
-  const onMenuChild = page === 'settings' || page === 'catalog' || page === 'products' || page === 'movements' || page === 'events';
+  const onMenuChild = page === 'settings' || page === 'catalog' || page === 'products' || page === 'movements' || page === 'events' || page === 'users';
   const onProductSale = page === 'product-sale' || page === 'product-sale-checkout';
   const onEventSubPage =
     page === 'event-create' ||
@@ -562,6 +563,8 @@ export function MobileApp({
     body = <SettingsPage currentUser={currentUser} />;
   } else if (page === 'catalog') {
     body = <CatalogPage />;
+  } else if (page === 'users') {
+    body = <MobileUsers currentUser={currentUser} />;
   } else if (page === 'products') {
     body = <MobileProductCatalogPage createNonce={newProductNonce} />;
   } else if (page === 'product-sale') {

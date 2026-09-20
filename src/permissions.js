@@ -27,6 +27,7 @@ export function can(role, capability) {
 // calendar, products, product-sale(-checkout), occupancy, collect-payment ...).
 export const PAGE_CAPABILITY = {
   settings: 'settings.manage',
+  users: 'users.manage', // mobil Kullanıcılar (yönetim + aktivite)
   catalog: 'settings.manage', // "Dersler ve Eğitmenler" — katalog yönetimi
   movements: 'movements.read',
   finance: 'finance.read',

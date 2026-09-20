@@ -22,6 +22,7 @@ import { fmtTL } from './data';
 import { queryKeys } from './hooks/queryKeys';
 import { canSeePage } from './permissions';
 import { CurrentUserProvider } from './currentUser';
+import { useActivityPing } from './hooks/useActivityPing';
 import { useIsMobile } from './mobile/useIsMobile';
 import { MobileApp } from './mobile/MobileApp';
 
@@ -50,6 +51,7 @@ function App({ currentUser, onLogout }) {
   const [toast, setToast] = React.useState('');
   const isMobile = useIsMobile();
   const qc = useQueryClient();
+  useActivityPing();
 
   React.useEffect(() => {
     localStorage.setItem("okaliptus-page", page);

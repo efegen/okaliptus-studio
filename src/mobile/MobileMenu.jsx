@@ -26,6 +26,7 @@ const SECTIONS = [
   {
     label: 'Genel',
     items: [
+      { id: 'users', label: 'Kullanıcılar', icon: Icon.Users, tone: 'blue' },
       { id: 'settings', label: 'Ayarlar', icon: Icon.Settings, tone: 'neutral' },
     ],
   },

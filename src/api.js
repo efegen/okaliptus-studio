@@ -670,6 +670,17 @@ export async function resetUserPasswordApi(userId, password) {
   return ensureMutationResult(payload, "Şifre sıfırlanamadı.");
 }
 
+export async function getUserActivity() {
+  const payload = await apiGet("/users/activity");
+  if (!Array.isArray(payload?.data)) throw new Error("Kullanıcı aktivitesi alınamadı.");
+  return payload.data;
+}
+
+// Gerçek etkileşim sinyali (bkz. useActivityPing.js). Hata sessizce yutulur.
+export async function pingActivityApi() {
+  await apiRequest("/activity/ping", { method: "POST" });
+}
+
 // ─── Bildirim ayar modülü (owner-only) ───────────────────────────────────────
 export async function getNotificationSettings() {
   const payload = await apiGet("/notification-settings");
