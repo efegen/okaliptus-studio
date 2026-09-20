@@ -266,7 +266,7 @@ describe('Mobil notlar', () => {
     api.uploadNoteImage.mockResolvedValue(note({ id: '9', body: 'Fotoğraflı yanıt', parent_note_id: '1', has_image: true }));
     renderNotes();
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Yanıtla' }));
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Yanıtla' }))[0]);
     const photoButton = screen.getByRole('button', { name: 'Fotoğraf ekle' });
     const composer = photoButton.closest('.evx-note-composer');
     const editor = composer.querySelector('[role="textbox"]');
@@ -308,6 +308,34 @@ describe('Mobil notlar', () => {
       parentNoteId: '5',
       mentionedStudentIds: [],
       mentionedUserIds: ['11'],
+    }));
+  });
+
+  it('yanıta yanıt: kök nota bağlanır, yanıtın yazarı etiketlenir, girinti oluşmaz', async () => {
+    api.getNotes.mockResolvedValue([
+      note({ id: '20', body: 'Kök not' }),
+      note({ id: '21', author_user_id: '12', author_name: 'Deniz', body: 'Bir yanıt', parent_note_id: '20', created_at: '2026-09-05T10:02:00.000Z' }),
+    ]);
+    api.addNote.mockResolvedValue(note({ id: '22', parent_note_id: '20' }));
+    renderNotes();
+
+    // Kök nota + yanıt: iki "Yanıtla" butonu. İkincisi yanıtınki.
+    const buttons = await screen.findAllByRole('button', { name: 'Yanıtla' });
+    expect(buttons).toHaveLength(2);
+    fireEvent.click(buttons[1]);
+
+    const editor = screen.getByRole('textbox');
+    expect(editor.querySelector('.evx-mention-chip.is-user')).toHaveTextContent('Deniz');
+    editor.appendChild(document.createTextNode('Katılıyorum'));
+    fireEvent.input(editor);
+    fireEvent.click(screen.getByRole('button', { name: 'Gönder' }));
+
+    await waitFor(() => expect(api.addNote).toHaveBeenCalledWith({
+      body: '@{u:12} Katılıyorum',
+      parentNoteId: '20',
+      replyToNoteId: '21',
+      mentionedStudentIds: [],
+      mentionedUserIds: ['12'],
     }));
   });
 

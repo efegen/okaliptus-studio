@@ -1035,7 +1035,15 @@ function NoteCard({ note, isMine, students, users = [], categories, isReply = fa
     setBusy(true);
     setActionError('');
     try {
-      const created = await addNote({ body, parentNoteId: note.id, mentionedStudentIds, mentionedUserIds });
+      // Yanıt zinciri tek seviye: bir yanıta yanıt da kök nota bağlanır; hangi
+      // yanıta cevap verildiği yalnız bildirim için gönderilir.
+      const created = await addNote({
+        body,
+        parentNoteId: isReply ? note.parent_note_id : note.id,
+        ...(isReply ? { replyToNoteId: note.id } : {}),
+        mentionedStudentIds,
+        mentionedUserIds,
+      });
       if (photoBlob) {
         try {
           await uploadNoteImage(created.id, photoBlob);
@@ -1255,19 +1263,17 @@ function NoteCard({ note, isMine, students, users = [], categories, isReply = fa
                   <Icon.SmilePlus width="17" height="17" />
                 </button>
               </div>
-              {!isReply && (
-                <button
-                  type="button"
-                  className="evx-note-action-btn"
-                  onClick={() => {
-                    setReactionOpen(false);
-                    setMoreOpen(false);
-                    setReplying((value) => !value);
-                  }}
-                >
-                  Yanıtla
-                </button>
-              )}
+              <button
+                type="button"
+                className="evx-note-action-btn"
+                onClick={() => {
+                  setReactionOpen(false);
+                  setMoreOpen(false);
+                  setReplying((value) => !value);
+                }}
+              >
+                Yanıtla
+              </button>
             </div>
 
             {reactionOpen && (
