@@ -46,8 +46,22 @@ const NOTIF_META = {
     kind: 'event',
     allUsersToggle: true,
   },
+  note_reply: {
+    title: 'Nota yanıt',
+    desc: 'Birinin notuna yanıt verildiğinde, notun yazarına gider. Alıcı otomatik olarak notun yazarıdır — burada yalnız metin ayarlanır.',
+    vars: ['{author}', '{note}'],
+    kind: 'event',
+    hideRecipients: true,
+  },
+  note_mention: {
+    title: 'Notta etiketlenme',
+    desc: 'Bir notta veya yanıtta @ ile etiketlenen kişiye gider. Alıcı etiketlenen kişidir — burada yalnız metin ayarlanır. Bir kişi aynı notta en fazla bir bildirim alır (yanıt > etiket > yeni not).',
+    vars: ['{author}', '{note}'],
+    kind: 'event',
+    hideRecipients: true,
+  },
 };
-const ORDER = ['lesson_reminder', 'stale_lesson', 'new_order', 'note_reminder', 'note_added'];
+const ORDER = ['lesson_reminder', 'stale_lesson', 'new_order', 'note_reminder', 'note_added', 'note_reply', 'note_mention'];
 
 function slotOr(s, d) {
   const o = s || {};
