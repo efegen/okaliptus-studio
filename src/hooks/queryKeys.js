@@ -30,6 +30,7 @@ export const queryKeys = {
   noteCategories:     ()      => ['notes', 'categories'],
   noteImage:          (id, version) => ['notes', String(id), 'image', version ?? null],
   noteReminderRecipients: ()  => ['notes', 'reminder-recipients'],
+  noteViewers:        (id)    => ['notes', String(id), 'viewers'],
   eventParticipantFees:(id)   => ['eventParticipant', id, 'fees'],
   eventParticipantPayments:(id) => ['eventParticipant', id, 'payments'],
   eventParticipantNotes:(id)  => ['eventParticipant', id, 'notes'],

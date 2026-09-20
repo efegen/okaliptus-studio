@@ -19,6 +19,8 @@ vi.mock('../api', () => ({
   updateNote: vi.fn(),
   deleteNote: vi.fn(),
   toggleNoteReaction: vi.fn(),
+  markNotesSeen: vi.fn(),
+  getNoteViewers: vi.fn(),
   uploadNoteImage: vi.fn(),
   getNoteImage: vi.fn(),
 }));
@@ -141,7 +143,7 @@ describe('Mobil notlar', () => {
     const reactionButton = (await screen.findAllByRole('button', { name: 'Tepki ekle' }))[0];
     const actionGroup = reactionButton.closest('.evx-note-actionbar');
     expect(actionGroup.children[0]).toContainElement(reactionButton);
-    expect(actionGroup.children[1]).toHaveTextContent('Yanıtla');
+    expect(actionGroup.children[actionGroup.children.length - 1]).toHaveTextContent('Yanıtla');
   });
 
   it('emoji seçicisini dışarı dokununca ve Escape ile kapatır', async () => {
@@ -338,6 +340,38 @@ describe('Mobil notlar', () => {
       mentionedStudentIds: [],
       mentionedUserIds: ['12'],
     }));
+  });
+
+  it('yanıtlarda da tepki bırakılabilir', async () => {
+    api.getNotes.mockResolvedValue([
+      note({ id: '40', body: 'Kök' }),
+      note({ id: '41', author_user_id: '11', author_name: 'Ceren', body: 'Yanıt', parent_note_id: '40' }),
+    ]);
+    api.toggleNoteReaction.mockResolvedValue(note({ id: '41', author_user_id: '11', author_name: 'Ceren', body: 'Yanıt', parent_note_id: '40', reactions: [{ emoji: '👍', count: 1, reactedByMe: true }] }));
+    renderNotes();
+
+    const addButtons = await screen.findAllByRole('button', { name: 'Tepki ekle' });
+    expect(addButtons).toHaveLength(2);
+    fireEvent.click(addButtons[1]);
+    fireEvent.click(screen.getByRole('button', { name: 'Beğen' }));
+
+    await waitFor(() => expect(api.toggleNoteReaction).toHaveBeenCalledWith('41', '👍'));
+  });
+
+  it('kaç kişinin gördüğünü gösterir ve dokununca görenleri listeler', async () => {
+    api.getNotes.mockResolvedValue([note({ id: '42', body: 'Görülen not', seen_count: 2 })]);
+    api.getNoteViewers.mockResolvedValue([
+      { userId: '11', name: 'Ceren', seenAt: '2026-09-05T11:00:00.000Z' },
+      { userId: '12', name: 'Deniz', seenAt: '2026-09-05T10:30:00.000Z' },
+    ]);
+    renderNotes();
+
+    fireEvent.click(await screen.findByRole('button', { name: /2 kişi gördü/ }));
+
+    expect(await screen.findByText('Görenler')).toBeInTheDocument();
+    expect(await screen.findByText('Ceren')).toBeInTheDocument();
+    expect(screen.getByText('Deniz')).toBeInTheDocument();
+    expect(api.getNoteViewers).toHaveBeenCalledWith('42');
   });
 
   it('kullanıcı etiketini güncel adla ve turuncu vurguyla gösterir', async () => {

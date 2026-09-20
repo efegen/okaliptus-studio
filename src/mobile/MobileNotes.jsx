@@ -14,6 +14,8 @@ import {
   updateNote,
   deleteNote,
   toggleNoteReaction,
+  markNotesSeen,
+  getNoteViewers,
   uploadNoteImage,
   getNoteImage,
 } from '../api';
@@ -955,6 +957,136 @@ function NoteCategorySettings({ categories, loading, loadError, onBack }) {
   );
 }
 
+// ─── Görüntülenme takibi (migration 0291) ────────────────────────────────────
+// Bir not/yanıt "görüldü" sayılır: kartın yarısından fazlası (uzun kartlarda
+// ekranın ~%40'ından fazlası) görünür + uygulama ön planda + ≥1 sn boyunca.
+// Kartlar NoteSeenContext üzerinden tek bir IntersectionObserver'a kaydolur;
+// bulunanlar toplanıp tek istekle gönderilir. Kendi notlarımız ve daha önce
+// görülmüş (seen_by_me) olanlar izlenmez.
+const NoteSeenContext = React.createContext(null);
+const SEEN_DWELL_MS = 1000;
+const SEEN_FLUSH_MS = 1500;
+
+function useNoteSeenTracker() {
+  const queryClient = useQueryClient();
+  const reported = React.useRef(new Set());
+  const pending = React.useRef(new Set());
+  const dwell = React.useRef(new Map());
+  const flushTimer = React.useRef(null);
+  const observer = React.useRef(null);
+
+  const flush = React.useCallback(() => {
+    flushTimer.current = null;
+    const ids = [...pending.current];
+    pending.current.clear();
+    if (ids.length === 0) return;
+    markNotesSeen(ids)
+      .then(() => queryClient.invalidateQueries({ queryKey: queryKeys.notes() }))
+      .catch(() => ids.forEach((id) => reported.current.delete(id)));
+  }, [queryClient]);
+
+  const getObserver = React.useCallback(() => {
+    if (observer.current || typeof IntersectionObserver === 'undefined') return observer.current;
+    observer.current = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        const el = entry.target;
+        const id = el.dataset.noteId;
+        if (!id) continue;
+        const viewportHeight = entry.rootBounds?.height ?? window.innerHeight;
+        const seenEnough = entry.isIntersecting
+          && (entry.intersectionRatio >= 0.5 || entry.intersectionRect.height >= viewportHeight * 0.4);
+        const timer = dwell.current.get(el);
+        if (seenEnough && !timer && !reported.current.has(id)) {
+          dwell.current.set(el, setTimeout(() => {
+            dwell.current.delete(el);
+            if (document.visibilityState !== 'visible' || reported.current.has(id)) return;
+            reported.current.add(id);
+            pending.current.add(id);
+            if (!flushTimer.current) flushTimer.current = setTimeout(flush, SEEN_FLUSH_MS);
+          }, SEEN_DWELL_MS));
+        } else if (!seenEnough && timer) {
+          clearTimeout(timer);
+          dwell.current.delete(el);
+        }
+      }
+    }, { threshold: [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1] });
+    return observer.current;
+  }, [flush]);
+
+  React.useEffect(() => () => {
+    observer.current?.disconnect();
+    dwell.current.forEach((timer) => clearTimeout(timer));
+    if (flushTimer.current) {
+      clearTimeout(flushTimer.current);
+      flush();
+    }
+  }, [flush]);
+
+  return React.useMemo(() => ({
+    observe(el, noteId) {
+      const obs = getObserver();
+      if (!obs) return () => {};
+      el.dataset.noteId = String(noteId);
+      obs.observe(el);
+      return () => {
+        obs.unobserve(el);
+        const timer = dwell.current.get(el);
+        if (timer) {
+          clearTimeout(timer);
+          dwell.current.delete(el);
+        }
+      };
+    },
+  }), [getObserver]);
+}
+
+function formatViewedAt(iso) {
+  return formatNoteTime(iso);
+}
+
+function NoteViewersSheet({ open, onOpenChange, noteId }) {
+  const portalContainer = React.useMemo(getMobilePaletteRoot, []);
+  const viewersQuery = useQuery({
+    queryKey: queryKeys.noteViewers(noteId),
+    queryFn: () => getNoteViewers(noteId),
+    enabled: open,
+  });
+  const viewers = viewersQuery.data ?? [];
+
+  return (
+    <Drawer.Root open={open} onOpenChange={onOpenChange} shouldScaleBackground={false}>
+      <Drawer.Portal container={portalContainer || undefined}>
+        <Drawer.Overlay className="evx-note-reminder-overlay" />
+        <Drawer.Content className="evx-note-reminder-sheet">
+          <Drawer.Handle className="evx-note-reminder-handle" />
+          <header className="evx-note-reminder-head">
+            <Drawer.Title className="evx-note-reminder-title">Görenler</Drawer.Title>
+            <Drawer.Description className="evx-note-reminder-sub">Bu notu görüntüleyen kişiler.</Drawer.Description>
+          </header>
+          <div className="evx-note-reminder-body">
+            {viewersQuery.isLoading && <p className="evx-hint">Yükleniyor…</p>}
+            {viewersQuery.isError && <p className="evx-hint" role="alert">Görenler alınamadı.</p>}
+            {!viewersQuery.isLoading && !viewersQuery.isError && viewers.length === 0 && (
+              <p className="evx-hint">Henüz kimse görmedi.</p>
+            )}
+            {viewers.length > 0 && (
+              <ul className="evx-viewers">
+                {viewers.map((viewer) => (
+                  <li key={viewer.userId}>
+                    <span className="evx-avatar" style={{ width: 32, height: 32, fontSize: 11.5, flexShrink: 0 }}>{initialsOf(viewer.name)}</span>
+                    <span className="evx-viewers-name">{viewer.name}</span>
+                    <span className="evx-viewers-time">{formatViewedAt(viewer.seenAt)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </Drawer.Content>
+      </Drawer.Portal>
+    </Drawer.Root>
+  );
+}
+
 function NoteCard({ note, isMine, students, users = [], categories, isReply = false, replies = [], currentUser, onOpenStudent, onOpen, detail = false }) {
   const queryClient = useQueryClient();
   const reactionButtonRef = React.useRef(null);
@@ -969,6 +1101,16 @@ function NoteCard({ note, isMine, students, users = [], categories, isReply = fa
   const [reactionBusy, setReactionBusy] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const [actionError, setActionError] = React.useState('');
+  const [viewersOpen, setViewersOpen] = React.useState(false);
+  const rootRef = React.useRef(null);
+  const seenTracker = React.useContext(NoteSeenContext);
+
+  // Kendi notumuz ve zaten görülmüş olanlar izlenmez (bkz. useNoteSeenTracker).
+  React.useEffect(() => {
+    const el = rootRef.current;
+    if (!el || !seenTracker || isMine || note.seen_by_me) return undefined;
+    return seenTracker.observe(el, note.id);
+  }, [seenTracker, note.id, isMine, note.seen_by_me]);
 
   React.useEffect(() => {
     if (!reactionOpen) return undefined;
@@ -1119,6 +1261,9 @@ function NoteCard({ note, isMine, students, users = [], categories, isReply = fa
   // yazı alanı etkileşimleri (tepki, menü, etiket, fotoğraf, composer) hariç.
   function handleCardClick(event) {
     if (!openable) return;
+    // Portal'daki sheet'ler (görenler, hatırlatıcı) React ağacında kartın altındadır;
+    // onlardaki dokunuşlar kartı açmamalı.
+    if (!event.currentTarget.contains(event.target)) return;
     if (event.target.closest('button, a, input, textarea, select, [contenteditable], .evx-note-composer, .evx-note-photo-lightbox')) return;
     onOpen(note.id);
   }
@@ -1133,6 +1278,7 @@ function NoteCard({ note, isMine, students, users = [], categories, isReply = fa
 
   return (
     <CardRoot
+      ref={rootRef}
       className={`evx-note-card${isReply ? ' is-reply' : ''}${detail ? ' is-detail' : ''}${openable ? ' is-clickable' : ''}`}
       {...(openable ? { onClick: handleCardClick, onKeyDown: handleCardKeyDown, tabIndex: 0, role: 'link', 'aria-label': `${note.author_name} notunu aç` } : {})}
     >
@@ -1270,6 +1416,18 @@ function NoteCard({ note, isMine, students, users = [], categories, isReply = fa
               </div>
               <button
                 type="button"
+                className="evx-note-seen"
+                onClick={() => setViewersOpen(true)}
+                aria-label={`${note.seen_count ?? 0} kişi gördü, görenleri listele`}
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+                {note.seen_count ?? 0}
+              </button>
+              <button
+                type="button"
                 className="evx-note-action-btn"
                 onClick={() => {
                   setReactionOpen(false);
@@ -1301,6 +1459,8 @@ function NoteCard({ note, isMine, students, users = [], categories, isReply = fa
       )}
 
       {actionError && !editing && !replying && <div className="evx-note-action-error" role="alert">{actionError}</div>}
+
+      {viewersOpen && <NoteViewersSheet open={viewersOpen} onOpenChange={setViewersOpen} noteId={note.id} />}
 
       {replying && (
         <MentionComposer
@@ -1375,7 +1535,16 @@ function ReplyThread({ replies, currentUser, students, users = [], categories, o
   );
 }
 
-export function MobileNotes({ onBack, onOpenStudent }) {
+export function MobileNotes(props) {
+  const seenTracker = useNoteSeenTracker();
+  return (
+    <NoteSeenContext.Provider value={seenTracker}>
+      <MobileNotesScreen {...props} />
+    </NoteSeenContext.Provider>
+  );
+}
+
+function MobileNotesScreen({ onBack, onOpenStudent }) {
   const queryClient = useQueryClient();
   const currentUser = useCurrentUser();
   const [view, setView] = React.useState('list');

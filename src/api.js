@@ -1445,6 +1445,22 @@ export async function deleteNote(noteId) {
   });
 }
 
+// Ekranda gerçekten görünen notları "gördü" olarak toplu bildirir (bkz.
+// MobileNotes useNoteSeenTracker). 204 döner; hata sessizce yutulur çağıran tarafta.
+export async function markNotesSeen(noteIds) {
+  await apiRequest('/notes/views', {
+    method: 'POST',
+    body: JSON.stringify({ noteIds }),
+  });
+}
+
+// Notu kimlerin gördüğü (yazar hariç): [{ userId, name, seenAt }]
+export async function getNoteViewers(noteId) {
+  const payload = await apiGet(`/notes/${encodeURIComponent(noteId)}/views`);
+  if (!Array.isArray(payload?.data)) throw new Error('Görenler alınamadı.');
+  return payload.data;
+}
+
 export async function toggleNoteReaction(noteId, emoji) {
   const payload = await apiRequest(`/notes/${encodeURIComponent(noteId)}/reactions`, {
     method: 'POST',
