@@ -32,6 +32,8 @@ import { eventsRouter, listStudentEventBalancesHandler } from "./routes/events.r
 import { notesRouter } from "./routes/notes.router.js";
 import { requireAuth } from "./middleware/requireAuth.js";
 import { requireCan } from "./middleware/requireRole.js";
+import { sendError } from "./middleware/response.js";
+import { recordActivity } from "../services/user-activity.service.js";
 
 export function createApp() {
   const app = express();
@@ -131,6 +133,17 @@ export function createApp() {
 
   // Denetim/etkinlik kayıtları — asistana kapalı (Ayarlar → Etkinlik).
   app.use("/audit-logs", requireCan("audit.read"), auditRouter);
+
+  // Aktivite ping'i — TÜM roller (kendi etkileşimini bildirir); /users router'ı
+  // owner-only olduğu için ondan ÖNCE ayrı mount edilir.
+  app.post("/activity/ping", async (req, res) => {
+    try {
+      await recordActivity(req.currentUser.id);
+      res.status(204).end();
+    } catch (err) {
+      sendError(res, err);
+    }
+  });
 
   app.use("/users", usersRouter);
 

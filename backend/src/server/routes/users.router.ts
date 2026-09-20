@@ -10,10 +10,21 @@ import { isRole } from "../../auth/permissions.js";
 import { requireCan } from "../middleware/requireRole.js";
 import { parseId, sendError } from "../middleware/response.js";
 
+import { listUserActivity } from "../../services/user-activity.service.js";
+
 export const usersRouter = Router();
 
 // Kullanıcı yönetimi yalnız owner ("Geliştirici") rolüne açık.
 usersRouter.use(requireCan("users.manage"));
+
+// GET /users/activity — kullanıcı başına son etkileşim / çevrimiçi / bugünkü giriş sayısı
+usersRouter.get("/activity", async (_req, res) => {
+  try {
+    res.json({ data: await listUserActivity() });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
 
 // GET /users
 usersRouter.get("/", async (_req, res) => {
