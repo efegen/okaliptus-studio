@@ -8,6 +8,7 @@
 import { pool } from "../db/connection.js";
 import { env } from "../config/env.js";
 import { sendToUser, type PushPayload } from "./push.service.js";
+import { renderNoteBodyPlain } from "./note-text.js";
 import {
   loadNotificationConfig,
   resolveActiveRecipients,
@@ -279,7 +280,7 @@ export async function checkNoteReminders(preloaded?: LoadedNotificationConfig): 
       const recipients = await resolveActiveRecipients(c.recipient_user_ids.map(String));
       if (recipients.length === 0) continue;
 
-      const body = c.note_body ?? "";
+      const body = await renderNoteBodyPlain(c.note_body ?? "");
       const excerpt = body.length > NOTE_EXCERPT_MAX_LEN ? `${body.slice(0, NOTE_EXCERPT_MAX_LEN)}…` : body;
       const vars = { author: c.author_name, note: excerpt };
       const payload: PushPayload = {

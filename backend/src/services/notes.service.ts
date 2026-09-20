@@ -33,6 +33,11 @@ import {
 
 type Queryable = Pick<PoolClient, "query">;
 
+export type NoteUserMention = {
+  userId: string;
+  name: string;
+};
+
 export type NoteMention = {
   studentId: string;
   name: string;
@@ -71,6 +76,7 @@ export type NoteRow = {
   updated_at: string;
   deleted_at: string | null;
   mentions: NoteMention[];
+  user_mentions: NoteUserMention[];
   reactions: NoteReaction[];
   has_image: boolean;
   image_updated_at: string | null;
@@ -92,6 +98,7 @@ function noteSelect(actorPlaceholder: string): string {
          END AS category,
          n.created_at, n.updated_at, n.deleted_at,
          COALESCE(mentions.list, '[]'::json) AS mentions,
+         COALESCE(user_mentions.list, '[]'::json) AS user_mentions,
          COALESCE(reactions.list, '[]'::json) AS reactions,
          (ni.note_id IS NOT NULL) AS has_image,
          ni.updated_at AS image_updated_at
@@ -105,6 +112,12 @@ function noteSelect(actorPlaceholder: string): string {
         JOIN students s ON s.id = m.student_id
        WHERE m.note_id = n.id
     ) mentions ON true
+    LEFT JOIN LATERAL (
+      SELECT json_agg(json_build_object('userId', um.user_id::text, 'name', mu.display_name) ORDER BY um.user_id) AS list
+        FROM note_user_mentions um
+        JOIN users mu ON mu.id = um.user_id
+       WHERE um.note_id = n.id
+    ) user_mentions ON true
     LEFT JOIN LATERAL (
       SELECT json_agg(
                json_build_object(
@@ -263,6 +276,34 @@ async function replaceNoteMentions(
   );
 }
 
+// Kullanıcı etiketleri (migration 0290). Var olmayan id -> doğrulama hatası;
+// pasif kullanıcılar etiketlenebilir. Kaydedilen (tekrarsız) id'leri döner.
+async function replaceNoteUserMentions(
+  client: PoolClient,
+  noteId: EntityId,
+  userIds: EntityId[],
+): Promise<string[]> {
+  await client.query(`DELETE FROM note_user_mentions WHERE note_id = $1`, [noteId]);
+
+  const uniqueIds = [...new Set(userIds.map((id) => String(id)))];
+  if (uniqueIds.length === 0) return [];
+
+  const existing = await client.query<{ id: string }>(
+    `SELECT id FROM users WHERE id = ANY($1::bigint[])`,
+    [uniqueIds],
+  );
+  if (existing.rows.length !== uniqueIds.length) {
+    throw new ValidationError("Etiketlenen kullanıcılardan biri bulunamadı.");
+  }
+
+  const values = uniqueIds.map((_, i) => `($1, $${i + 2})`).join(", ");
+  await client.query(
+    `INSERT INTO note_user_mentions (note_id, user_id) VALUES ${values}`,
+    [noteId, ...uniqueIds],
+  );
+  return uniqueIds;
+}
+
 // Yalnız aktif kullanıcılar alıcı olabilir; zaman gelecekte olmalı. Doğrulama
 // başarısızsa not eklenmez (aynı transaction) — yarım bir "not var ama
 // hatırlatıcı yok" durumu oluşmaz.
@@ -331,6 +372,7 @@ export async function addNote(input: {
   actorUserId: number | string;
   parentNoteId?: EntityId | null;
   mentionedStudentIds?: EntityId[];
+  mentionedUserIds?: EntityId[];
   categoryId?: EntityId | null;
   reminder?: { remindAt: string; recipientUserIds: EntityId[] } | null;
 }): Promise<NoteRow> {
@@ -344,9 +386,10 @@ export async function addNote(input: {
     // Yanıt tek seviye: yanıtın kendisi bir yanıta yanıt olamaz (bkz.
     // 0270_event_note_updates.sql üstteki not).
     let parentNoteId: string | null = null;
+    let parentAuthorUserId: string | null = null;
     if (input.parentNoteId != null) {
-      const parentResult = await client.query<{ id: string; parent_note_id: string | null }>(
-        `SELECT id, parent_note_id FROM notes WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`,
+      const parentResult = await client.query<{ id: string; parent_note_id: string | null; author_user_id: string }>(
+        `SELECT id, parent_note_id, author_user_id FROM notes WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`,
         [input.parentNoteId],
       );
       const parent = parentResult.rows[0];
@@ -355,6 +398,7 @@ export async function addNote(input: {
         throw new ValidationError("Bir yanıta yanıt verilemez.");
       }
       parentNoteId = parent.id;
+      parentAuthorUserId = String(parent.author_user_id);
     }
 
     if (parentNoteId && input.categoryId != null) {
@@ -371,6 +415,7 @@ export async function addNote(input: {
     const noteId = insertResult.rows[0].id;
 
     await replaceNoteMentions(client, noteId, input.mentionedStudentIds ?? []);
+    const mentionedUserIds = await replaceNoteUserMentions(client, noteId, input.mentionedUserIds ?? []);
 
     let reminderAt: string | null = null;
     if (input.reminder) {
@@ -388,7 +433,7 @@ export async function addNote(input: {
     await client.query("COMMIT");
 
     // Bildirim fire-and-forget: hata/gecikme not kaydını etkilemez.
-    void notifyNoteAdded({ authorUserId: input.actorUserId, body });
+    void notifyNoteAdded({ authorUserId: input.actorUserId, body, parentAuthorUserId, mentionedUserIds });
 
     return await fetchNoteById(client, noteId, input.actorUserId);
   } catch (error) {
@@ -405,6 +450,7 @@ export async function updateNote(
     body: string;
     actorUserId: number | string;
     mentionedStudentIds?: EntityId[];
+    mentionedUserIds?: EntityId[];
     categoryId?: EntityId | null;
   },
 ): Promise<NoteRow> {
@@ -427,6 +473,7 @@ export async function updateNote(
       await client.query(`UPDATE notes SET body = $1 WHERE id = $2`, [body, noteId]);
     }
     await replaceNoteMentions(client, noteId, input.mentionedStudentIds ?? []);
+    await replaceNoteUserMentions(client, noteId, input.mentionedUserIds ?? []);
 
     await insertAuditLog(client, {
       action: "note_updated",

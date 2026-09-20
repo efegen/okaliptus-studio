@@ -142,11 +142,12 @@ function parseReminderInput(raw: unknown): { remindAt: string; recipientUserIds:
 
 notesRouter.post("/", async (req, res) => {
   try {
-    const { body, parentNoteId, mentionedStudentIds, categoryId, reminder } = req.body as Record<string, unknown>;
+    const { body, parentNoteId, mentionedStudentIds, mentionedUserIds, categoryId, reminder } = req.body as Record<string, unknown>;
     const data = await addNote({
       body: String(body ?? ""),
       parentNoteId: parentNoteId != null && parentNoteId !== "" ? (parentNoteId as string | number) : null,
       mentionedStudentIds: parseMentionedStudentIds(mentionedStudentIds),
+      mentionedUserIds: parseMentionedStudentIds(mentionedUserIds),
       categoryId: parseCategoryId(categoryId),
       reminder: parseReminderInput(reminder),
       actorUserId: req.currentUser.id,
@@ -161,10 +162,11 @@ notesRouter.patch("/:noteId", async (req, res) => {
   try {
     const noteId = parseId(req.params.noteId);
     const payload = req.body as Record<string, unknown>;
-    const { body, mentionedStudentIds, categoryId } = payload;
+    const { body, mentionedStudentIds, mentionedUserIds, categoryId } = payload;
     const data = await updateNote(noteId, {
       body: String(body ?? ""),
       mentionedStudentIds: parseMentionedStudentIds(mentionedStudentIds),
+      mentionedUserIds: parseMentionedStudentIds(mentionedUserIds),
       categoryId: Object.prototype.hasOwnProperty.call(payload, "categoryId")
         ? (parseCategoryId(categoryId) ?? null)
         : undefined,

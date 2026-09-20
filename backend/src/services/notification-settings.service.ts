@@ -10,8 +10,9 @@ import { pool } from "../db/connection.js";
 import { env } from "../config/env.js";
 import { sendToUser, type PushPayload } from "./push.service.js";
 import { ValidationError } from "./errors.js";
+import { renderNoteBodyPlain } from "./note-text.js";
 
-export const NOTIFICATION_KEYS = ["lesson_reminder", "stale_lesson", "new_order", "note_reminder", "note_added"] as const;
+export const NOTIFICATION_KEYS = ["lesson_reminder", "stale_lesson", "new_order", "note_reminder", "note_added", "note_reply", "note_mention"] as const;
 export type NotificationKey = (typeof NOTIFICATION_KEYS)[number];
 
 // ─── Varsayılanlar (seed ile aynı; config eksik/bozuksa fallback) ────────────
@@ -46,6 +47,16 @@ const DEFAULT_NOTE_ADDED = {
   bodyTemplate: "{note}",
 };
 const NOTE_ADDED_EXCERPT_MAX_LEN = 100;
+// note_reply / note_mention: alıcı GLOBAL değil — ilgili kişidir (notun yazarı /
+// etiketlenen). Yalnız metin şablonu ve aç/kapa ayarlanır.
+const DEFAULT_NOTE_REPLY = {
+  titleTemplate: "{author} size yanıt verdi",
+  bodyTemplate: "{note}",
+};
+const DEFAULT_NOTE_MENTION = {
+  titleTemplate: "{author} sizi bir notta etiketledi",
+  bodyTemplate: "{note}",
+};
 const DEFAULT_QUIET = { quietHoursStart: "22:00", quietHoursEnd: "08:00" };
 
 // ─── Küçük tip-güvenli okuyucular ────────────────────────────────────────────
@@ -88,8 +99,10 @@ export async function listNotificationSettings(): Promise<NotificationSettingRow
         WHEN 'new_order' THEN 3
         WHEN 'note_reminder' THEN 4
         WHEN 'note_added' THEN 5
-        WHEN '_global' THEN 6
-        ELSE 7 END`,
+        WHEN 'note_reply' THEN 6
+        WHEN 'note_mention' THEN 7
+        WHEN '_global' THEN 8
+        ELSE 9 END`,
   );
   return rows.map((r) => ({
     key: r.key,
@@ -137,6 +150,8 @@ export type LoadedNotificationConfig = {
     titleTemplate: string;
     bodyTemplate: string;
   };
+  noteReply: { enabled: boolean; titleTemplate: string; bodyTemplate: string };
+  noteMention: { enabled: boolean; titleTemplate: string; bodyTemplate: string };
   quietHours: { enabled: boolean; start: string; end: string };
 };
 
@@ -163,6 +178,10 @@ export async function loadNotificationConfig(): Promise<LoadedNotificationConfig
   const nrCfg = asObj(nr?.config);
   const na = byKey.get("note_added");
   const naCfg = asObj(na?.config);
+  const nrp = byKey.get("note_reply");
+  const nrpCfg = asObj(nrp?.config);
+  const nmn = byKey.get("note_mention");
+  const nmnCfg = asObj(nmn?.config);
   const gl = byKey.get("_global");
   const glCfg = asObj(gl?.config);
 
@@ -199,6 +218,16 @@ export async function loadNotificationConfig(): Promise<LoadedNotificationConfig
       recipients: na?.recipientUserIds ?? [],
       titleTemplate: strOr(naCfg.titleTemplate, DEFAULT_NOTE_ADDED.titleTemplate),
       bodyTemplate: strOr(naCfg.bodyTemplate, DEFAULT_NOTE_ADDED.bodyTemplate),
+    },
+    noteReply: {
+      enabled: nrp?.enabled ?? true,
+      titleTemplate: strOr(nrpCfg.titleTemplate, DEFAULT_NOTE_REPLY.titleTemplate),
+      bodyTemplate: strOr(nrpCfg.bodyTemplate, DEFAULT_NOTE_REPLY.bodyTemplate),
+    },
+    noteMention: {
+      enabled: nmn?.enabled ?? true,
+      titleTemplate: strOr(nmnCfg.titleTemplate, DEFAULT_NOTE_MENTION.titleTemplate),
+      bodyTemplate: strOr(nmnCfg.bodyTemplate, DEFAULT_NOTE_MENTION.bodyTemplate),
     },
     quietHours: {
       enabled: gl?.enabled ?? false,
@@ -304,7 +333,7 @@ function validateConfigForKey(key: string, raw: Record<string, unknown>): Record
       bodyTemplate: validateTemplateStr(raw.bodyTemplate, "Metin"),
     };
   }
-  if (key === "new_order" || key === "note_reminder") {
+  if (key === "new_order" || key === "note_reminder" || key === "note_reply" || key === "note_mention") {
     return {
       titleTemplate: validateTemplateStr(raw.titleTemplate, "Başlık"),
       bodyTemplate: validateTemplateStr(raw.bodyTemplate, "Metin"),
@@ -366,7 +395,8 @@ export async function updateNotificationSetting(key: string, patch: UpdatePatch)
 
   // '_global' ve 'note_reminder' satırlarının GLOBAL alıcısı yoktur (bkz.
   // DEFAULT_NOTE_REMINDER üstteki not); verilse bile yok sayılır.
-  if (patch.recipientUserIds !== undefined && key !== "_global" && key !== "note_reminder") {
+  const noGlobalRecipients = key === "_global" || key === "note_reminder" || key === "note_reply" || key === "note_mention";
+  if (patch.recipientUserIds !== undefined && !noGlobalRecipients) {
     if (!Array.isArray(patch.recipientUserIds)) throw new ValidationError("recipientUserIds dizi olmalı.");
     const clean = await sanitizeRecipients(patch.recipientUserIds);
     sets.push(`recipient_user_ids = $${i++}::bigint[]`);
@@ -403,6 +433,8 @@ const SAMPLE_VARS: Record<NotificationKey, Record<string, string | number>> = {
   new_order: { customer: "Örnek Müşteri", order: "1234567890" },
   note_reminder: { author: "Örnek Kullanıcı", note: "Salı günü matlar temizlenecek." },
   note_added: { author: "Örnek Kullanıcı", note: "Salı günü matlar temizlenecek." },
+  note_reply: { author: "Örnek Kullanıcı", note: "Tamam, ben hallederim." },
+  note_mention: { author: "Örnek Kullanıcı", note: "@Sen matları kontrol eder misin?" },
 };
 
 // Çağırana (owner) örnek değişkenlerle test push'u yollar; kaç cihaza gittiğini
@@ -421,6 +453,8 @@ export async function sendTestNotification(key: string, toUserId: string): Promi
     : key === "stale_lesson" ? DEFAULT_STALE
     : key === "note_reminder" ? DEFAULT_NOTE_REMINDER
     : key === "note_added" ? DEFAULT_NOTE_ADDED
+    : key === "note_reply" ? DEFAULT_NOTE_REPLY
+    : key === "note_mention" ? DEFAULT_NOTE_MENTION
     : DEFAULT_NEW_ORDER;
   const vars = SAMPLE_VARS[key as NotificationKey];
   const payload: PushPayload = {
@@ -432,49 +466,72 @@ export async function sendTestNotification(key: string, toUserId: string): Promi
 }
 
 // ─── Yeni not bildirimi (anlık; scheduler'dan bağımsız) ──────────────────────
-// Sessiz saatlerde gönderim ATLANIR (ertelenmez — not anlık bir olay). Push
-// yapılandırılmamışsa veya hata olursa sessizce loglanır; not akışını bozmaz.
-export async function notifyNoteAdded(input: { authorUserId: string | number; body: string }): Promise<void> {
+// Her kişiye EN FAZLA BİR bildirim gider, öncelik sırasıyla:
+//   1. notun yazarına yanıt   → note_reply   ("size yanıt verdi")
+//   2. etiketlenen kişiler    → note_mention ("sizi etiketledi")
+//   3. kalan alıcılar         → note_added   ("yeni not ekledi")
+// Yazan kişi hiçbirini almaz. Sessiz saatlerde gönderim ATLANIR (ertelenmez — not
+// anlık bir olay). Push yapılandırılmamışsa veya hata olursa sessizce loglanır;
+// not akışını bozmaz.
+export async function notifyNoteAdded(input: {
+  authorUserId: string | number;
+  body: string;
+  parentAuthorUserId?: string | null;
+  mentionedUserIds?: string[];
+}): Promise<void> {
   try {
     if (!env.vapidPublicKey || !env.vapidPrivateKey) return;
-    const cfg = (await loadNotificationConfig());
-    const na = cfg.noteAdded;
-    if (!na.enabled) return;
+    const cfg = await loadNotificationConfig();
     if (cfg.quietHours.enabled && isWithinQuietHours(new Date(), cfg.quietHours.start, cfg.quietHours.end, env.timeZone)) {
       return;
     }
 
     const authorId = String(input.authorUserId);
-    let recipients: string[];
-    if (na.allUsers) {
-      const { rows } = await pool.query<{ id: string }>(`SELECT id FROM users WHERE is_active = true`);
-      recipients = rows.map((r) => String(r.id));
-    } else {
-      recipients = await resolveActiveRecipients(na.recipients);
-    }
-    recipients = recipients.filter((id) => id !== authorId);
-    if (recipients.length === 0) return;
-
     const author = await pool.query<{ display_name: string }>(
       `SELECT display_name FROM users WHERE id = $1`,
       [authorId],
     );
-    const trimmed = input.body.trim();
-    const excerpt = trimmed.length > NOTE_ADDED_EXCERPT_MAX_LEN
-      ? `${trimmed.slice(0, NOTE_ADDED_EXCERPT_MAX_LEN).trimEnd()}…`
-      : trimmed;
+    const plain = (await renderNoteBodyPlain(input.body)).trim();
+    const excerpt = plain.length > NOTE_ADDED_EXCERPT_MAX_LEN
+      ? `${plain.slice(0, NOTE_ADDED_EXCERPT_MAX_LEN).trimEnd()}…`
+      : plain;
     const vars = { author: author.rows[0]?.display_name ?? "Bir kullanıcı", note: excerpt };
-    const payload: PushPayload = {
-      title: renderTemplate(na.titleTemplate, vars),
-      body: renderTemplate(na.bodyTemplate, vars),
-      url: "/",
-    };
-    for (const userId of recipients) {
-      try {
-        await sendToUser(userId, payload);
-      } catch (err) {
-        console.error(`[notif] yeni not push hatası (user=${userId}):`, err instanceof Error ? err.message : err);
+
+    const notified = new Set<string>([authorId]);
+    async function deliver(userIds: string[], titleTemplate: string, bodyTemplate: string): Promise<void> {
+      const targets = (await resolveActiveRecipients(userIds.filter((id) => !notified.has(id))))
+        .map(String)
+        .filter((id) => !notified.has(id));
+      const payload: PushPayload = {
+        title: renderTemplate(titleTemplate, vars),
+        body: renderTemplate(bodyTemplate, vars),
+        url: "/",
+      };
+      for (const userId of targets) {
+        notified.add(userId);
+        try {
+          await sendToUser(userId, payload);
+        } catch (err) {
+          console.error(`[notif] not push hatası (user=${userId}):`, err instanceof Error ? err.message : err);
+        }
       }
+    }
+
+    if (input.parentAuthorUserId && cfg.noteReply.enabled) {
+      await deliver([String(input.parentAuthorUserId)], cfg.noteReply.titleTemplate, cfg.noteReply.bodyTemplate);
+    }
+    if (input.mentionedUserIds && input.mentionedUserIds.length > 0 && cfg.noteMention.enabled) {
+      await deliver(input.mentionedUserIds.map(String), cfg.noteMention.titleTemplate, cfg.noteMention.bodyTemplate);
+    }
+    if (cfg.noteAdded.enabled) {
+      let recipients: string[];
+      if (cfg.noteAdded.allUsers) {
+        const { rows } = await pool.query<{ id: string }>(`SELECT id FROM users WHERE is_active = true`);
+        recipients = rows.map((r) => String(r.id));
+      } else {
+        recipients = cfg.noteAdded.recipients;
+      }
+      await deliver(recipients, cfg.noteAdded.titleTemplate, cfg.noteAdded.bodyTemplate);
     }
   } catch (err) {
     console.error("[notif] yeni not bildirimi hatası:", err instanceof Error ? err.message : err);
