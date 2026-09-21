@@ -14,6 +14,12 @@ function percentSuffix(n) {
   return ones === 0 ? (map[n] ?? 'ı') : map[ones];
 }
 
+function EyeIcon({ open }) {
+  return open
+    ? (<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>)
+    : (<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true"><path d="M17.9 17.9A10.9 10.9 0 0 1 12 20C5 20 1 12 1 12a18.5 18.5 0 0 1 5.1-6.9M9.9 4.2A10.5 10.5 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.2 3.4M1 1l22 22"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>);
+}
+
 function ProfileMenu({ user, onLogout }) {
   const displayName = user?.displayName || '';
   const [open, setOpen] = React.useState(false);
@@ -77,13 +83,37 @@ export function MobileHomeView({
     ? `${plannedLessons}/${capacity} ders`
     : `${plannedLessons} ders`;
   const kpiDim = kpiLoading ? ' is-loading' : '';
+  const [hidden, setHidden] = React.useState(() => {
+    try { return localStorage.getItem('mh-hide-amounts') === '1'; } catch { return false; }
+  });
+  function toggleHidden() {
+    setHidden(h => {
+      const next = !h;
+      try { localStorage.setItem('mh-hide-amounts', next ? '1' : '0'); } catch { /* yok say */ }
+      return next;
+    });
+  }
+  const money = (n) => (hidden ? '•••• ₺' : fmtTL(n));
 
   return (
     <div className="mobile-home mh-wrap">
       <div className="mh-head">
         <div>
           <p className="mh-date">{dateLabel}</p>
-          <h1 className="mh-hi">{headline}</h1>
+          <div className="mh-hi-row">
+            <h1 className="mh-hi">{headline}</h1>
+            {canSeeFinance && (
+              <button
+                type="button"
+                className="mh-eye-btn"
+                onClick={toggleHidden}
+                aria-label={hidden ? 'Tutarları göster' : 'Tutarları gizle'}
+                aria-pressed={hidden}
+              >
+                <EyeIcon open={!hidden} />
+              </button>
+            )}
+          </div>
         </div>
         <ProfileMenu user={user} onLogout={onLogout} />
       </div>
@@ -94,7 +124,7 @@ export function MobileHomeView({
             <div className="mh-hero-top">
               <div>
                 <p className="mh-hero-label">Son 30 günde tahsil edilen</p>
-                <p className="mh-hero-big">{kpiLoading ? '—' : fmtTL(collected)}</p>
+                <p className="mh-hero-big">{kpiLoading ? '—' : money(collected)}</p>
               </div>
               {onOpenFinance && (
                 <Icon.ChevronR className="mh-hero-chev" width="20" height="20" aria-hidden="true" />
@@ -103,7 +133,7 @@ export function MobileHomeView({
             <p className="mh-hero-sub">
               {kpiLoading
                 ? '—'
-                : `${fmtTL(revenue)} cironun %${collectionRate}'${percentSuffix(collectionRate)} tahsil edildi`}
+                : `${money(revenue)} cironun %${collectionRate}'${percentSuffix(collectionRate)} tahsil edildi`}
             </p>
             <div className="mh-hero-prog">
               <div className="mh-hero-prog-fill" style={{ width: `${barWidth}%` }} />
@@ -129,7 +159,7 @@ export function MobileHomeView({
         {canSeeFinance && (
           <div className={`mh-pill warn${kpiDim}`}>
             <p className="mh-pill-label">Bekleyen tahsilat</p>
-            <div className="mh-pill-val">{kpiLoading ? '—' : fmtTL(receivable)}</div>
+            <div className="mh-pill-val">{kpiLoading ? '—' : money(receivable)}</div>
             <span className="mh-pill-tag">{debtorCount} öğrenci</span>
           </div>
         )}

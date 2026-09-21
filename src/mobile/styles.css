@@ -420,6 +420,14 @@
     align-items: center;
   }
   .mh-date { font-size: 12px; font-weight: 500; color: var(--ink-3); margin: 0 0 2px; }
+  .mh-hi-row { display: flex; align-items: center; gap: 6px; }
+  .mh-eye-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 32px; height: 32px; padding: 0; border: 0; background: transparent;
+    color: var(--ink-3); border-radius: 50%; cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .mh-eye-btn:active { background: rgba(0, 0, 0, 0.06); }
   .mh-hi { font-size: 20px; font-weight: 600; letter-spacing: -0.02em; color: var(--ink); margin: 0; }
 
   /* HERO: aylık tahsilat (sage gradient) */
