@@ -22,6 +22,7 @@ import {
 import { queryKeys } from '../hooks/queryKeys';
 import { useCurrentUser } from '../currentUser';
 import { compressToBoundedWebp } from '../imageCompress';
+import { PhotoViewer } from './shared/PhotoViewer';
 
 // Notlar — stüdyo geneli TEK bir paylaşılan not akışı. Önce etkinlik detayının
 // bir alt ekranı olarak doğdu (etkinlik başına ayrı liste), kullanıcı isteğiyle
@@ -438,10 +439,13 @@ function NotePhoto({ note }) {
         <img src={src} alt="Nota eklenen fotoğraf" />
       </button>
       {open && (
-        <div className="evx-note-photo-lightbox" role="dialog" aria-modal="true" aria-label="Not fotoğrafı" onClick={() => setOpen(false)}>
-          <button type="button" className="evx-note-photo-close" onClick={() => setOpen(false)} aria-label="Kapat">×</button>
-          <img src={src} alt="Nota eklenen fotoğraf" onClick={(event) => event.stopPropagation()} />
-        </div>
+        <PhotoViewer
+          src={src}
+          alt="Nota eklenen fotoğraf"
+          title={note.author_name}
+          subtitle={formatNoteTime(note.created_at)}
+          onClose={() => setOpen(false)}
+        />
       )}
     </>
   );
@@ -1263,7 +1267,7 @@ function NoteCard({ note, isMine, students, users = [], categories, isReply = fa
     // Portal'daki sheet'ler (görenler, hatırlatıcı) React ağacında kartın altındadır;
     // onlardaki dokunuşlar kartı açmamalı.
     if (!event.currentTarget.contains(event.target)) return;
-    if (event.target.closest('button, a, input, textarea, select, [contenteditable], .evx-note-composer, .evx-note-photo-lightbox')) return;
+    if (event.target.closest('button, a, input, textarea, select, [contenteditable], .evx-note-composer, .pv-root')) return;
     onOpen(note.id);
   }
 
