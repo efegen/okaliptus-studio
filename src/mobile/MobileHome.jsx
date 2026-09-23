@@ -15,10 +15,52 @@ const NOTES_REFRESH_MS = 30 * 1000;
 // modül düzeyinde tutulur:
 // - knownNoteIds: bu oturumdaki ilk başarılı yüklemede var olan notlar. Sonradan
 //   gelen (bu kümede olmayan) not "YENİ" sayılır ve destenin en üstüne düşer.
-// - locallySeenNoteIds: desteden çıkarılan notlar. POST /notes/views sonucu ya
-//   da arka plan yenilemesi yarışsa bile kart geri gelmesin (optimistic).
+// - locallySeenNoteIds: desteden çıkarılan notlar (+ cihazda bekleyenler, bkz.
+//   PENDING_VIEWS_KEY). POST /notes/views sonucu ya da arka plan yenilemesi
+//   yarışsa bile kart geri gelmesin (optimistic).
 let knownNoteIds = null;
 const locallySeenNoteIds = new Set();
+
+// Desteden çıkarılıp sunucuya henüz ulaştığı doğrulanmamış görüldü kayıtları.
+// Bellek yetmez: "Aç"tan hemen sonra uygulama yenilenirse (ör. PWA güncellemesi)
+// istek yarıda kalır ya da hata sessizce yutulur, not da desteye geri döner.
+// Bu yüzden cihazda saklanır, sunucu 204 dönene kadar her açılışta yeniden
+// gönderilir ve o zamana kadar kart destede gösterilmez.
+const PENDING_VIEWS_KEY = 'noteDeckPendingViews';
+const MAX_PENDING_VIEWS = 50;
+
+function readPendingViews() {
+  try {
+    const ids = JSON.parse(localStorage.getItem(PENDING_VIEWS_KEY) || '[]');
+    return Array.isArray(ids) ? ids.map(String) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writePendingViews(ids) {
+  try {
+    if (ids.length > 0) localStorage.setItem(PENDING_VIEWS_KEY, JSON.stringify(ids.slice(-MAX_PENDING_VIEWS)));
+    else localStorage.removeItem(PENDING_VIEWS_KEY);
+  } catch {
+    // localStorage kapalı olabilir — yalnız bellekteki küme kalır.
+  }
+}
+
+for (const id of readPendingViews()) locallySeenNoteIds.add(id);
+
+function flushPendingViews(queryClient) {
+  const ids = readPendingViews();
+  if (ids.length === 0) return;
+  markNotesSeen(ids)
+    .then(() => {
+      writePendingViews(readPendingViews().filter((id) => !ids.includes(id)));
+      queryClient.invalidateQueries({ queryKey: queryKeys.notes(), exact: true });
+    })
+    .catch(() => {
+      // Kayıtlar cihazda kalır; bir sonraki açılışta/görüldü işaretinde tekrar denenir.
+    });
+}
 
 // Deste: kullanıcının görmediği, başkasının yazdığı üst notlar. Yanıtlar kart
 // açmaz, yalnız sayıyı artırır. Sıra: YENİ > bana etiketli > en yeni.
@@ -154,9 +196,12 @@ export function MobileHome({ user, onLogout, onOpenFinance, onOpenOccupancy, onO
     queryClient.setQueryData(queryKeys.notes(), (old) => (
       Array.isArray(old) ? old.map((n) => (String(n.id) === id ? { ...n, seen_by_me: true } : n)) : old
     ));
-    // Hata sessizce yutulur (Notlar ekranındaki izleyiciyle aynı davranış).
-    markNotesSeen([noteId]).catch(() => {});
+    writePendingViews([...readPendingViews().filter((x) => x !== id), id]);
+    flushPendingViews(queryClient);
   }, [queryClient]);
+
+  // Önceki oturumda sunucuya ulaşamamış görüldü kayıtlarını yeniden gönder.
+  React.useEffect(() => { flushPendingViews(queryClient); }, [queryClient]);
 
   const today = React.useMemo(getIstanbulToday, []);
   const thisMonday = React.useMemo(() => getWeekStart(today), [today]);

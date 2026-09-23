@@ -66,6 +66,7 @@ const assistant = { id: '10', displayName: 'Efe', role: 'assistant' };
 describe('Ana sayfa not destesi', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
   });
 
   it('yalnız görülmemiş, başkasının yazdığı üst notları gösterir; etiketli not önce gelir', async () => {
@@ -114,6 +115,22 @@ describe('Ana sayfa not destesi', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Aç' }));
     expect(api.markNotesSeen).toHaveBeenCalledWith(['8']);
     expect(onOpenNotes).toHaveBeenCalledWith({ noteId: '8', reply: false });
+  });
+
+  it('görüldü isteği başarısız olursa uygulama yeniden açılınca not gizli kalır ve istek tekrarlanır', async () => {
+    api.getNotes.mockResolvedValue([note({ id: '8', body: 'Kapı açık' }), note({ id: '7', body: 'Diğer' })]);
+    api.markNotesSeen.mockRejectedValueOnce(new Error('ağ yok'));
+    const first = await renderHome(admin);
+    fireEvent.click(await screen.findByRole('button', { name: 'Aç' }));
+    await waitFor(() => expect(api.markNotesSeen).toHaveBeenCalledWith(['8']));
+    first.unmount();
+
+    // Uygulama yeniden açıldı (modül durumu sıfır); sunucu hâlâ görmedi diyor.
+    await renderHome(admin);
+    expect(await screen.findByText('Diğer')).toBeInTheDocument();
+    expect(screen.queryByText('Kapı açık')).not.toBeInTheDocument();
+    await waitFor(() => expect(api.markNotesSeen).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(localStorage.getItem('noteDeckPendingViews')).toBeNull());
   });
 
   it('asistanda deste boşken "Hepsini gördün" satırı görünür', async () => {
