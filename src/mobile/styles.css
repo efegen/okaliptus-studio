@@ -550,7 +550,7 @@
   .mod-tileu-urgent { color: var(--ty-ink); font-weight: 600; }
 
   /* Notlar kutusundaki "yeni not" rozeti — aynı bildirim noktası deseni,
-     Trendyol tonu yerine genel accent rengiyle (bkz. shared/notesSeen.js). */
+     Trendyol tonu yerine genel accent rengiyle (seen_by_me, bkz. MobileHome). */
   .mod-tilen .mod-tile-icon { position: relative; overflow: visible; }
   .mod-tilen-dot {
     position: absolute; top: -3px; right: -3px; width: 10px; height: 10px;
@@ -8447,3 +8447,167 @@ button.evx-tp-chip:focus-visible,
 .evd-delete-no, .evd-delete-yes { flex: 1; min-height: 44px; border-radius: 12px; font-size: 13.5px; font-weight: 700; }
 .evd-delete-no { border: 1px solid var(--line-2); background: var(--surface); color: var(--ink-2); }
 .evd-delete-yes { border: 0; background: #c83232; color: #fff; }
+
+/* ==========================================================================
+ * Ana sayfa not destesi (design_handoff_notlar_destesi · Canvas-9 #3a/#4a)
+ * Bkz. src/mobile/home/NoteDeck.jsx. Görülmemiş üst notlar üst üste kart;
+ * sola kaydır / "Gördüm" → kart çıkar, alttaki öne gelir.
+ * ========================================================================== */
+.nd-wrap { display: flex; flex-direction: column; gap: 12px; margin: 0 0 4px; }
+.nd-head { display: flex; justify-content: space-between; align-items: center; padding: 14px 2px 6px; }
+.nd-head-title { display: flex; align-items: baseline; gap: 8px; }
+.nd-title { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; color: var(--ink); }
+.nd-count { font-size: 12px; font-weight: 500; color: var(--accent-ink); }
+.nd-count.is-idle { color: var(--ink-3); }
+.nd-dots { display: flex; gap: 4px; align-items: center; }
+.nd-dot { width: 6px; height: 6px; border-radius: 3px; background: oklch(0.8 0.015 70); transition: width .3s; }
+.nd-dot.is-on { width: 18px; background: var(--ink); }
+
+.nd-stack { position: relative; transition: height .45s cubic-bezier(.2, .8, .2, 1); }
+.nd-layer {
+  position: absolute; height: 206px; box-sizing: border-box;
+  border-radius: 22px; border: 1px solid var(--line);
+}
+.nd-layer.is-1 { left: 12px; right: 12px; top: 13px; background: oklch(0.975 0.005 80); }
+.nd-layer.is-2 { left: 24px; right: 24px; top: 26px; background: oklch(0.955 0.006 80); }
+.nd-slot { position: absolute; left: 0; right: 0; top: 0; height: 206px; }
+.nd-slot.is-top { z-index: 3; touch-action: pan-y; user-select: none; -webkit-user-select: none; cursor: grab; }
+.nd-slot.is-next { z-index: 2; pointer-events: none; animation: nd-promote .28s cubic-bezier(.2, .8, .2, 1) both; }
+
+.nd-card {
+  height: 100%; box-sizing: border-box; position: relative;
+  display: flex; flex-direction: column; gap: 10px; padding: 18px 18px 14px;
+  border-radius: 22px; background: var(--surface); border: 1px solid var(--line);
+  box-shadow: 0 12px 26px -16px oklch(0.25 0.02 60 / .35);
+  color: var(--ink); font-family: var(--f-sans);
+}
+.nd-card.is-new { border: 1.5px solid var(--accent); }
+
+.nd-author { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.nd-avatar {
+  flex: none; width: 30px; height: 30px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600;
+}
+.nd-name { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.nd-cat { flex: none; font-size: 10.5px; font-weight: 500; padding: 2px 7px; border-radius: 999px; white-space: nowrap; }
+.nd-avatar.tone-sage, .nd-cat.tone-sage { background: var(--accent-2); color: var(--accent-ink); }
+.nd-avatar.tone-blue, .nd-cat.tone-blue { background: oklch(0.94 0.025 250); color: oklch(0.4 0.09 250); }
+.nd-avatar.tone-violet, .nd-cat.tone-violet { background: oklch(0.94 0.03 300); color: oklch(0.42 0.1 300); }
+.nd-avatar.tone-neutral { background: oklch(0.94 0.01 80); color: var(--ink-2); }
+.nd-time {
+  margin-left: auto; flex: none; font-family: var(--f-mono); font-size: 11.5px; font-weight: 500;
+  color: var(--ink-3); font-variant-numeric: tabular-nums;
+}
+.nd-badge {
+  margin-left: auto; flex: none; display: inline-flex; align-items: center; gap: 5px;
+  font-family: var(--f-mono); font-size: 10px; font-weight: 600; letter-spacing: .08em;
+  padding: 4px 8px; border-radius: 999px; background: var(--accent-2); color: var(--accent-ink);
+}
+.nd-badge.is-new { background: var(--accent); color: #fff; }
+.nd-badge-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; animation: nd-dot 1.4s ease-in-out infinite; }
+
+.nd-content { flex: 1; min-height: 0; display: flex; gap: 14px; align-items: flex-start; }
+.nd-text {
+  flex: 1; min-width: 0; font-size: 16.5px; line-height: 1.45; font-weight: 450; letter-spacing: -.01em;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+  text-wrap: pretty; white-space: pre-line; overflow-wrap: anywhere;
+}
+.nd-mention { color: var(--accent-ink); font-weight: 600; }
+.nd-thumb {
+  flex: none; width: 72px; height: 72px; margin-top: 2px; box-sizing: border-box; overflow: hidden;
+  border-radius: 12px; border: 1px solid oklch(0.84 0.012 70);
+  display: flex; align-items: center; justify-content: center; color: oklch(0.55 0.012 60);
+  background: repeating-linear-gradient(135deg, oklch(0.93 0.01 75) 0 6px, oklch(0.955 0.008 75) 6px 12px);
+}
+.nd-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+.nd-foot { display: flex; align-items: center; gap: 8px; }
+.nd-meta { flex: 1; min-width: 0; font-size: 12px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nd-btn {
+  flex: none; min-height: 0; font: inherit; font-size: 12.5px; font-weight: 500; white-space: nowrap; cursor: pointer;
+  padding: 7px 12px; border-radius: 999px; background: transparent; border: 1px solid var(--line);
+  color: oklch(0.3 0.012 60); -webkit-tap-highlight-color: transparent;
+}
+.nd-btn.is-primary { font-weight: 600; padding: 8px 13px; border: 0; background: var(--ink); color: #fff; }
+.nd-btn:active { transform: scale(0.97); }
+
+.nd-foot-row {
+  display: flex; justify-content: space-between; align-items: center; padding: 0 4px;
+  font-size: 12px; color: var(--ink-3);
+}
+.nd-all {
+  display: inline-flex; align-items: center; gap: 2px; min-height: 0; padding: 0; border: 0; background: transparent;
+  font: inherit; font-size: 12px; font-weight: 500; color: var(--accent-ink); cursor: pointer;
+}
+
+/* Asistan: deste bitince 64px'lik "Hepsini gördün" satırı. */
+.nd-empty {
+  position: absolute; left: 0; right: 0; top: 0; height: 64px; box-sizing: border-box; width: 100%;
+  display: flex; align-items: center; gap: 12px; padding: 0 14px; text-align: left; cursor: pointer;
+  border-radius: 18px; background: var(--surface); border: 1px solid var(--line); font: inherit; color: var(--ink);
+  animation: nd-fade-up .4s ease-out .15s both;
+}
+.nd-empty-tick {
+  flex: none; width: 32px; height: 32px; border-radius: 50%;
+  background: var(--accent-2); color: var(--accent-ink); display: flex; align-items: center; justify-content: center;
+}
+.nd-empty-copy { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.nd-empty-title { font-size: 14px; font-weight: 600; }
+.nd-empty-sub { font-size: 12px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nd-empty-link { font-size: 13px; font-weight: 500; color: var(--accent-ink); white-space: nowrap; }
+
+/* Yönetici: deste bitince KPI'lar geri gelir. */
+.nd-kpis-return { animation: nd-fade-up .45s ease-out both; }
+
+/* Yönetici modül satırı: Notlar kutusu 0 ↔ yarım genişlik açılır/kapanır.
+   Açılış gecikmeli (KPI'lar önce gelsin), kapanış anında. */
+.nd-modrow { display: flex; align-items: stretch; }
+.nd-notes-slot {
+  flex: 0 0 auto; min-width: 0; overflow: hidden; box-sizing: border-box; display: flex;
+  width: 0; padding-left: 0;
+  transition: width .55s cubic-bezier(.3, .9, .3, 1), padding-left .55s cubic-bezier(.3, .9, .3, 1);
+}
+.nd-notes-slot.is-open { width: calc(50% + 4px); padding-left: 8px; transition-delay: .3s; }
+.nd-notes-slot .mod-tile {
+  min-width: 150px; opacity: 0; transform: scale(.92);
+  transition: opacity .3s ease, transform .45s cubic-bezier(.3, 1.3, .5, 1);
+}
+.nd-notes-slot.is-open .mod-tile { opacity: 1; transform: none; transition-delay: .5s; }
+
+@keyframes nd-drop {
+  0% { opacity: 0; transform: translateY(-70px) rotate(-4deg) scale(1.04); }
+  60% { opacity: 1; transform: translateY(5px) rotate(.6deg); }
+  80% { transform: translateY(-2px) rotate(-.2deg); }
+  100% { transform: none; }
+}
+@keyframes nd-promote {
+  0% { transform: translateY(13px) scale(.94); opacity: .5; }
+  100% { transform: none; opacity: 1; }
+}
+@keyframes nd-pop {
+  0% { opacity: 0; transform: scale(.5); }
+  70% { transform: scale(1.12); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@keyframes nd-dot {
+  0%, 100% { box-shadow: 0 0 0 0 oklch(0.62 0.13 145 / .7); }
+  50% { box-shadow: 0 0 0 6px oklch(0.62 0.13 145 / 0); }
+}
+/* Taban gölgesi keyframe'lerde korunur — halka bitince gölge sonradan belirmez. */
+@keyframes nd-ring {
+  0% { box-shadow: 0 12px 26px -16px oklch(0.25 0.02 60 / .35), 0 0 0 0 oklch(0.5 0.08 145 / .45); }
+  70% { box-shadow: 0 12px 26px -16px oklch(0.25 0.02 60 / .35), 0 0 0 10px oklch(0.5 0.08 145 / 0); }
+  100% { box-shadow: 0 12px 26px -16px oklch(0.25 0.02 60 / .35), 0 0 0 0 oklch(0.5 0.08 145 / 0); }
+}
+@keyframes nd-fade-up {
+  0% { opacity: 0; transform: translateY(8px); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes nd-fade { 0% { opacity: 0; } 100% { opacity: 1; } }
+
+/* Azaltılmış hareket: düşme/pop/halka/nabız kapanır, yalnız opaklık geçişi kalır. */
+@media (prefers-reduced-motion: reduce) {
+  .nd-slot.is-top, .nd-card, .nd-badge, .nd-badge-dot { animation: none !important; }
+  .nd-slot.is-next, .nd-empty, .nd-kpis-return { animation: nd-fade .25s ease-out both; }
+  .nd-stack, .nd-notes-slot, .nd-notes-slot .mod-tile { transition-duration: .01s !important; }
+}

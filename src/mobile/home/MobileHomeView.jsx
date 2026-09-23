@@ -1,6 +1,7 @@
 import React from 'react';
 import { Avatar, Icon } from '../../layout';
 import { fmtTL } from '../../data';
+import { NoteDeck } from './NoteDeck';
 
 // Türkçe iyelik eki: "%53'ü", "%50'si", "%40'ı" ... Son okunan sözcüğün
 // ünlü uyumuna göre. 0–100 arası yüzdeler için doğru ek üretir.
@@ -67,6 +68,14 @@ function ProfileMenu({ user, onLogout }) {
 /**
  * "B Temel" mobil ana sayfa üst kısmı — başlık + hero (son 30 gün tahsilat) + iki pill.
  * Bugünün dersleri ayrı bir bileşendir (MobileAgenda). Veri MobileHome'dan gelir.
+ *
+ * Not destesi (design_handoff_notlar_destesi, bkz. NoteDeck) role göre iki düzende:
+ * - Yönetici (finans + sipariş görür, Canvas #4a): görülmemiş not varken deste
+ *   hero + pill'lerin yerine geçer, Siparişler tam genişlik olur ve Notlar kutusu
+ *   gizlenir. Deste bitince KPI'lar geri gelir, Notlar kutusu Siparişler'in
+ *   yanında açılır.
+ * - Asistan (#3a): deste doluluk kartının üstünde; bitince "Hepsini gördün"
+ *   satırına iner. Ayrı Notlar kutusu yok — satır ve deste Notlar'a götürür.
  */
 
 export function MobileHomeView({
@@ -76,8 +85,21 @@ export function MobileHomeView({
   occupancy = 0, plannedLessons = 0, capacity = null,
   kpiLoading = false,
   ordersPending = 0, ordersUrgent = 0, notesHasNew = false,
+  notesLoading = false, deckNotes = [], lastNote = null, onDeckSeen,
   canSeeFinance = true, canSeeOrders = true,
 }) {
+  const managerLayout = canSeeFinance && canSeeOrders;
+  const hasDeck = deckNotes.length > 0;
+  // Yönetici düzeninde KPI'lar yalnız deste bitince geri gelirken kayarak
+  // belirir; ana sayfa ilk açıldığında animasyonsuz durur.
+  const [kpisReturning, setKpisReturning] = React.useState(false);
+  const prevHasDeckRef = React.useRef(hasDeck);
+  React.useLayoutEffect(() => {
+    if (prevHasDeckRef.current && !hasDeck) setKpisReturning(true);
+    prevHasDeckRef.current = hasDeck;
+  }, [hasDeck]);
+  const openNotes = () => onOpenNotes?.();
+  const openNote = (noteId, { reply } = {}) => onOpenNotes?.({ noteId, reply });
   const barWidth = Math.max(0, Math.min(100, collectionRate));
   const occupancyTag = capacity != null
     ? `${plannedLessons}/${capacity} ders`
@@ -94,6 +116,84 @@ export function MobileHomeView({
     });
   }
   const money = (n) => (hidden ? '•••• ₺' : fmtTL(n));
+
+  const heroNode = canSeeFinance && (() => {
+    const heroInner = (
+      <>
+        <div className="mh-hero-top">
+          <div>
+            <p className="mh-hero-label">Son 30 günde tahsil edilen</p>
+            <p className="mh-hero-big">{kpiLoading ? '—' : money(collected)}</p>
+          </div>
+          {onOpenFinance && (
+            <Icon.ChevronR className="mh-hero-chev" width="20" height="20" aria-hidden="true" />
+          )}
+        </div>
+        <p className="mh-hero-sub">
+          {kpiLoading
+            ? '—'
+            : `${money(revenue)} cironun %${collectionRate}'${percentSuffix(collectionRate)} tahsil edildi`}
+        </p>
+        <div className="mh-hero-prog">
+          <div className="mh-hero-prog-fill" style={{ width: `${barWidth}%` }} />
+        </div>
+      </>
+    );
+    const financeSlide = onOpenFinance ? (
+      <button
+        type="button"
+        className={`mh-hero mh-hero-btn${kpiDim}`}
+        onClick={onOpenFinance}
+        aria-label="Finans ekranını aç"
+      >
+        {heroInner}
+      </button>
+    ) : (
+      <div className={`mh-hero${kpiDim}`}>{heroInner}</div>
+    );
+    return financeSlide;
+  })();
+
+  const pillsNode = (
+    <div className={`mh-pills${canSeeFinance ? '' : ' mh-pills-solo'}`}>
+      {canSeeFinance && (
+        <div className={`mh-pill warn${kpiDim}`}>
+          <p className="mh-pill-label">Bekleyen tahsilat</p>
+          <div className="mh-pill-val">{kpiLoading ? '—' : money(receivable)}</div>
+          <span className="mh-pill-tag">{debtorCount} öğrenci</span>
+        </div>
+      )}
+      {(() => {
+        const body = (
+          <>
+            <div className="mh-pill-val">%{occupancy}</div>
+            <span className="mh-pill-tag">{occupancyTag}</span>
+          </>
+        );
+        // Doluluk kartı tıklanınca Doluluk · Yoklama ekranını açar; tıklanabilir
+        // olduğu, hero kartındaki gibi sağ üstteki ok ile belli olur.
+        return onOpenOccupancy ? (
+          <button
+            type="button"
+            className={`mh-pill mh-pill-btn${kpiDim}`}
+            onClick={onOpenOccupancy}
+            aria-label="Doluluk ekranını aç"
+          >
+            <div className="mh-pill-top">
+              <p className="mh-pill-label">Haftalık doluluk</p>
+              <Icon.ChevronR className="mh-pill-chev" width="16" height="16" aria-hidden="true" />
+            </div>
+            {body}
+          </button>
+        ) : (
+          <div className={`mh-pill${kpiDim}`}>
+            <p className="mh-pill-label">Haftalık doluluk</p>
+            {body}
+          </div>
+        );
+      })()}
+    </div>
+  );
 
   return (
     <div className="mobile-home mh-wrap">
@@ -118,95 +218,49 @@ export function MobileHomeView({
         <ProfileMenu user={user} onLogout={onLogout} />
       </div>
 
-      {canSeeFinance && (() => {
-        const heroInner = (
-          <>
-            <div className="mh-hero-top">
-              <div>
-                <p className="mh-hero-label">Son 30 günde tahsil edilen</p>
-                <p className="mh-hero-big">{kpiLoading ? '—' : money(collected)}</p>
-              </div>
-              {onOpenFinance && (
-                <Icon.ChevronR className="mh-hero-chev" width="20" height="20" aria-hidden="true" />
-              )}
-            </div>
-            <p className="mh-hero-sub">
-              {kpiLoading
-                ? '—'
-                : `${money(revenue)} cironun %${collectionRate}'${percentSuffix(collectionRate)} tahsil edildi`}
-            </p>
-            <div className="mh-hero-prog">
-              <div className="mh-hero-prog-fill" style={{ width: `${barWidth}%` }} />
-            </div>
-          </>
-        );
-        const financeSlide = onOpenFinance ? (
-          <button
-            type="button"
-            className={`mh-hero mh-hero-btn${kpiDim}`}
-            onClick={onOpenFinance}
-            aria-label="Finans ekranını aç"
-          >
-            {heroInner}
-          </button>
-        ) : (
-          <div className={`mh-hero${kpiDim}`}>{heroInner}</div>
-        );
-        return financeSlide;
-      })()}
-
-      <div className={`mh-pills${canSeeFinance ? '' : ' mh-pills-solo'}`}>
-        {canSeeFinance && (
-          <div className={`mh-pill warn${kpiDim}`}>
-            <p className="mh-pill-label">Bekleyen tahsilat</p>
-            <div className="mh-pill-val">{kpiLoading ? '—' : money(receivable)}</div>
-            <span className="mh-pill-tag">{debtorCount} öğrenci</span>
+      {managerLayout ? (
+        hasDeck ? (
+          <NoteDeck
+            notes={deckNotes}
+            onSeen={onDeckSeen}
+            onOpenNote={openNote}
+            onOpenNotes={openNotes}
+          />
+        ) : !notesLoading && (
+          <div className={kpisReturning ? 'nd-kpis-return' : undefined}>
+            {heroNode}
+            {pillsNode}
           </div>
-        )}
-        {(() => {
-          const body = (
-            <>
-              <div className="mh-pill-val">%{occupancy}</div>
-              <span className="mh-pill-tag">{occupancyTag}</span>
-            </>
-          );
-          // Doluluk kartı tıklanınca Doluluk · Yoklama ekranını açar; tıklanabilir
-          // olduğu, hero kartındaki gibi sağ üstteki ok ile belli olur.
-          return onOpenOccupancy ? (
-            <button
-              type="button"
-              className={`mh-pill mh-pill-btn${kpiDim}`}
-              onClick={onOpenOccupancy}
-              aria-label="Doluluk ekranını aç"
-            >
-              <div className="mh-pill-top">
-                <p className="mh-pill-label">Haftalık doluluk</p>
-                <Icon.ChevronR className="mh-pill-chev" width="16" height="16" aria-hidden="true" />
-              </div>
-              {body}
-            </button>
-          ) : (
-            <div className={`mh-pill${kpiDim}`}>
-              <p className="mh-pill-label">Haftalık doluluk</p>
-              {body}
-            </div>
-          );
-        })()}
-      </div>
+        )
+      ) : (
+        <>
+          {heroNode}
+          {!notesLoading && (
+            <NoteDeck
+              notes={deckNotes}
+              lastNote={lastNote}
+              onSeen={onDeckSeen}
+              onOpenNote={openNote}
+              onOpenNotes={openNotes}
+              emptyVariant="row"
+            />
+          )}
+          {pillsNode}
+        </>
+      )}
 
-      {/* Modül çifti — KPI pill'lerinin hemen altı, ders akışının üstü.
+      {/* Modül satırı — KPI pill'lerinin hemen altı, ders akışının üstü.
           Siparişler tasarımı "V3·B · Aciliyet" (Trendyol pazaryeri): ikonda
           bildirim noktası + alt metinde turuncu "N acil" vurgusu (24 saat içinde
           kargoya verilmesi gereken sipariş) aksiyon gerektiren işi öne çıkarır.
-          Yan yana ikinci kutu "Notlar" eklenince tek satırlık geniş satır
-          yerine iki eşit, alçak kutuya (mod-tile) dönüştü. Alt metinler yarım
-          genişlikte tek satıra sığacak kadar kısa tutulmalı (~105px): aciliyet
-          ayrı bir çip rozetiyken metne taşındı, "Bekleyen sipariş yok" da
-          "Sipariş yok"a indi.
-          Siparişler asistana kapalı; o durumda Notlar tek başına tam genişlik
-          kaplar (flex: 1). */}
-      <div className="mod-wrap mod-pair">
-        {canSeeOrders && (
+          Alt metinler yarım genişlikte tek satıra sığacak kadar kısa tutulmalı
+          (~105px).
+          Yönetici düzeninde Notlar kutusu yalnız deste boşken görünür: sarmalayıcı
+          genişliği 0 ↔ yarım genişlik arasında açılıp kapanır (bkz. .nd-notes-slot),
+          Siparişler de buna göre tam/yarım genişliğe yayılır. Asistanda Siparişler
+          yok, Notlar'a deste/"Hepsini gördün" satırından gidilir. */}
+      {managerLayout && (
+        <div className="mod-wrap nd-modrow">
           <button type="button" className="mod-tile mod-tileu" onClick={onOpenOrders}>
             <span className="mod-tile-icon">
               <Icon.Box width="16" height="16" aria-hidden="true" />
@@ -228,18 +282,26 @@ export function MobileHomeView({
               </span>
             </span>
           </button>
-        )}
-        <button type="button" className="mod-tile mod-tilen" onClick={onOpenNotes}>
-          <span className="mod-tile-icon">
-            <Icon.Edit width="16" height="16" aria-hidden="true" />
-            {notesHasNew && <span className="mod-tilen-dot" />}
-          </span>
-          <span className="mod-tile-body">
-            <span className="mod-tile-title">Notlar</span>
-            <span className="mod-tile-sub">{notesHasNew ? 'Yeni not eklendi' : 'Ekip notları'}</span>
-          </span>
-        </button>
-      </div>
+          <div className={`nd-notes-slot${!hasDeck && !notesLoading ? ' is-open' : ''}`}>
+            <button
+              type="button"
+              className="mod-tile mod-tilen"
+              onClick={openNotes}
+              tabIndex={hasDeck ? -1 : undefined}
+              aria-hidden={hasDeck || undefined}
+            >
+              <span className="mod-tile-icon">
+                <Icon.Edit width="16" height="16" aria-hidden="true" />
+                {notesHasNew && <span className="mod-tilen-dot" />}
+              </span>
+              <span className="mod-tile-body">
+                <span className="mod-tile-title">Notlar</span>
+                <span className="mod-tile-sub">{notesHasNew ? 'Yeni yanıt var' : 'Ekip notları'}</span>
+              </span>
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

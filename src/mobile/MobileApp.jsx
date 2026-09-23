@@ -151,6 +151,9 @@ export function MobileApp({
   // "Notlar" kutusundan da etkinlik detayındaki kısayoldan da açılır; geri
   // tuşu nereden gelindiyse oraya dönsün diye kaynağı tutuyoruz.
   const [notesReturnPage, setNotesReturnPage] = React.useState('home');
+  // Ana sayfa not destesindeki "Aç"/"Yanıtla" doğrudan o notun detayını açar
+  // ({ noteId, reply }); "Tüm notlar" ve diğer girişlerde null (liste).
+  const [notesFocus, setNotesFocus] = React.useState(null);
   // Not içindeki öğrenci etiketi profile götürür; profil geri tuşu öğrenci
   // listesine değil, okunan not akışına dönsün.
   const [studentProfileReturnPage, setStudentProfileReturnPage] = React.useState(null);
@@ -367,7 +370,12 @@ export function MobileApp({
         onOpenFinance={() => openFinance('home')}
         onOpenOccupancy={() => { setStudentDetailId(null); setPage('occupancy'); }}
         onOpenOrders={() => { setStudentDetailId(null); setPage('orders'); }}
-        onOpenNotes={() => { setStudentDetailId(null); setNotesReturnPage('home'); setPage('notes'); }}
+        onOpenNotes={(focus) => {
+          setStudentDetailId(null);
+          setNotesReturnPage('home');
+          setNotesFocus(focus?.noteId ? focus : null);
+          setPage('notes');
+        }}
       />
     );
   } else if (page === 'events') {
@@ -393,7 +401,7 @@ export function MobileApp({
         onOpenTransport={() => setPage('event-transport')}
         onOpenSettings={() => setPage('event-settings')}
         onOpenParticipant={openEventParticipant}
-        onOpenNotes={() => { setNotesReturnPage('event-detail'); setPage('notes'); }}
+        onOpenNotes={() => { setNotesReturnPage('event-detail'); setNotesFocus(null); setPage('notes'); }}
         onOpenActivity={() => setPage('event-activity')}
         onOpenDay={() => openEventDay(eventDetailId, 'event-detail')}
       />
@@ -433,7 +441,9 @@ export function MobileApp({
   } else if (page === 'notes') {
     body = (
       <MobileNotes
-        onBack={() => setPage(notesReturnPage)}
+        focusNoteId={notesFocus?.noteId ?? null}
+        focusReply={!!notesFocus?.reply}
+        onBack={() => { setNotesFocus(null); setPage(notesReturnPage); }}
         onOpenStudent={(studentId) => {
           setStudentProfileReturnPage('notes');
           setStudentDetailId(String(studentId));

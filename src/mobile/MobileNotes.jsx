@@ -22,7 +22,6 @@ import {
 import { queryKeys } from '../hooks/queryKeys';
 import { useCurrentUser } from '../currentUser';
 import { compressToBoundedWebp } from '../imageCompress';
-import { setLastSeenNoteId } from './shared/notesSeen';
 
 // Notlar — stüdyo geneli TEK bir paylaşılan not akışı. Önce etkinlik detayının
 // bir alt ekranı olarak doğdu (etkinlik başına ayrı liste), kullanıcı isteğiyle
@@ -1087,14 +1086,14 @@ function NoteViewersSheet({ open, onOpenChange, noteId }) {
   );
 }
 
-function NoteCard({ note, isMine, students, users = [], categories, isReply = false, replies = [], currentUser, onOpenStudent, onOpen, detail = false }) {
+function NoteCard({ note, isMine, students, users = [], categories, isReply = false, replies = [], currentUser, onOpenStudent, onOpen, detail = false, autoReply = false }) {
   const queryClient = useQueryClient();
   const reactionButtonRef = React.useRef(null);
   const reactionPickerRef = React.useRef(null);
   const moreButtonRef = React.useRef(null);
   const moreMenuRef = React.useRef(null);
   const [editing, setEditing] = React.useState(false);
-  const [replying, setReplying] = React.useState(false);
+  const [replying, setReplying] = React.useState(autoReply);
   const [reactionOpen, setReactionOpen] = React.useState(false);
   const [moreOpen, setMoreOpen] = React.useState(false);
   const [editCategoryId, setEditCategoryId] = React.useState(note.category ? String(note.category.id) : null);
@@ -1544,27 +1543,35 @@ export function MobileNotes(props) {
   );
 }
 
-function MobileNotesScreen({ onBack, onOpenStudent }) {
+function MobileNotesScreen({ onBack, onOpenStudent, focusNoteId = null, focusReply = false }) {
   const queryClient = useQueryClient();
   const currentUser = useCurrentUser();
-  const [view, setView] = React.useState('list');
+  // Ana sayfa destesinden belirli bir not için gelindiyse doğrudan detay açılır
+  // (Yanıtla: yanıt kutusu açık); geri tuşu o durumda ana sayfaya döner.
+  const [view, setView] = React.useState(focusNoteId != null ? 'detail' : 'list');
   const [posting, setPosting] = React.useState(false);
   const [composeError, setComposeError] = React.useState('');
   const [searchOpen, setSearchOpen] = React.useState(false);
   const [searchQuery, setSearchQuery] = React.useState('');
   const [categoryFilter, setCategoryFilter] = React.useState('all');
   const [composeCategoryId, setComposeCategoryId] = React.useState(null);
-  const [openNoteId, setOpenNoteId] = React.useState(null);
+  const [openNoteId, setOpenNoteId] = React.useState(focusNoteId);
+  const enteredFromFocus = React.useRef(focusNoteId != null);
   const listScrollRef = React.useRef(0);
 
   // Detay görünümünden dönünce liste, açılmadan önceki kaydırma konumuna gelir.
   function openDetail(noteId) {
     listScrollRef.current = document.querySelector('.evx-body')?.scrollTop ?? 0;
+    enteredFromFocus.current = false;
     setOpenNoteId(noteId);
     setView('detail');
   }
 
   function closeDetail() {
+    if (enteredFromFocus.current) {
+      onBack();
+      return;
+    }
     setView('list');
   }
 
@@ -1593,13 +1600,6 @@ function MobileNotesScreen({ onBack, onOpenStudent }) {
 
   const notes = notesQuery.data ?? [];
   const categories = categoriesQuery.data ?? [];
-
-  // Not listesi görüldüğünde ana sayfadaki "yeni not" rozetini kapat (bkz.
-  // shared/notesSeen.js). Notlar en yeniden en eskiye geldiği için ilk eleman
-  // en güncel not id'sidir.
-  React.useEffect(() => {
-    if (notes.length > 0) setLastSeenNoteId(notes[0].id);
-  }, [notes]);
 
   React.useEffect(() => {
     if (!categoryFilter.startsWith('category:') || categoriesQuery.isLoading) return;
@@ -1801,6 +1801,7 @@ function MobileNotesScreen({ onBack, onOpenStudent }) {
               currentUser={currentUser}
               onOpenStudent={onOpenStudent}
               detail
+              autoReply={focusReply && String(detailNote.id) === String(focusNoteId)}
             />
           </ul>
         </div>

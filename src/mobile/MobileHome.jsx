@@ -1,15 +1,51 @@
 import React from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { MobileHomeView } from './home/MobileHomeView';
 import { MobileAgenda } from './home/MobileAgenda';
 import { useWeeklyKpi, parseNumericValue } from './shared/useWeeklyKpi';
 import { useWeekLessons } from './shared/useWeekLessons';
-import { getLastSeenNoteId } from './shared/notesSeen';
-import { getSettings, getTrendyolOrdersList, getNotes } from '../api';
+import { getSettings, getTrendyolOrdersList, getNotes, markNotesSeen } from '../api';
 import { queryKeys } from '../hooks/queryKeys';
 import { can } from '../permissions';
 
 const ORDERS_WINDOW_DAYS = 90;
+const NOTES_REFRESH_MS = 30 * 1000;
+
+// Not destesi oturum durumu — ana sayfa her açılışta yeniden bağlandığı için
+// modül düzeyinde tutulur:
+// - knownNoteIds: bu oturumdaki ilk başarılı yüklemede var olan notlar. Sonradan
+//   gelen (bu kümede olmayan) not "YENİ" sayılır ve destenin en üstüne düşer.
+// - locallySeenNoteIds: desteden çıkarılan notlar. POST /notes/views sonucu ya
+//   da arka plan yenilemesi yarışsa bile kart geri gelmesin (optimistic).
+let knownNoteIds = null;
+const locallySeenNoteIds = new Set();
+
+// Deste: kullanıcının görmediği, başkasının yazdığı üst notlar. Yanıtlar kart
+// açmaz, yalnız sayıyı artırır. Sıra: YENİ > bana etiketli > en yeni.
+function buildDeckNotes(notes, meId) {
+  if (!Array.isArray(notes)) return [];
+  const replyCounts = new Map();
+  for (const n of notes) {
+    if (n.parent_note_id == null || n.deleted_at) continue;
+    const key = String(n.parent_note_id);
+    replyCounts.set(key, (replyCounts.get(key) ?? 0) + 1);
+  }
+  return notes
+    .filter((n) => n.parent_note_id == null && !n.deleted_at)
+    .filter((n) => String(n.author_user_id) !== meId)
+    .filter((n) => !n.seen_by_me && !locallySeenNoteIds.has(String(n.id)))
+    .map((n) => ({
+      ...n,
+      isNew: knownNoteIds != null && !knownNoteIds.has(String(n.id)),
+      isForMe: (n.user_mentions || []).some((m) => String(m.userId) === meId),
+      replyCount: replyCounts.get(String(n.id)) ?? 0,
+    }))
+    .sort((a, b) => (
+      (Number(b.isNew) - Number(a.isNew))
+      || (Number(b.isForMe) - Number(a.isForMe))
+      || (new Date(b.created_at) - new Date(a.created_at))
+    ));
+}
 
 function isUrgent(ms) {
   if (!ms) return false;
@@ -75,16 +111,52 @@ export function MobileHome({ user, onLogout, onOpenFinance, onOpenOccupancy, onO
     ).length;
   }, [ordersData]);
 
-  // "Yeni not" rozeti: en son not id'si cihazda görülen son id'den farklıysa
-  // gösterilir (bkz. shared/notesSeen.js). Notlar stüdyo geneli, tüm roller
-  // görebildiği için burada rol kontrolü yok (Siparişler'in aksine).
-  const { data: notesData } = useQuery({
+  // Notlar stüdyo geneli, tüm roller görebildiği için burada rol kontrolü yok
+  // (Siparişler'in aksine). Ana sayfa açıkken yeni not desteye düşsün diye
+  // periyodik yenilenir (push/websocket yok); sekme arka plandayken durur.
+  const queryClient = useQueryClient();
+  const { data: notesData, isLoading: notesLoading } = useQuery({
     queryKey: queryKeys.notes(),
     queryFn: getNotes,
     staleTime: 30 * 1000,
+    refetchInterval: NOTES_REFRESH_MS,
   });
-  const latestNoteId = notesData?.[0]?.id ?? null;
-  const notesHasNew = latestNoteId != null && String(latestNoteId) !== String(getLastSeenNoteId() ?? '');
+  if (Array.isArray(notesData) && knownNoteIds == null) {
+    knownNoteIds = new Set(notesData.map((n) => String(n.id)));
+  }
+  const meId = String(user?.id ?? '');
+  const [seenTick, bumpSeen] = React.useReducer((x) => x + 1, 0);
+  const deckNotes = React.useMemo(
+    () => buildDeckNotes(notesData, meId),
+    // seenTick: locallySeenNoteIds modül kümesi değişince yeniden hesapla.
+    [notesData, meId, seenTick],
+  );
+  const lastNote = React.useMemo(
+    () => (notesData ?? []).find((n) => n.parent_note_id == null && !n.deleted_at) ?? null,
+    [notesData],
+  );
+  // Notlar kutusundaki nokta: görülmemiş herhangi bir not ya da yanıt (kendi
+  // yazdıklarım hariç) — sunucudaki note_views üzerinden (seen_by_me).
+  const notesHasNew = React.useMemo(
+    () => (notesData ?? []).some((n) => (
+      !n.deleted_at
+      && String(n.author_user_id) !== meId
+      && !n.seen_by_me
+      && !locallySeenNoteIds.has(String(n.id))
+    )),
+    [notesData, meId, seenTick],
+  );
+
+  const markDeckNoteSeen = React.useCallback((noteId) => {
+    const id = String(noteId);
+    locallySeenNoteIds.add(id);
+    bumpSeen();
+    queryClient.setQueryData(queryKeys.notes(), (old) => (
+      Array.isArray(old) ? old.map((n) => (String(n.id) === id ? { ...n, seen_by_me: true } : n)) : old
+    ));
+    // Hata sessizce yutulur (Notlar ekranındaki izleyiciyle aynı davranış).
+    markNotesSeen([noteId]).catch(() => {});
+  }, [queryClient]);
 
   const today = React.useMemo(getIstanbulToday, []);
   const thisMonday = React.useMemo(() => getWeekStart(today), [today]);
@@ -136,6 +208,10 @@ export function MobileHome({ user, onLogout, onOpenFinance, onOpenOccupancy, onO
         ordersPending={ordersPending}
         ordersUrgent={ordersUrgent}
         notesHasNew={notesHasNew}
+        notesLoading={notesLoading}
+        deckNotes={deckNotes}
+        lastNote={lastNote}
+        onDeckSeen={markDeckNoteSeen}
         canSeeFinance={canSeeFinance}
         canSeeOrders={canSeeOrders}
       />
