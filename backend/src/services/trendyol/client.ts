@@ -120,6 +120,7 @@ async function trendyolGetJson<T>(url: URL, errLabel: string): Promise<T> {
 
 export type GetOrdersParams = {
   status?: string;
+  orderNumber?: string; // tek siparişin paketleri (tarih aralığı yine uygulanır)
   // ms epoch (Trendyol startDate/endDate ms cinsindendir)
   startDate?: number;
   endDate?: number;
@@ -202,6 +203,7 @@ export async function getOrders(params: GetOrdersParams = {}): Promise<TrendyolO
     `${env.trendyolApiBaseUrl}/integration/order/sellers/${env.trendyolSellerId}/orders`,
   );
   if (params.status) url.searchParams.set("status", params.status);
+  if (params.orderNumber) url.searchParams.set("orderNumber", params.orderNumber);
   if (params.startDate !== undefined) url.searchParams.set("startDate", String(params.startDate));
   if (params.endDate !== undefined) url.searchParams.set("endDate", String(params.endDate));
   if (params.page !== undefined) url.searchParams.set("page", String(params.page));
@@ -566,7 +568,8 @@ export async function getCommonLabel(cargoTrackingNumber: string): Promise<Commo
 // flag + UI onayı + whitelist doğrulaması) çağrılmalı. Smoke offline enjekte client
 // kullanır. YAZMA → ASLA yeniden denenmez (TY: paket başına 5 dk'da yalnız 1 değişiklik).
 //
-// TY değişikliği async uygulayabilir; çağıran sonradan getOrders ile teyit eder.
+// TY değişikliği ASYNC uygular; 200 "uygulandı" DEMEK DEĞİLDİR. Teyit order-cargo.service
+// (getCargoChangeStatuses → orderNumber ile hedefli getOrders) üzerinden yapılır.
 export async function changeCargoProvider(
   packageId: string,
   cargoProvider: string,

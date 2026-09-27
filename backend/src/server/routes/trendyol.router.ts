@@ -17,7 +17,10 @@ import {
 } from "../../services/trendyol/order-sync.service.js";
 import { syncTrendyolClaims } from "../../services/trendyol/claims-sync.service.js";
 import { getOrderCargoLabel } from "../../services/trendyol/order-label.service.js";
-import { changeOrderCargoProvider } from "../../services/trendyol/order-cargo.service.js";
+import {
+  changeOrderCargoProvider,
+  getCargoChangeStatuses,
+} from "../../services/trendyol/order-cargo.service.js";
 import {
   baselineChannelListings,
   runStockPush,
@@ -102,15 +105,34 @@ trendyolRouter.post("/orders/label", async (req, res) => {
 });
 
 // POST /trendyol/orders/cargo-provider — Faz 2: paketin kargo firmasını DEĞİŞTİR.
-// CANLI TY YAZMASI; marketplace_fulfillment kapalıysa 409. body: { packageId,
-// cargoProvider } (cargoProvider = TY firma KODU, whitelist). → { packageId, cargoProvider, name }
+// CANLI TY YAZMASI; marketplace_fulfillment kapalıysa 409.
+// body: { packageId, cargoProvider, orderNumber? } (cargoProvider = TY firma KODU,
+// whitelist). → { packageId, cargoProvider, name, change } — change.status çoğunlukla
+// "pending": TY değişikliği async uygular, teyit GET /orders/cargo-changes ile izlenir.
 trendyolRouter.post("/orders/cargo-provider", async (req, res) => {
   try {
     const body = (req.body ?? {}) as Record<string, unknown>;
     const data = await changeOrderCargoProvider({
       packageId: body.packageId ? String(body.packageId) : "",
       cargoProvider: body.cargoProvider ? String(body.cargoProvider) : "",
+      orderNumber: body.orderNumber ? String(body.orderNumber) : null,
     });
+    res.json({ data });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+// GET /trendyol/orders/cargo-changes?packageIds=1,2[&check=1] — kargo firması
+// değişikliklerinin durumu (pending | applied | unconfirmed) + en taze paket verisi.
+// Salt-okuma; gerekirse siparişi TY'den hedefli yeniden çeker. check=1 → hemen kontrol.
+// → [{ packageId, change, order }]
+trendyolRouter.get("/orders/cargo-changes", async (req, res) => {
+  try {
+    const raw = req.query.packageIds;
+    const packageIds = (Array.isArray(raw) ? raw.join(",") : String(raw ?? "")).split(",");
+    const check = req.query.check === "1" || req.query.check === "true";
+    const data = await getCargoChangeStatuses(packageIds, { check });
     res.json({ data });
   } catch (err) {
     sendError(res, err);

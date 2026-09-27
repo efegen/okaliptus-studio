@@ -17,6 +17,12 @@ import {
   type TrendyolOrder,
   type TrendyolOrdersResponse,
 } from "./client.js";
+import {
+  findCargoChangeForOrder,
+  hasTrackedCargoChanges,
+  resolveCargoChange,
+  type CargoChangeView,
+} from "./cargo-change-tracker.js";
 
 export class MarketplaceSyncDisabledError extends AppError {
   constructor(message = "Pazaryeri senkronu kapalı. Ayarlardan 'Kanal eşleştirme'yi açın.") {
@@ -235,6 +241,8 @@ export type DisplayOrder = {
   billable: number | null;   // totalPrice (Faturalanacak)
   invoiced: boolean;
   lines: DisplayLine[];
+  // Yalnız takip edilen bir kargo firması değişikliği varsa (cargo-change-tracker).
+  cargoChange?: CargoChangeView;
 };
 
 export type OrdersListResult = {
@@ -247,6 +255,18 @@ export type OrdersListResult = {
 export type DisplayMatchMap = Map<string, { productId: string; internalName: string }>;
 export type ChannelInfoMap = Map<string, { imageUrl: string | null; title: string | null; productUrl: string | null }>;
 
+// 'tum' + her sekmenin paket sayısı.
+function countTabs(orders: DisplayOrder[]): Record<string, number> {
+  const tabCounts: Record<string, number> = {
+    tum: 0, yeni: 0, isleme: 0, tasima: 0, teslim: 0, yeniden: 0, aski: 0, diger: 0,
+  };
+  for (const o of orders) {
+    tabCounts[o.tab] = (tabCounts[o.tab] ?? 0) + 1;
+    tabCounts.tum += 1;
+  }
+  return tabCounts;
+}
+
 // Saf çekirdek: TY siparişleri + eşleme + kanal-snapshot → görünüm. DB/ağ yok.
 export function buildOrdersList(
   orders: TrendyolOrder[],
@@ -255,9 +275,6 @@ export function buildOrdersList(
 ): OrdersListResult {
   const out: DisplayOrder[] = [];
   const seen = new Set<string>();
-  const tabCounts: Record<string, number> = {
-    tum: 0, yeni: 0, isleme: 0, tasima: 0, teslim: 0, yeniden: 0, aski: 0, diger: 0,
-  };
 
   for (const o of orders) {
     const orderNumber = o.orderNumber ? String(o.orderNumber) : null;
@@ -325,12 +342,9 @@ export function buildOrdersList(
       invoiced: isInvoiced(status, o.invoiceLink),
       lines,
     });
-
-    tabCounts[tab] = (tabCounts[tab] ?? 0) + 1;
-    tabCounts.tum += 1;
   }
 
-  return { orders: out, tabCounts, total: out.length };
+  return { orders: out, tabCounts: countTabs(out), total: out.length };
 }
 
 // barcode'lar için channel_listings (eşleşme) + channel_products (foto/başlık).
@@ -387,7 +401,9 @@ const LIST_CONCURRENCY = 5;
 // önbellek yeterli; DB'ye HİÇBİR sipariş yazılmaz (salt-okunur sınırı korunur).
 // Snapshot pencereye (windowDays / tarih aralığı) göre anahtarlanır; poller varsayılan
 // 90 günlük pencereyi ~3 dk'da bir ısıtır → ekran açılışı pratikte ANINDA.
-type OrdersSnapshot = { result: OrdersListResult; fetchedAt: number; refreshing: boolean };
+// startedAt = canlı çekimin BAŞLADIĞI an: verinin en az bu kadar taze olduğu kesin.
+// Hedefli sipariş tazelemeleriyle (aşağıda) hangisinin daha taze olduğu buna göre seçilir.
+type OrdersSnapshot = { result: OrdersListResult; fetchedAt: number; startedAt: number; refreshing: boolean };
 const snapshotCache = new Map<string, OrdersSnapshot>();
 const SNAPSHOT_STALE_MS = 90_000; // bundan eskiyse arka planda tazele (poller kapalıysa kendini iyileştirir)
 const SNAPSHOT_MAX_KEYS = 24;     // sınırsız tarih-aralığı anahtarı birikmesin
@@ -399,8 +415,50 @@ function cacheKey(p: OrdersListParams): string {
   return `win:${p.windowDays && p.windowDays > 0 ? p.windowDays : 90}`;
 }
 
-function storeSnapshot(key: string, result: OrdersListResult): void {
-  snapshotCache.set(key, { result, fetchedAt: Date.now(), refreshing: false });
+// ── Hedefli sipariş tazelemeleri (kargo değişikliği doğrulaması) ─────────────
+// Tek bir siparişin paketleri TY'den ayrıca çekildiğinde (refreshOrderPackages) sonuç
+// burada tutulur ve TÜM snapshot'lara yamanır → 90 günlük listeyi yeniden çekmeden
+// ekran taze firmayı görür. Tazeleme başlamadan ÖNCE başlamış bir tam liste çekimi
+// sonradan biterse (bayat veri) storeSnapshot yamayı yeniden uygular → taze firma
+// eskisiyle EZİLMEZ. Kısa ömürlü: süre dolunca poller'ın tam çekimleri zaten tazedir.
+type OrderRefresh = { orders: DisplayOrder[]; startedAt: number };
+const orderRefreshes = new Map<string, OrderRefresh>(); // orderNumber → son hedefli tazeleme
+const ORDER_REFRESH_TTL_MS = 15 * 60_000;
+
+function pruneOrderRefreshes(now = Date.now()): void {
+  for (const [orderNumber, r] of orderRefreshes) {
+    if (now - r.startedAt > ORDER_REFRESH_TTL_MS) orderRefreshes.delete(orderNumber);
+  }
+}
+
+// result içindeki siparişin paketlerini taze paketlerle değiştirir. Sipariş bu
+// pencerede yoksa (başka tarih aralığı) null → pencereye YENİ sipariş enjekte edilmez.
+function replaceOrderPackages(
+  result: OrdersListResult,
+  orderNumber: string,
+  fresh: DisplayOrder[],
+): OrdersListResult | null {
+  const at = result.orders.findIndex(o => o.orderNumber === orderNumber);
+  if (at < 0 || fresh.length === 0) return null;
+  const rest = result.orders.filter(o => o.orderNumber !== orderNumber);
+  const orders = [...rest.slice(0, at), ...fresh, ...rest.slice(at)];
+  return { orders, tabCounts: countTabs(orders), total: orders.length };
+}
+
+// startedAt'ten SONRA başlamış hedefli tazelemeleri sonuca uygular.
+function applyNewerOrderRefreshes(result: OrdersListResult, startedAt: number): OrdersListResult {
+  pruneOrderRefreshes();
+  let out = result;
+  for (const [orderNumber, r] of orderRefreshes) {
+    if (r.startedAt > startedAt) out = replaceOrderPackages(out, orderNumber, r.orders) ?? out;
+  }
+  return out;
+}
+
+// Saklanan (hedefli tazelemeler uygulanmış) sonucu döndürür.
+function storeSnapshot(key: string, result: OrdersListResult, startedAt: number): OrdersListResult {
+  const merged = applyNewerOrderRefreshes(result, startedAt);
+  snapshotCache.set(key, { result: merged, fetchedAt: Date.now(), startedAt, refreshing: false });
   // Basit kapasite koruması: fazlaysa en eski fetchedAt'li anahtarı at.
   if (snapshotCache.size > SNAPSHOT_MAX_KEYS) {
     let oldestKey: string | null = null;
@@ -413,6 +471,7 @@ function storeSnapshot(key: string, result: OrdersListResult): void {
     }
     if (oldestKey && oldestKey !== key) snapshotCache.delete(oldestKey);
   }
+  return merged;
 }
 
 // "Yeni sipariş" bildirimini (notification-scheduler.ts checkNewChannelOrders)
@@ -547,8 +606,9 @@ async function revalidateSnapshot(key: string, params: OrdersListParams): Promis
   if (cur?.refreshing) return;
   if (cur) cur.refreshing = true;
   try {
+    const startedAt = Date.now();
     const fresh = await fetchOrdersListLive(params, defaultGetOrders);
-    storeSnapshot(key, fresh);
+    storeSnapshot(key, fresh, startedAt);
     void recordOrderSightings(fresh);
   } catch (err) {
     if (cur) cur.refreshing = false; // eski snapshot kalsın (bayat ama veri)
@@ -571,6 +631,7 @@ export async function warmOrdersSnapshot(params: OrdersListParams = { windowDays
 //     düşse bile eski veriyi korur).
 //   • Hiç snapshot yoksa → canlı çek; başarısızsa hata (ilk açılış + TY tamamen düşük).
 // Flag kapalıysa (marketplaceSyncEnabled) HER YOLDAN ÖNCE reddeder. Stoğa dokunmaz.
+// Her yoldan dönen siparişlere takip edilen kargo değişikliği iliştirilir.
 export async function listTrendyolOrders(
   params: OrdersListParams = {},
   deps: PreviewDeps = {},
@@ -582,7 +643,7 @@ export async function listTrendyolOrders(
 
   // Enjekte fetcher = smoke/test: önbelleği hiç kullanma (offline, deterministik).
   if (deps.fetchOrders) {
-    return fetchOrdersListLive(params, deps.fetchOrders);
+    return annotateCargoChanges(await fetchOrdersListLive(params, deps.fetchOrders));
   }
 
   const key = cacheKey(params);
@@ -593,18 +654,102 @@ export async function listTrendyolOrders(
     if (Date.now() - cached.fetchedAt > SNAPSHOT_STALE_MS) {
       void revalidateSnapshot(key, params);
     }
-    return cached.result;
+    return annotateCargoChanges(cached.result);
   }
 
   // force ya da snapshot yok → canlı çek.
   try {
+    const startedAt = Date.now();
     const fresh = await fetchOrdersListLive(params, defaultGetOrders);
-    storeSnapshot(key, fresh);
+    const stored = storeSnapshot(key, fresh, startedAt);
     void recordOrderSightings(fresh);
-    return fresh;
+    return annotateCargoChanges(stored);
   } catch (err) {
     // force tazeleme başarısız ama elde eski snapshot varsa onu göster (hata yerine veri).
-    if (cached) return cached.result;
+    if (cached) return annotateCargoChanges(cached.result);
     throw err;
   }
+}
+
+// Takip edilen kargo değişikliklerini siparişlere iliştirir (yeni nesnelerle; önbellekteki
+// sonuç DEĞİŞTİRİLMEZ). Durum, sipariş üzerindeki güncel TY firma adından türetilir.
+function annotateCargoChanges(result: OrdersListResult, now = Date.now()): OrdersListResult {
+  if (!hasTrackedCargoChanges(now)) return result;
+  const present = new Set(result.orders.map(o => o.packageId).filter((id): id is string => !!id));
+  let touched = false;
+  const orders = result.orders.map(o => {
+    const entry = findCargoChangeForOrder(o, present, now);
+    if (!entry) return o;
+    touched = true;
+    return { ...o, cargoChange: resolveCargoChange(entry, o.cargoProvider, now) };
+  });
+  return touched ? { ...result, orders } : result;
+}
+
+// ── Tek sipariş tazeleme (kargo değişikliği doğrulaması) ─────────────────────
+// TY getOrders `orderNumber` filtresini destekler; tarih verilmezse yalnız son 1 haftaya,
+// verilirse en fazla 2 haftaya bakar ve SİPARİŞ tarihine göre süzer. Bu yüzden pencere
+// sipariş tarihinin etrafına (±, ≤13 gün) kurulur; tarih bilinmiyorsa son 13 gün.
+const PACKAGE_LOOKUP_SPAN_MS = 13 * 86_400_000;
+
+function packageLookupWindow(orderDate: number | null, now: number): { startDate: number; endDate: number } {
+  if (orderDate === null) return { startDate: now - PACKAGE_LOOKUP_SPAN_MS, endDate: now };
+  const startDate = orderDate - 86_400_000;
+  return { startDate, endDate: Math.min(now, startDate + PACKAGE_LOOKUP_SPAN_MS) };
+}
+
+// Bir siparişin paketlerini TY'den CANLI çeker (tek küçük GET), görünüme çevirir,
+// kaydeder ve tüm snapshot'lara yamar. Hiçbir paket gelmezse snapshot'lara dokunmaz.
+// Flag kontrolü çağıranın sorumluluğundadır. Stoğa/DB'ye yazmaz.
+export async function refreshOrderPackages(
+  ref: { orderNumber: string; orderDate: number | null },
+  deps: PreviewDeps = {},
+): Promise<DisplayOrder[]> {
+  const fetchOrders = deps.fetchOrders ?? defaultGetOrders;
+  const startedAt = Date.now();
+  const raw: TrendyolOrder[] = [];
+  await collectPages(
+    fetchOrders,
+    { orderNumber: ref.orderNumber, ...packageLookupWindow(ref.orderDate, startedAt) },
+    raw,
+  );
+  // TY filtreyi yok sayarsa bile yalnız bu siparişin paketleri alınır.
+  const mine = raw.filter(o => String(o.orderNumber ?? "") === ref.orderNumber);
+  const barcodes = [
+    ...new Set(mine.flatMap(o => o.lines ?? []).map(l => (l.barcode ? String(l.barcode) : "")).filter(Boolean)),
+  ];
+  const { matchMap, channelMap } = await loadMatchAndChannel(barcodes);
+  const orders = buildOrdersList(mine, matchMap, channelMap).orders;
+  if (orders.length === 0) return orders;
+
+  orderRefreshes.set(ref.orderNumber, { orders, startedAt });
+  for (const snap of snapshotCache.values()) {
+    if (snap.startedAt >= startedAt) continue; // snapshot zaten daha yeni
+    const patched = replaceOrderPackages(snap.result, ref.orderNumber, orders);
+    if (patched) snap.result = patched;
+  }
+  return orders;
+}
+
+// Elimizdeki EN TAZE veriden bir paketi bulur (ağ yok): önce hedefli tazelemeler,
+// sonra snapshot'lar (en yeni başlayandan eskiye). TY paketi yeniden numaralandırdıysa
+// ve siparişin tek paketi varsa ona düşer.
+export function findKnownOrder(ref: { packageId: string; orderNumber?: string | null }): DisplayOrder | null {
+  pruneOrderRefreshes();
+  const pick = (orders: DisplayOrder[]): DisplayOrder | null => {
+    const direct = orders.find(o => o.packageId === ref.packageId);
+    if (direct) return direct;
+    if (!ref.orderNumber) return null;
+    const same = orders.filter(o => o.orderNumber === ref.orderNumber);
+    return same.length === 1 ? same[0] : null;
+  };
+  const sources: Array<{ startedAt: number; orders: DisplayOrder[] }> = [
+    ...orderRefreshes.values(),
+    ...[...snapshotCache.values()].map(s => ({ startedAt: s.startedAt, orders: s.result.orders })),
+  ].sort((a, b) => b.startedAt - a.startedAt);
+  for (const s of sources) {
+    const hit = pick(s.orders);
+    if (hit) return hit;
+  }
+  return null;
 }
