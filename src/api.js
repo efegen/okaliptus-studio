@@ -886,14 +886,28 @@ export async function getOrderLabel({ cargoTrackingNumber, format = "PDF" }) {
 }
 
 // Faz 2: bir paketin kargo firmasını DEĞİŞTİRİR (CANLI TY yazması). cargoProvider =
-// TY firma KODU (orders.jsx CARGO_PROVIDERS whitelist'i). marketplaceFulfillmentEnabled
-// kapalıysa 409. TY: paket başına 5 dk'da yalnız 1 değişiklik. → { packageId, cargoProvider, name }
-export async function changeOrderCargoProvider({ packageId, cargoProvider }) {
+// TY firma KODU (marketplaceOrders.js CARGO_PROVIDERS whitelist'i). marketplaceFulfillmentEnabled
+// kapalıysa 409; TY'nin paket başına 5 dk kilidindeyse 429. TY değişikliği ASYNC uygular:
+// → { packageId, cargoProvider, name, change } — change.status çoğunlukla "pending".
+export async function changeOrderCargoProvider({ packageId, cargoProvider, orderNumber }) {
   const payload = await apiRequest("/trendyol/orders/cargo-provider", {
     method: "POST",
-    body: JSON.stringify({ packageId, cargoProvider }),
+    body: JSON.stringify({ packageId, cargoProvider, orderNumber }),
   });
   return ensureMutationResult(payload, "Kargo firması değiştirilemedi.");
+}
+
+// Kargo firması değişikliklerinin durumu (pending | applied | unconfirmed) + en taze
+// paket verisi. check=true → sunucu TY'den hemen hedefli kontrol yapar ("Tekrar kontrol et").
+// → [{ packageId, change, order }]
+export async function getCargoChangeStatuses(packageIds, { check = false } = {}) {
+  const params = new URLSearchParams({ packageIds: packageIds.join(",") });
+  if (check) params.set("check", "1");
+  const payload = await apiGet(`/trendyol/orders/cargo-changes?${params.toString()}`);
+  if (!Array.isArray(payload?.data)) {
+    throw new Error("Kargo değişikliği durumu alınamadı.");
+  }
+  return payload.data;
 }
 
 // ─── Ürün eşleştirme kokpiti (iç katalog ↔ Trendyol ↔ Hepsiburada) ───────────

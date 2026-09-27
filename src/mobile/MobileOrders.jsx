@@ -14,6 +14,9 @@
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getTrendyolOrdersList } from '../api';
+import { queryKeys } from '../hooks/queryKeys';
+import { useCargoChangeWatcher } from '../hooks/useCargoChangeWatcher';
+import { ORDERS_WINDOW_DAYS } from '../marketplaceOrders';
 
 // ─── Biçimlendiriciler (web orders.jsx ile aynı davranış) ────────────────────
 function fmtTL(raw) {
@@ -108,9 +111,6 @@ const EMPTY_LABELS = {
   yeniden: 'Yeniden gönderim yok',
   aski: 'Askıda bekleyen sipariş yok',
 };
-
-// Trendyol API yalnız son ~3 ayı döndürür; web ekranıyla aynı varsayılan pencere.
-const WINDOW_DAYS = 90;
 
 // ─── Ürün görseli (TY fotoğrafı / placeholder) ───────────────────────────────
 function PhotoSlot({ qty, src, alt }) {
@@ -246,11 +246,11 @@ export function MobileOrders({ onBack, onOpenDetail }) {
   // normal açılışlar snapshot'tan ANINDA gelir (force=false).
   const forceRef = React.useRef(false);
   const ordersQuery = useQuery({
-    queryKey: ['trendyolOrders', null, null, WINDOW_DAYS],
+    queryKey: queryKeys.trendyolOrders({ windowDays: ORDERS_WINDOW_DAYS }),
     queryFn: () => {
       const force = forceRef.current;
       forceRef.current = false;
-      return getTrendyolOrdersList({ windowDays: WINDOW_DAYS, force });
+      return getTrendyolOrdersList({ windowDays: ORDERS_WINDOW_DAYS, force });
     },
     staleTime: 30 * 1000,
   });
@@ -262,6 +262,8 @@ export function MobileOrders({ onBack, onOpenDetail }) {
   const data = ordersQuery.data;
   const allOrders = data?.orders ?? [];
   const tabCounts = data?.tabCounts ?? {};
+  // Onayı beklenen kargo firması değişikliği varsa yokla (detaya dönülünce güncel olsun).
+  useCargoChangeWatcher(allOrders);
 
   const filtered = React.useMemo(() => {
     const q = search.trim().toLocaleLowerCase('tr-TR');

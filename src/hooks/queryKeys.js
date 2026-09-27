@@ -16,6 +16,12 @@ export const queryKeys = {
   products:           (params)=> params !== undefined ? ['products', params] : ['products'],
   productById:        (id)    => ['product', id],
   settings:           ()      => ['settings'],
+  // Pazaryeri siparişleri: web + mobil liste/detay aynı pencere için AYNI anahtarı
+  // paylaşır (tek önbellek). Argümansız çağrı tüm pencereleri kapsayan önektir.
+  trendyolOrders:     (p)     => p !== undefined
+    ? ['trendyolOrders', p.startDate ?? null, p.endDate ?? null, p.windowDays ?? null]
+    : ['trendyolOrders'],
+  trendyolCargoChanges:(ids)  => ['trendyolCargoChanges', ids],
   debtors:            ()      => ['debtors'],
   auditLogs:          (params)=> ['auditLogs', params],
   auditUsers:         ()      => ['auditUsers'],

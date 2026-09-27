@@ -139,7 +139,7 @@ export function MobileHome({ user, onLogout, onOpenFinance, onOpenOccupancy, onO
   // Sipariş sorgusu — MobileOrders ile aynı query key → önbellek paylaşılır.
   // Asistanda /trendyol 403 döneceği için sorgu hiç çalıştırılmaz (enabled).
   const { data: ordersData } = useQuery({
-    queryKey: ['trendyolOrders', null, null, ORDERS_WINDOW_DAYS],
+    queryKey: queryKeys.trendyolOrders({ windowDays: ORDERS_WINDOW_DAYS }),
     queryFn: () => getTrendyolOrdersList({ windowDays: ORDERS_WINDOW_DAYS }),
     staleTime: 30 * 1000,
     enabled: canSeeOrders,

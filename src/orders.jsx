@@ -10,16 +10,28 @@
 //
 // İşlemler menüsü (Durum kolonu): "Kargo Firması Değiştir" İŞLEVSEL — CANLI TY
 // yazması (PUT cargo-providers), marketplaceFulfillmentEnabled flag + onay diyaloğu
-// arkasında (CargoProviderModal). "İşleme Al" hâlâ "Yakında". Etiket (A4/Sticker) ve
+// arkasında (CargoProviderModal). TY değişikliği ASENKRON uygular: Kargo kolonu süreci
+// rozetle gösterir (onay bekleniyor → güncellendi | onaylanmadı) ve useCargoChangeWatcher
+// ile sayfa yenilemeden güncellenir. "İşleme Al" hâlâ "Yakında". Etiket (A4/Sticker) ve
 // "Trendyol'da Aç" butonları kaldırıldı; kargo barkodu (Code128) tarafı "Barkod"
 // butonunda korunuyor (tamamen istemci tarafı, flag'den bağımsız).
 
 import React from 'react';
 import ReactDOM from 'react-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import JsBarcode from 'jsbarcode';
 import { getTrendyolOrdersList, changeOrderCargoProvider, getSettings } from './api';
 import { queryKeys } from './hooks/queryKeys';
+import { useCargoChangeWatcher } from './hooks/useCargoChangeWatcher';
+import {
+  CARGO_PROVIDERS,
+  cargoCode,
+  cargoProviderCodeFromName,
+  fmtClock,
+  getCargoLogo,
+  markCargoChangeRequested,
+  recheckCargoChange,
+} from './marketplaceOrders';
 
 // ─── Biçimlendiriciler ───────────────────────────────────────────────────────
 function fmtTL(raw) {
@@ -50,52 +62,6 @@ function fmtRemaining(targetMs) {
   if (saat) parts.push(`${saat} saat`);
   if (dakika > 0 || parts.length === 0) parts.push(`${dakika} dakika`);
   return parts.join(' ');
-}
-
-function cargoCode(provider) {
-  if (!provider) return '?';
-  return provider.trim().split(/\s+/)[0].slice(0, 3).toLocaleUpperCase('tr-TR');
-}
-
-const CARGO_LOGOS = {
-  ptt: 'https://cdn.dsmcdn.com/seller-center/oms/nexus/cargo-provider/19.png',
-  aras: 'https://cdn.dsmcdn.com/seller-center/oms/nexus/cargo-provider/7.png',
-};
-
-function getCargoLogo(provider) {
-  if (!provider) return null;
-  const lower = provider.toLocaleLowerCase('tr-TR');
-  if (lower.includes('ptt')) return CARGO_LOGOS.ptt;
-  if (lower.includes('aras')) return CARGO_LOGOS.aras;
-  return null;
-}
-
-// Trendyol pazaryeri kargo firma KODLARI ("Kargo Firması Değiştir" seçenekleri).
-// `code` TY'ye gönderilir; `name` kullanıcı etiketi. Backend
-// (order-cargo.service.ts TRENDYOL_CARGO_PROVIDERS) ile SENKRON tutulmalı —
-// backend güvenlik sınırıdır, tanımsız kodu 422 ile reddeder.
-const CARGO_PROVIDERS = [
-  { code: 'YKMP', name: 'Yurtiçi Kargo' },
-  { code: 'ARASMP', name: 'Aras Kargo' },
-  { code: 'SURATMP', name: 'Sürat Kargo' },
-  { code: 'HOROZMP', name: 'Horoz Kargo' },
-  { code: 'MNGMP', name: 'MNG Kargo' },
-  { code: 'PTTMP', name: 'PTT Kargo' },
-  { code: 'CEVAMP', name: 'CEVA Kargo' },
-  { code: 'TEXMP', name: 'Trendyol Express' },
-  { code: 'DHLECOMMP', name: 'DHL eCommerce' },
-  { code: 'SENDEOMP', name: 'Sendeo' },
-];
-
-// TY'den gelen firma adından ("PTT Kargo Marketplace") whitelist kodunu tahmin eder
-// (yalnız "mevcut firma"yı işaretlemek için; eşleşmezse null). İlk kelimeyle eşler.
-function guessProviderCode(providerName) {
-  if (!providerName) return null;
-  const lower = providerName.toLocaleLowerCase('tr-TR');
-  const hit = CARGO_PROVIDERS.find(p =>
-    lower.includes(p.name.toLocaleLowerCase('tr-TR').split(' ')[0]),
-  );
-  return hit ? hit.code : null;
 }
 
 // ─── Satır içi ikonlar ───────────────────────────────────────────────────────
@@ -187,6 +153,8 @@ function BarcodeModal({ order, onClose }) {
   }
 
   if (!order) return null;
+  // Firma değişikliği TY'de henüz onaylanmadıysa bu barkod eski firmaya ait olabilir.
+  const unsettled = order.cargoChange && order.cargoChange.status !== 'applied';
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -206,6 +174,15 @@ function BarcodeModal({ order, onClose }) {
         </header>
 
         <div className="oo-barcode-body">
+          {unsettled && (
+            <div className="oo-cargo-note oo-cargo-note-warn" role="alert">
+              {I.warn(15)}
+              <span>
+                <b>{order.cargoChange.toName}</b> geçişi Trendyol'da henüz onaylanmadı; bu barkod önceki
+                firmaya ait olabilir. Onaylandıktan sonra yazdırın.
+              </span>
+            </div>
+          )}
           {error ? (
             <div className="oo-barcode-error">Bu kargo numarası barkoda çevrilemedi: <span className="oo-mono">{ctn}</span></div>
           ) : (
@@ -226,14 +203,17 @@ function BarcodeModal({ order, onClose }) {
 
 // "Kargo Firması Değiştir" modalı — CANLI TY yazması (paketin kargo firmasını
 // değiştirir). Operatör yeni firmayı seçer → onaylar → POST /trendyol/orders/cargo-provider.
-// TY paket başına 5 dk'da yalnız 1 değişikliğe izin verir (uyarı gösterilir).
+// TY değişikliği ASENKRON uygular: başarı "Trendyol'a iletildi" demektir; onSubmitted
+// siparişi "onay bekleniyor"a çeker, Kargo kolonu süreci gösterir. Trendyol bir isteği
+// reddederse (ör. kendi sıklık kuralı) hatası burada gösterilir.
 // marketplaceFulfillmentEnabled kapalıysa gönderim engellenir + Ayarlar'a yönlendirir.
-function CargoProviderModal({ order, fulfillmentEnabled, onClose, onChanged }) {
-  const currentCode = guessProviderCode(order ? order.cargoProvider : null);
+function CargoProviderModal({ order, fulfillmentEnabled, onClose, onSubmitted }) {
+  const currentCode = cargoProviderCodeFromName(order ? order.cargoProvider : null);
   const [selected, setSelected] = React.useState(null);
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState(null);
   const [done, setDone] = React.useState(false);
+  const closeTimer = React.useRef(null);
 
   React.useEffect(() => {
     function onKey(e) { if (e.key === 'Escape' && !submitting) onClose(); }
@@ -241,21 +221,28 @@ function CargoProviderModal({ order, fulfillmentEnabled, onClose, onChanged }) {
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose, submitting]);
 
+  React.useEffect(() => () => clearTimeout(closeTimer.current), []);
+
   if (!order) return null;
 
+  const change = order.cargoChange || null;
   const hasPackage = !!order.packageId;
-  const canSubmit =
-    fulfillmentEnabled && hasPackage && !!selected && selected !== currentCode && !submitting && !done;
+  const blocked = !fulfillmentEnabled || !hasPackage;
+  const canSubmit = !blocked && !!selected && selected !== currentCode && !submitting && !done;
 
   async function handleSubmit() {
     if (!canSubmit) return;
     setSubmitting(true);
     setError(null);
     try {
-      await changeOrderCargoProvider({ packageId: order.packageId, cargoProvider: selected });
+      const result = await changeOrderCargoProvider({
+        packageId: order.packageId,
+        cargoProvider: selected,
+        orderNumber: order.orderNumber,
+      });
       setDone(true);
-      // Kısa "başarılı" gösterimi → kapan + listeyi tazele (TY değişikliği async uygular).
-      setTimeout(() => { if (onChanged) onChanged(); }, 1100);
+      if (onSubmitted) onSubmitted(result);
+      closeTimer.current = setTimeout(onClose, 900);
     } catch (err) {
       setError(err && err.message ? err.message : 'Kargo firması değiştirilemedi.');
       setSubmitting(false);
@@ -283,28 +270,29 @@ function CargoProviderModal({ order, fulfillmentEnabled, onClose, onChanged }) {
         </header>
 
         <div className="oo-cargo-body">
-          {!fulfillmentEnabled && (
+          {!done && !fulfillmentEnabled && (
             <div className="oo-cargo-note oo-cargo-note-warn">
               {I.warn(15)}
               <span>Pazaryeri sipariş işleme <b>kapalı</b>. Bu özelliği kullanmak için <b>Ayarlar › Pazaryeri › "Pazaryeri sipariş işleme"</b> seçeneğini açın.</span>
             </div>
           )}
-          {fulfillmentEnabled && !hasPackage && (
+          {!done && fulfillmentEnabled && !hasPackage && (
             <div className="oo-cargo-note oo-cargo-note-warn">
               {I.warn(15)}
               <span>Bu sipariş için paket numarası bulunamadı; kargo firması değiştirilemez.</span>
             </div>
           )}
-          {fulfillmentEnabled && hasPackage && (
+          {!done && fulfillmentEnabled && hasPackage && (
             <div className="oo-cargo-note">
               {I.info(14)}
-              <span>Trendyol her paket için <b>5 dakikada yalnız 1</b> firma değişikliğine izin verir. Değişiklik birkaç dakikada yansıyabilir.</span>
+              <span>Trendyol değişikliği birkaç dakika içinde işler. Onaylanana dek Kargo kolonunda <b>onay bekleniyor</b> görünür.</span>
             </div>
           )}
 
           <div className="oo-cargo-list" role="radiogroup" aria-label="Kargo firması seç">
             {CARGO_PROVIDERS.map(p => {
               const isCurrent = p.code === currentCode;
+              const isRequested = !isCurrent && change && change.status === 'pending' && change.toCode === p.code;
               const isSel = p.code === selected;
               return (
                 <button
@@ -313,13 +301,14 @@ function CargoProviderModal({ order, fulfillmentEnabled, onClose, onChanged }) {
                   role="radio"
                   aria-checked={isSel}
                   className={'oo-cargo-opt' + (isSel ? ' is-sel' : '') + (isCurrent ? ' is-current' : '')}
-                  disabled={!fulfillmentEnabled || !hasPackage || isCurrent || submitting || done}
+                  disabled={blocked || isCurrent || submitting || done}
                   onClick={() => { setSelected(p.code); setError(null); }}
                 >
                   <span className="oo-cargo-opt-radio" aria-hidden="true" />
                   <span className="oo-cargo-opt-name">{p.name}</span>
                   <span className="oo-cargo-opt-code">{p.code}</span>
                   {isCurrent && <span className="oo-cargo-opt-cur">Mevcut</span>}
+                  {isRequested && <span className="oo-cargo-opt-cur">İstendi</span>}
                 </button>
               );
             })}
@@ -330,7 +319,7 @@ function CargoProviderModal({ order, fulfillmentEnabled, onClose, onChanged }) {
 
         <footer className="oo-cargo-actions">
           {done ? (
-            <span className="oo-cargo-success">{I.check(15)} Kargo firması güncellendi</span>
+            <span className="oo-cargo-success" role="status">{I.check(15)} Trendyol'a iletildi — onay bekleniyor</span>
           ) : (
             <>
               <button type="button" className="oo-btn oo-btn-ghost" onClick={onClose} disabled={submitting}>Vazgeç</button>
@@ -526,8 +515,49 @@ function ActionsMenu({ order, onChangeCargo }) {
   );
 }
 
+// Kargo kolonunda firma değişikliği süreci (sunucu takibi, order.cargoChange):
+// onay bekleniyor (dönen halka) → güncellendi | onaylanmadı (tıkla → TY'den tekrar kontrol).
+function CargoChangeChip({ order, checking, onRecheck }) {
+  const change = order.cargoChange;
+  if (!change) return null;
+  if (change.status === 'pending') {
+    return (
+      <div className="oo-cchg oo-cchg-pending" role="status" title={`İstek saati ${fmtClock(change.requestedAt)} — Trendyol onaylayınca kendiliğinden güncellenir`}>
+        <span className="oo-cchg-spin" aria-hidden="true" />
+        <span className="oo-cchg-txt">{change.toName} · onay bekleniyor</span>
+      </div>
+    );
+  }
+  if (change.status === 'applied') {
+    const trackingChanged = !!change.fromTrackingNumber && !!order.cargoTrackingNumber
+      && change.fromTrackingNumber !== order.cargoTrackingNumber;
+    return (
+      <div className="oo-cchg oo-cchg-ok" role="status" title={trackingChanged ? 'Kargo kodu da değişti; etiketi yeniden yazdırın' : undefined}>
+        {I.check(11)}
+        <span className="oo-cchg-txt">Güncellendi{trackingChanged ? ' · yeni kargo kodu' : ''}</span>
+      </div>
+    );
+  }
+  return (
+    <button
+      type="button"
+      className="oo-cchg oo-cchg-warn"
+      disabled={checking}
+      onClick={() => onRecheck && onRecheck(order.packageId)}
+      title={
+        `${change.toName} isteği (${fmtClock(change.requestedAt)}) Trendyol'a henüz yansımadı.` +
+        (change.toCode === 'TEXMP' ? ' Trendyol Express kotanız dolmuş olabilir.' : '') +
+        ' Trendyol satıcı panelinden kontrol edin; tıklayarak tekrar kontrol edebilirsiniz.'
+      }
+    >
+      {I.warn(11)}
+      <span className="oo-cchg-txt">{checking ? 'Kontrol ediliyor…' : `${change.toName} onaylanmadı · Kontrol et`}</span>
+    </button>
+  );
+}
+
 // Tek sipariş = bir <tbody>; paylaşılan hücreler rowspan'lı, her kalem ayrı satır.
-function OrderGroup({ order, checked, onToggle, onMatch, onBarcode, onChangeCargo }) {
+function OrderGroup({ order, checked, onToggle, onMatch, onBarcode, onChangeCargo, cargoChecking, onRecheckCargo }) {
   const items = order.lines.length ? order.lines : [{ lineId: '_', quantity: 1, productName: '—' }];
   const rows = items.length;
   const [first, ...rest] = items;
@@ -580,6 +610,7 @@ function OrderGroup({ order, checked, onToggle, onMatch, onBarcode, onChangeCarg
               {order.cargoTrackingNumber && <div className="oo-cargo-track">{order.cargoTrackingNumber}</div>}
             </>
           ) : <span className="oo-muted">—</span>}
+          <CargoChangeChip order={order} checking={cargoChecking} onRecheck={onRecheckCargo} />
         </td>
         <td className="oo-col-invoice" rowSpan={rows}>
           {order.saleAmount != null && (
@@ -648,6 +679,8 @@ export function OrdersPage({ onNavigate }) {
   // modal Ayarlar'a yönlendirir, gönderim engellenir).
   const settingsQuery = useQuery({ queryKey: queryKeys.settings(), queryFn: getSettings });
   const fulfillmentEnabled = settingsQuery.data?.marketplaceFulfillmentEnabled === true;
+  const queryClient = useQueryClient();
+  const [cargoCheckingId, setCargoCheckingId] = React.useState(null); // "Kontrol et" süren paket
 
   // Tarih aralığı yalnız "Filtrele" ile uygulanır → sorgu anahtarı applied'a bağlı.
   // Tarih filtresi yoksa "dönem" (periodDays) penceresi kullanılır (backend ≤80g parça çeker).
@@ -659,7 +692,7 @@ export function OrdersPage({ onNavigate }) {
   // çeksin diye işaretlenir (normal açılışlar snapshot'tan ANINDA gelir, force=false).
   const forceRef = React.useRef(false);
   const ordersQuery = useQuery({
-    queryKey: ['trendyolOrders', startDate ?? null, endDate ?? null, hasDates ? null : periodDays],
+    queryKey: queryKeys.trendyolOrders({ startDate, endDate, windowDays: hasDates ? null : periodDays }),
     queryFn: () => {
       const force = forceRef.current;
       forceRef.current = false;
@@ -675,6 +708,20 @@ export function OrdersPage({ onNavigate }) {
   const data = ordersQuery.data;
   const allOrders = data?.orders ?? [];
   const tabCounts = data?.tabCounts ?? {};
+  // Onayı beklenen kargo firması değişikliklerini yokla (Kargo kolonu kendiliğinden güncellenir).
+  useCargoChangeWatcher(allOrders);
+
+  async function recheckCargo(packageId) {
+    if (!packageId || cargoCheckingId) return;
+    setCargoCheckingId(packageId);
+    try {
+      await recheckCargoChange(queryClient, packageId);
+    } catch (err) {
+      console.error('[orders] kargo değişikliği kontrol edilemedi:', err);
+    } finally {
+      setCargoCheckingId(null);
+    }
+  }
 
   // Sekme + kanal + metin filtreleri (istemci tarafı, anında).
   const filtered = React.useMemo(() => {
@@ -870,7 +917,8 @@ export function OrdersPage({ onNavigate }) {
               </thead>
               {pageOrders.map(o => (
                 <OrderGroup key={o.id} order={o} checked={selected.has(o.id)} onToggle={() => toggleRow(o.id)} onMatch={goMatch}
-                  onBarcode={setBarcodeOrder} onChangeCargo={setCargoOrder} />
+                  onBarcode={setBarcodeOrder} onChangeCargo={setCargoOrder}
+                  cargoChecking={cargoCheckingId === o.packageId} onRecheckCargo={recheckCargo} />
               ))}
             </table>
           </div>
@@ -883,7 +931,9 @@ export function OrdersPage({ onNavigate }) {
           order={cargoOrder}
           fulfillmentEnabled={fulfillmentEnabled}
           onClose={() => setCargoOrder(null)}
-          onChanged={() => { setCargoOrder(null); refreshNow(); }}
+          // TY async uygular: sipariş "onay bekleniyor"a geçer, watcher yoklar. Tam liste
+          // yenilemesi (refreshNow) bilinçli olarak YOK: TY henüz yansıtmamış eski veriyi getirirdi.
+          onSubmitted={(result) => markCargoChangeRequested(queryClient, cargoOrder, result.change)}
         />
       )}
     </div>
