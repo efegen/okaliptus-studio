@@ -23,10 +23,31 @@ export function pushSupported() {
   );
 }
 
+// `ready` yerine getRegistration: SW hiç kayıtlı değilse (ör. `npm run dev`,
+// PWA eklentisi dev'de SW kaydetmez) `ready` sonsuza dek bekler ve çağıran
+// ekran hiç açılmaz; getRegistration hemen undefined döner → "abonelik yok".
 export async function getCurrentSubscription() {
   if (!pushSupported()) return null;
-  const reg = await navigator.serviceWorker.ready;
-  return reg.pushManager.getSubscription();
+  const reg = await navigator.serviceWorker.getRegistration();
+  return reg ? reg.pushManager.getSubscription() : null;
+}
+
+const SW_READY_TIMEOUT_MS = 10000;
+const DEV_NO_SW_MSG =
+  'Geliştirme sunucusunda (npm run dev) servis çalışanı yok; bildirim aboneliği yalnız build/preview ya da canlıda çalışır.';
+
+// Aboneliğe SW gerekir; hiç gelmezse (kayıt başarısız) sonsuza dek beklemek
+// yerine anlaşılır bir hatayla dön.
+function waitForServiceWorker() {
+  return Promise.race([
+    navigator.serviceWorker.ready,
+    new Promise((_, reject) => {
+      setTimeout(
+        () => reject(new Error(import.meta.env.DEV ? DEV_NO_SW_MSG : 'Uygulama hazır değil. Sayfayı yenileyip tekrar dene.')),
+        SW_READY_TIMEOUT_MS,
+      );
+    }),
+  ]);
 }
 
 // İzin iste → mevcut SW'ye abone ol → endpoint'i sunucuya kaydet.
@@ -34,6 +55,11 @@ export async function getCurrentSubscription() {
 export async function enablePush() {
   if (!pushSupported()) {
     throw new Error('Bu cihaz/tarayıcı bildirim desteklemiyor (iOS 16.4+ ve ana ekran PWA gerekir).');
+  }
+
+  // Dev'de SW yoksa izin penceresini boşuna açmadan hemen söyle.
+  if (import.meta.env.DEV && !(await navigator.serviceWorker.getRegistration())) {
+    throw new Error(DEV_NO_SW_MSG);
   }
 
   const permission = await Notification.requestPermission();
@@ -46,7 +72,7 @@ export async function enablePush() {
     throw new Error('Sunucu bildirim anahtarı yapılandırılmamış.');
   }
 
-  const reg = await navigator.serviceWorker.ready;
+  const reg = await waitForServiceWorker();
   let sub = await reg.pushManager.getSubscription();
   if (!sub) {
     sub = await reg.pushManager.subscribe({
