@@ -23,6 +23,13 @@ function renderMenu(role) {
   );
 }
 
+// Anahtar abonelik kontrolü bitene kadar kilitli; tıklamadan önce bekle.
+async function findReadyToggle() {
+  const toggle = await screen.findByRole('switch', { name: 'Bu cihazda bildirimler' });
+  await waitFor(() => expect(toggle).toBeEnabled());
+  return toggle;
+}
+
 describe('MobileMenu — bildirim izni satırı', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -32,7 +39,7 @@ describe('MobileMenu — bildirim izni satırı', () => {
 
   it('asistan menüden bu cihazda bildirimleri açabilir', async () => {
     renderMenu('assistant');
-    const toggle = await screen.findByRole('switch', { name: 'Bu cihazda bildirimler' });
+    const toggle = await findReadyToggle();
     expect(toggle).toHaveAttribute('aria-checked', 'false');
     expect(screen.getByText('Bu cihazda kapalı')).toBeInTheDocument();
 
@@ -42,10 +49,27 @@ describe('MobileMenu — bildirim izni satırı', () => {
     expect(screen.getByText('Bu cihazda açık')).toBeInTheDocument();
   });
 
+  it('abonelik kontrolü bitmeden anahtar kilitli; geç gelen kontrol açılışı ezmez', async () => {
+    let resolveCheck;
+    push.getCurrentSubscription.mockImplementationOnce(() => new Promise(r => { resolveCheck = r; }));
+    renderMenu('assistant');
+    const toggle = await screen.findByRole('switch', { name: 'Bu cihazda bildirimler' });
+    await waitFor(() => expect(resolveCheck).toBeTypeOf('function'));
+
+    fireEvent.click(toggle);
+    resolveCheck(null);
+    await waitFor(() => expect(toggle).toBeEnabled());
+    expect(push.enablePush).not.toHaveBeenCalled();
+    expect(toggle).toHaveAttribute('aria-checked', 'false');
+
+    fireEvent.click(toggle);
+    await waitFor(() => expect(toggle).toHaveAttribute('aria-checked', 'true'));
+  });
+
   it('izin reddedildiyse hatayı gösterir, anahtar kapalı kalır', async () => {
     push.enablePush.mockRejectedValueOnce(new Error('Bildirim izni verilmedi.'));
     renderMenu('assistant');
-    const toggle = await screen.findByRole('switch', { name: 'Bu cihazda bildirimler' });
+    const toggle = await findReadyToggle();
     fireEvent.click(toggle);
     expect(await screen.findByText('Bildirim izni verilmedi.')).toBeInTheDocument();
     expect(toggle).toHaveAttribute('aria-checked', 'false');

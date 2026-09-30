@@ -9,7 +9,7 @@ import { usePushDevice } from './usePushDevice';
 // kime gideceğini owner Ayarlar → Bildirimler'den yönetir (alıcı listeleri).
 // getPushConfig() başarısızsa (VAPID yok → 503) satır hiç gösterilmez.
 export function MobilePushRow() {
-  const { available, supported, subscribed, setSubscribed, denied } = usePushDevice();
+  const { available, supported, subscribed, setSubscribed, denied, ready } = usePushDevice();
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState(null);
 
@@ -32,6 +32,7 @@ export function MobilePushRow() {
 
   let sub;
   if (error) sub = error;
+  else if (!ready) sub = 'Kontrol ediliyor…';
   else if (!supported) sub = 'Bu cihaz desteklemiyor (iOS\'ta ana ekrana ekleyip oradan aç).';
   else if (denied) sub = 'İzin reddedilmiş — telefon ayarlarından bu uygulamaya bildirim izni ver.';
   else sub = subscribed ? 'Bu cihazda açık' : 'Bu cihazda kapalı';
@@ -52,7 +53,9 @@ export function MobilePushRow() {
             checked={subscribed}
             onChange={handleChange}
             label="Bu cihazda bildirimler"
-            disabled={busy || !supported || (denied && !subscribed)}
+            // Abonelik kontrolü bitmeden kilitli: yoksa arada açılan bildirimi
+            // geç gelen "abonelik yok" cevabı kapalıya çevirirdi.
+            disabled={!ready || busy || !supported || (denied && !subscribed)}
           />
         </div>
       </div>
