@@ -11,6 +11,7 @@ import { MobileQuickLessonSheet } from './MobileQuickLessonSheet';
 import { MobileStudentProfilePage } from './MobileStudentProfilePage';
 import { MobileCollectPaymentPage } from './MobileCollectPaymentPage';
 import { MobileToast } from './MobileToast';
+import { MobilePushPrompt } from './MobilePushPrompt';
 import { MobileMenu } from './MobileMenu';
 import { MobileMovements } from './MobileMovements';
 import { MobileFinance } from './MobileFinance';
@@ -38,6 +39,7 @@ import { CatalogPage } from '../catalog';
 import { queryKeys } from '../hooks/queryKeys';
 import { fmtTL } from '../data';
 import { Icon } from '../layout';
+import { canSeePage } from '../permissions';
 
 // Mobile shell: header (when shown) + page body + fixed bottom tab bar. The
 // center "+" FAB opens the QuickAdd action sheet (Ödeme al · Ürün sat · Ders
@@ -644,6 +646,12 @@ export function MobileApp({
       />
 
       <MobileToast message={toast} onDismiss={() => setToast(null)} />
+
+      {/* Ayarlar'ı göremeyen roller (asistan) bildirim iznini unutmasın: bu
+          cihazda abonelik yoksa açılışta tam sayfa izin ekranı. */}
+      {!canSeePage(currentUser?.role, 'settings') && (
+        <MobilePushPrompt onEnabled={() => setToast('Bildirimler bu cihazda açıldı.')} />
+      )}
     </div>
   );
 }

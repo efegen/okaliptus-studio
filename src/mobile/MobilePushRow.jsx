@@ -1,40 +1,19 @@
 import React from 'react';
 import { Icon } from '../layout';
-import { getPushConfig } from '../api';
 import { Toggle } from '../settings';
-import { enablePush, disablePush, getCurrentSubscription, pushSupported } from '../push';
+import { enablePush, disablePush } from '../push';
+import { usePushDevice } from './usePushDevice';
 
 // Mobil Menü → "Bildirimler" satırı: Ayarlar'ı göremeyen roller (asistan) için
 // bu cihazda Web Push izni aç/kapa. Yalnız cihaz aboneliği — hangi türlerin
 // kime gideceğini owner Ayarlar → Bildirimler'den yönetir (alıcı listeleri).
 // getPushConfig() başarısızsa (VAPID yok → 503) satır hiç gösterilmez.
 export function MobilePushRow() {
-  const [available, setAvailable] = React.useState(null); // null=kontrol, false=gizli
-  const [subscribed, setSubscribed] = React.useState(false);
+  const { available, supported, subscribed, setSubscribed, denied } = usePushDevice();
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState(null);
-  const supported = pushSupported();
-
-  React.useEffect(() => {
-    let cancelled = false;
-    getPushConfig()
-      .then(() => { if (!cancelled) setAvailable(true); })
-      .catch(() => { if (!cancelled) setAvailable(false); });
-    return () => { cancelled = true; };
-  }, []);
-
-  React.useEffect(() => {
-    if (available !== true || !supported) return;
-    let cancelled = false;
-    getCurrentSubscription()
-      .then(s => { if (!cancelled) setSubscribed(!!s); })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, [available, supported]);
 
   if (available !== true) return null;
-
-  const denied = supported && Notification.permission === 'denied';
 
   async function handleChange(next) {
     setBusy(true); setError(null);
