@@ -2,6 +2,7 @@ import React from 'react';
 import { Icon } from '../layout';
 import { initials } from '../data';
 import { canSeePage, roleLabel } from '../permissions';
+import { MobilePushRow } from './MobilePushRow';
 
 // Mobil "Menü" sayfası — Yaklaşım A (Gruplu ayarlar). Üstte tıklanamaz profil
 // kartı (yalnız kimlik), altında iOS tarzı bölümlü liste: renkli ikon karosu +
@@ -82,6 +83,10 @@ export function MobileMenu({ user, onNavigate, onLogout }) {
           </div>
         </div>
       ))}
+
+      {/* Bildirim izni normalde Ayarlar'daki kartta; Ayarlar'ı göremeyen roller
+          (asistan) cihaz iznini buradan açar. Tür/alıcı seçimi owner'da kalır. */}
+      {!canSeePage(role, 'settings') && <MobilePushRow />}
 
       <div className="mobile-menu-card mobile-menu-card-logout">
         <button type="button" className="mobile-menu-row is-danger" onClick={onLogout}>

@@ -4587,6 +4587,31 @@
     color: var(--ink-4);
   }
 
+  .mobile-menu-row.is-static {
+    cursor: default;
+  }
+
+  .mobile-menu-row.is-static:active {
+    background: transparent;
+  }
+
+  .mobile-menu-row-tx {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .mobile-menu-row-sub {
+    font-size: 12.5px;
+    color: var(--ink-3);
+    line-height: 1.35;
+  }
+
+  .mobile-menu-row-sub.is-err {
+    color: var(--warn-ink);
+  }
+
   .mobile-menu-row.is-danger .mobile-menu-row-label {
     color: var(--warn-ink);
     font-weight: 600;
