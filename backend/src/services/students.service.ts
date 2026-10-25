@@ -102,6 +102,9 @@ type StudentSummaryRow = {
   nickname: string | null;
   preferred_mode: LessonMode | null;
   phone: string | null;
+  // 'YYYY-MM-DD' metni (DATE → JS Date dönüşümündeki saat dilimi kaymasını
+  // önlemek için). Web ana sayfadaki "Yaklaşan Doğum Günleri" kartı kullanır.
+  birthday: string | null;
   is_active: boolean;
   lesson_debt: string;
   product_debt: string;
@@ -151,6 +154,7 @@ export async function listStudents(): Promise<StudentSummaryRow[]> {
                   AT TIME ZONE 'Europe/Istanbul') AS this_week_start
       )
       SELECT v.*, s.phone,
+        to_char(s.birthday, 'YYYY-MM-DD') AS birthday,
         att.last_lesson_at,
         att.lessons_last_30_days,
         att.lessons_this_week,

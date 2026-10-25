@@ -11,8 +11,8 @@
  * dosya açılabilir.
  */
 import React from "react";
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { render, screen, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 function renderWithQuery(ui) {
@@ -105,5 +105,46 @@ describe("HomePage", () => {
     // Spec §8.1 başlıkları geniş eşleşmeli
     const labels = await screen.findAllByText(/(tahsilat|ciro|alacak|kredi|ders)/i);
     expect(labels.length).toBeGreaterThan(0);
+  });
+
+  describe("Yaklaşan Doğum Günleri", () => {
+    beforeEach(() => {
+      // Yalnız Date sahte: react-query ve findBy* gerçek zamanlayıcılarla çalışsın.
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-10-25T09:00:00Z")); // İstanbul 12:00
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("lists students with a birthday in the next 15 days, nearest first", async () => {
+      getStudents.mockResolvedValue([
+        { id: "1", full_name: "Kasım Dokuz", birthday: "1991-11-09", is_active: true },
+        { id: "2", full_name: "Bugün Doğan", birthday: "1990-10-25", is_active: true },
+        { id: "3", full_name: "Yarın Doğan", birthday: "1985-10-26", is_active: true },
+        { id: "4", full_name: "Uzak Doğan", birthday: "1992-11-10", is_active: true },
+        { id: "5", full_name: "Tarihsiz", birthday: null, is_active: true },
+      ]);
+      renderWithQuery(<HomePage layout="detayli" onNavigate={() => {}} />);
+
+      const card = (await screen.findByText("Yaklaşan Doğum Günleri")).closest(".card");
+      await within(card).findByText("Bugün Doğan");
+
+      const names = [...card.querySelectorAll(".bday-name")].map(n => n.textContent);
+      expect(names).toEqual(["Bugün Doğan", "Yarın Doğan", "Kasım Dokuz"]);
+      expect(within(card).getByText("3 kişi")).toBeInTheDocument();
+      expect(within(card).getByText("Bugün")).toBeInTheDocument();
+      expect(within(card).getByText("Yarın")).toBeInTheDocument();
+      expect(within(card).getByText("15 gün")).toBeInTheDocument();
+      expect(within(card).getByText("25 Ekim")).toBeInTheDocument();
+    });
+
+    it("shows the empty message when nobody has a birthday soon", async () => {
+      getStudents.mockResolvedValue([
+        { id: "1", full_name: "Uzak Doğan", birthday: "1992-11-10", is_active: true },
+      ]);
+      renderWithQuery(<HomePage layout="detayli" onNavigate={() => {}} />);
+      expect(await screen.findByText("Önümüzdeki 15 gün içinde doğum günü yok.")).toBeInTheDocument();
+    });
   });
 });

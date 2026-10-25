@@ -2581,12 +2581,14 @@ function UpcomingEventsCard() {
   const today = getIstanbulToday();
   const { data: students = [] } = useQuery({ queryKey: queryKeys.students(), queryFn: getStudents });
 
+  // birthday API'den 'YYYY-MM-DD' metni olarak gelir; new Date() ile parse
+  // etmek UTC gece yarısı sayıp günü kaydırabildiği için parçalardan okunur.
   const birthdays = students
-    .filter(s => s.birthday)
+    .filter(s => /^\d{4}-\d{2}-\d{2}/.test(s.birthday ?? ''))
     .map(s => {
-      const b = new Date(s.birthday);
-      let next = new Date(today.getFullYear(), b.getMonth(), b.getDate());
-      if (next < today) next = new Date(today.getFullYear() + 1, b.getMonth(), b.getDate());
+      const [, month, day] = s.birthday.slice(0, 10).split('-').map(Number);
+      let next = new Date(today.getFullYear(), month - 1, day);
+      if (next < today) next = new Date(today.getFullYear() + 1, month - 1, day);
       const days = Math.round((next - today) / 86400000);
       return { student: s, days, next };
     }).filter(x => x.days <= 15).sort((a, b) => a.days - b.days);
@@ -2620,7 +2622,7 @@ function UpcomingEventsCard() {
                   </svg>
                 </div>
                 <div className="bday-body">
-                  <div className="bday-name">{s.name}</div>
+                  <div className="bday-name">{s.full_name}</div>
                   <div className="bday-date">{dateLabel}</div>
                 </div>
                 <span className={pillClass}>{pillLabel}</span>
