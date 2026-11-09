@@ -26,6 +26,8 @@ function renderChips(sessionsByDay, { scrollTop = 161, clientHeight = 643 } = {}
       scrollRef.current = el;
       if (!el || el.scrollTo?.mock) return;
       Object.defineProperty(el, 'clientHeight', { configurable: true, value: clientHeight });
+      // 36 px gün başlığı + 16 saat × 48 px gövde.
+      Object.defineProperty(el, 'scrollHeight', { configurable: true, value: 36 + 768 });
       Object.defineProperty(el, 'scrollTop', { configurable: true, writable: true, value: scrollTop });
       el.scrollTo = vi.fn();
     }, []);
@@ -100,6 +102,29 @@ describe('OffscreenLessonChips', () => {
     expect(screen.getByRole('button')).toBeInTheDocument();
     const scroll = screen.getByTestId('scroll');
     scroll.scrollTop = 0;
+    act(() => { fireEvent.scroll(scroll); });
+    expect(screen.queryByRole('button')).toBeNull();
+  });
+
+  // iOS esnemesi: sınırın ötesine çekip bırakınca scrollTop bir an aralık
+  // dışına çıkar. Kenarda kısmen görünen ders o an "gizli" sayılıp çip yanıp
+  // sönmemeli.
+  it('does not flash a chip while bouncing past the bottom edge', () => {
+    // 11:00 dersi en altta dururken kısmen görünür (çip yok).
+    renderChips(week({ 2: [lesson('11:00', 'planned')] }));
+    expect(screen.queryByRole('button')).toBeNull();
+    const scroll = screen.getByTestId('scroll');
+    scroll.scrollTop = 161 + 90;
+    act(() => { fireEvent.scroll(scroll); });
+    expect(screen.queryByRole('button')).toBeNull();
+  });
+
+  it('does not flash a chip while bouncing past the top edge', () => {
+    // 19:00 dersi en üstte dururken kısmen görünür (çip yok).
+    renderChips(week({ 2: [lesson('19:00', 'planned')] }), { scrollTop: 0 });
+    expect(screen.queryByRole('button')).toBeNull();
+    const scroll = screen.getByTestId('scroll');
+    scroll.scrollTop = -90;
     act(() => { fireEvent.scroll(scroll); });
     expect(screen.queryByRole('button')).toBeNull();
   });

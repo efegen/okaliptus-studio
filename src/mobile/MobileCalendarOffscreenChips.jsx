@@ -52,9 +52,16 @@ export function hiddenSplit(spans, viewTop, viewBottom) {
   return { above, below };
 }
 
+// iOS'ta sınırın ötesine çekip bırakınca (esneme / bounce) scrollTop bir an
+// 0'ın altına ya da en alt değerin üstüne çıkar; ham değerle hesaplanırsa
+// kenardaki ders bir an "gizli" sayılıp çip yanıp söner. Bu yüzden konum
+// gerçek kaydırma aralığına sıkıştırılır: esneme sırasında sonuç, takvimin
+// durduğu kenardaki sonuçla aynı kalır.
 function viewOf(el) {
-  const viewTop = el.scrollTop;
-  return { viewTop, viewBottom: viewTop + el.clientHeight - HEAD_PX, viewHeight: el.clientHeight - HEAD_PX };
+  const maxTop = Math.max(0, el.scrollHeight - el.clientHeight);
+  const viewTop = Math.min(maxTop, Math.max(0, el.scrollTop));
+  const viewHeight = el.clientHeight - HEAD_PX;
+  return { viewTop, viewBottom: viewTop + viewHeight, viewHeight };
 }
 
 const ArrowUp = () => (
