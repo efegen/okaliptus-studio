@@ -6,6 +6,7 @@ import { MobileLessonSheet } from './MobileLessonSheet';
 import { MobilePlanSheet } from './MobilePlanSheet';
 import { MobileAddToCalendar } from './MobileAddToCalendar';
 import { MobileToast } from './MobileToast';
+import { WeekNavBar } from './MobileCalendarWeekNav';
 import { fmtTL } from '../data';
 
 const HOURS = Array.from({ length: 16 }, (_, i) => i + 8); // 08..23
@@ -54,47 +55,6 @@ function getTodayColumnIndex(weekStart) {
     }
   }
   return -1;
-}
-
-function formatWeekRange(weekStart) {
-  const sunday = new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + 6);
-  const s = weekStart.getDate();
-  const e = sunday.getDate();
-  if (weekStart.getMonth() === sunday.getMonth()) {
-    return `${s} – ${e} ${sunday.toLocaleDateString('tr-TR', { month: 'short' })}`;
-  }
-  return `${s} ${weekStart.toLocaleDateString('tr-TR', { month: 'short' })} – ${e} ${sunday.toLocaleDateString('tr-TR', { month: 'short' })}`;
-}
-
-function WeekNavBar({ weekStart, onPrev, onNext, onToday }) {
-  return (
-    <div className="mobile-cal-weeknav">
-      <button
-        type="button"
-        className="mobile-cal-weeknav-btn"
-        onClick={onPrev}
-        aria-label="Önceki hafta"
-      >
-        ‹
-      </button>
-      <span className="mobile-cal-weeknav-label">{formatWeekRange(weekStart)}</span>
-      <button
-        type="button"
-        className="mobile-cal-weeknav-btn"
-        onClick={onNext}
-        aria-label="Sonraki hafta"
-      >
-        ›
-      </button>
-      <button
-        type="button"
-        className="mobile-cal-weeknav-today"
-        onClick={onToday}
-      >
-        Bugün
-      </button>
-    </div>
-  );
 }
 
 function LessonBlock({ session, onSelect }) {
