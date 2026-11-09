@@ -1488,6 +1488,83 @@
   .mobile-cal-occ-tile.is-plan .mobile-cal-occ-key { background: oklch(0.72 0.11 245); }
   .mobile-cal-occ-tile.is-noshow .mobile-cal-occ-key { background: var(--ink-4); }
 
+  /* ---------- Calendar off-screen planned lesson chips (mobile-cal-offscreen-*) ----------
+     MobileCalendarOffscreenChips.jsx — Tasarım A. Kaydırma alanının DIŞINDA,
+     gün gövdelerinin görünen kısmının üstüne bindirilmiş katman: üst kenar =
+     hafta çubuğu (48px + safe-area) + 36px gün başlığı, sol = 56px saat
+     sütunu. İz, takvim gövdeleriyle aynı transform'u alır (JS'te kopyalanır). */
+
+  .mobile-cal-offscreen {
+    position: absolute;
+    top: calc(48px + env(safe-area-inset-top) + 36px);
+    left: 56px;
+    right: 0;
+    bottom: 0;
+    z-index: 6;
+    overflow: hidden;
+    pointer-events: none;
+  }
+
+  .mobile-cal-offscreen-track {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: var(--day-w);
+    width: max-content;
+    height: 100%;
+    transition: transform 0.3s cubic-bezier(0.2, 0, 0.1, 1);
+    will-change: transform;
+  }
+
+  .mobile-cal-offscreen-col {
+    position: relative;
+    height: 100%;
+    min-width: 0;
+  }
+
+  .mobile-cal-offscreen-chip {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    height: 36px;
+    min-height: 36px;
+    margin: 0;
+    padding: 0 2px;
+    border: 0;
+    background: transparent;
+    display: flex;
+    align-items: center;
+    font-family: inherit;
+    cursor: pointer;
+    pointer-events: auto;
+    -webkit-tap-highlight-color: transparent;
+    animation: mobile-cal-offscreen-in 160ms ease-out;
+  }
+  .mobile-cal-offscreen-chip.is-up { top: 2px; }
+  .mobile-cal-offscreen-chip.is-down { bottom: 2px; }
+
+  .mobile-cal-offscreen-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 24px;
+    padding: 0 9px 0 7px;
+    border-radius: 999px;
+    background: var(--surface);
+    border: 1px solid var(--line-2);
+    box-shadow: 0 2px 6px oklch(0.18 0.015 60 / 0.14);
+    color: var(--ink-2);
+    font-size: 11.5px;
+    font-weight: 600;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  .mobile-cal-offscreen-chip:active .mobile-cal-offscreen-pill { background: var(--surface-2); }
+
+  @keyframes mobile-cal-offscreen-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
   /* ---------- Lesson detail bottom sheet (mobile-lsheet-*) ---------- */
 
   .mobile-lsheet-overlay {

@@ -7,6 +7,7 @@ import { MobilePlanSheet } from './MobilePlanSheet';
 import { MobileAddToCalendar } from './MobileAddToCalendar';
 import { MobileToast } from './MobileToast';
 import { WeekNavBar } from './MobileCalendarWeekNav';
+import { OffscreenLessonChips } from './MobileCalendarOffscreenChips';
 import { fmtTL } from '../data';
 
 const HOURS = Array.from({ length: 16 }, (_, i) => i + 8); // 08..23
@@ -404,6 +405,12 @@ export function MobileCalendar({ navNonce = 0 }) {
           </div>
         )}
       </div>
+
+      <OffscreenLessonChips
+        scrollRef={scrollRef}
+        bodiesRef={bodiesRef}
+        sessionsByDay={sessionsByDay}
+      />
 
       {selectedSession && (
         <MobileLessonSheet
