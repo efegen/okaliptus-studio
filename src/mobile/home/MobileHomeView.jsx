@@ -2,18 +2,7 @@ import React from 'react';
 import { Avatar, Icon } from '../../layout';
 import { fmtTL } from '../../data';
 import { NoteDeck } from './NoteDeck';
-
-// Türkçe iyelik eki: "%53'ü", "%50'si", "%40'ı" ... Son okunan sözcüğün
-// ünlü uyumuna göre. 0–100 arası yüzdeler için doğru ek üretir.
-function percentSuffix(n) {
-  const map = {
-    0: 'ı', 1: 'i', 2: 'si', 3: 'ü', 4: 'ü', 5: 'i', 6: 'sı', 7: 'si', 8: 'i', 9: 'u',
-    10: 'u', 20: 'si', 30: 'u', 40: 'ı', 50: 'si', 60: 'ı', 70: 'i', 80: 'i', 90: 'ı', 100: 'ü',
-  };
-  if (n <= 10 || n === 100) return map[n] ?? 'i';
-  const ones = n % 10;
-  return ones === 0 ? (map[n] ?? 'ı') : map[ones];
-}
+import { earnedPaidRate, percentSuffix } from '../../earnedPaid';
 
 function EyeIcon({ open }) {
   return open
@@ -80,7 +69,7 @@ function ProfileMenu({ user, onLogout }) {
 
 export function MobileHomeView({
   dateLabel, headline, user, onLogout, onOpenFinance, onOpenOccupancy, onOpenOrders, onOpenNotes,
-  collected = 0, revenue = 0, collectionRate = 0,
+  collected = 0, revenue = 0, outstanding = 0,
   receivable = 0, debtorCount = 0,
   occupancy = 0, plannedLessons = 0, capacity = null,
   kpiLoading = false,
@@ -100,7 +89,8 @@ export function MobileHomeView({
   }, [hasDeck]);
   const openNotes = () => onOpenNotes?.();
   const openNote = (noteId, { reply } = {}) => onOpenNotes?.({ noteId, reply });
-  const barWidth = Math.max(0, Math.min(100, collectionRate));
+  const paidRate = earnedPaidRate(revenue, outstanding);
+  const barWidth = Math.max(0, Math.min(100, paidRate));
   const occupancyTag = capacity != null
     ? `${plannedLessons}/${capacity} ders`
     : `${plannedLessons} ders`;
@@ -118,6 +108,14 @@ export function MobileHomeView({
   const money = (n) => (hidden ? '•••• ₺' : fmtTL(n));
 
   const heroNode = canSeeFinance && (() => {
+    // Büyük sayı kasaya giren para (ödeme tarihine göre); alt satır ise son 30
+    // günde yapılan işin (hak ediş) ne kadarının ödendiği. İkisi farklı
+    // tabanlıdır, birbirine bölünmez (paket satışı/eski borç oranı bozardı).
+    let heroSub;
+    if (kpiLoading) heroSub = '—';
+    else if (!(revenue > 0.005)) heroSub = 'Son 30 günde hak ediş yok';
+    else if (outstanding <= 0.005) heroSub = `Son 30 günün hak edişi ${money(revenue)} · tamamı ödendi`;
+    else heroSub = `Son 30 günün hak edişi ${money(revenue)} · %${paidRate}'${percentSuffix(paidRate)} ödendi`;
     const heroInner = (
       <>
         <div className="mh-hero-top">
@@ -129,11 +127,7 @@ export function MobileHomeView({
             <Icon.ChevronR className="mh-hero-chev" width="20" height="20" aria-hidden="true" />
           )}
         </div>
-        <p className="mh-hero-sub">
-          {kpiLoading
-            ? '—'
-            : `${money(revenue)} cironun %${collectionRate}'${percentSuffix(collectionRate)} tahsil edildi`}
-        </p>
+        <p className="mh-hero-sub">{heroSub}</p>
         <div className="mh-hero-prog">
           <div className="mh-hero-prog-fill" style={{ width: `${barWidth}%` }} />
         </div>

@@ -43,6 +43,7 @@ vi.mock("../api", () => ({
 }));
 
 import { HomePage } from "../home";
+import { CurrentUserProvider } from "../currentUser";
 import {
   getWeeklyKpi,
   getWeekLessons,
@@ -69,7 +70,7 @@ describe("HomePage", () => {
       debtorStudentCount: "1",
       monthStart: new Date(Date.now() - 86400_000).toISOString(),
       monthlyCashInflow: { total: "5000" },
-      monthlyRevenue: { total: "6000" },
+      monthlyRevenue: { total: "6000", eventLesson: "0", outstanding: "1500" },
     });
     getWeekLessons.mockResolvedValue([]);
     getCalendarEvents.mockResolvedValue([]);
@@ -105,6 +106,21 @@ describe("HomePage", () => {
     // Spec §8.1 başlıkları geniş eşleşmeli
     const labels = await screen.findAllByText(/(tahsilat|ciro|alacak|kredi|ders)/i);
     expect(labels.length).toBeGreaterThan(0);
+  });
+
+  it("aylık tahsilat kartı hak edişin ödenen yüzdesini gösterir, kasa girişine bölmez", async () => {
+    renderWithQuery(
+      <CurrentUserProvider user={{ id: "1", role: "admin" }}>
+        <HomePage layout="detayli" onNavigate={() => {}} />
+      </CurrentUserProvider>,
+    );
+    const card = (await screen.findByText(/Tahsil edilen/)).closest(".kpi-card");
+    // Kasa girişi 5.000, hak ediş 6.000, bekleyen 1.500 → ödenen 4.500 = %75
+    // (eski formül 5.000/6.000 = %83 derdi).
+    await within(card).findByText("%75'i ödendi");
+    expect(card.textContent).toMatch(/5\.000/);
+    expect(card.textContent).toMatch(/Bu ayın hak edişi\s*6\.000/);
+    expect(card.querySelector(".kpi-card-bar-fill").style.width).toBe("75%");
   });
 
   describe("Yaklaşan Doğum Günleri", () => {

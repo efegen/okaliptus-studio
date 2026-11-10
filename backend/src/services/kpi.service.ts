@@ -32,6 +32,8 @@ type WeeklyKpiResult = {
   monthlyRevenue: {
     total: string;
     eventLesson: string;
+    // Ayın hak edişinden henüz ödenmemiş kısım (bkz. last30Revenue.outstanding).
+    outstanding: string;
   };
   last30Start: string;
   last30CashInflow: {
@@ -40,6 +42,10 @@ type WeeklyKpiResult = {
   last30Revenue: {
     total: string;
     eventLesson: string;
+    // Son 30 günün hak edişinden (aynı kalemler) henüz ödenmemiş kısım:
+    // paket-dışı tamamlanmış ders + ürün satışı kalan alacağı. Paket dersleri
+    // ve etkinlik ders payı peşin ödenmiş sayılır. Ödenen = total − outstanding.
+    outstanding: string;
   };
 };
 
@@ -213,6 +219,22 @@ export async function getWeeklyKpi(): Promise<WeeklyKpiResult> {
           AND ps.deleted_at IS NULL
       ),
 
+      -- Ayın hak edişinin ödenmemiş kısmı — aylık ciroyla AYNI kalemler
+      -- (bkz. last30_outstanding).
+      monthly_outstanding AS (
+        SELECT
+          (SELECT COALESCE(SUM(GREATEST(0, lb.remaining_receivable)), 0)
+             FROM v_lesson_balances lb, month_window
+            WHERE lb.status = 'completed' AND lb.prepaid_package_id IS NULL
+              AND lb.starts_at >= month_window.month_start
+              AND lb.starts_at <  month_window.month_end)
+          +
+          (SELECT COALESCE(SUM(GREATEST(0, pb.remaining_receivable)), 0)
+             FROM v_product_sale_balances pb, month_window
+            WHERE pb.sold_at >= month_window.month_start
+              AND pb.sold_at <  month_window.month_end) AS total
+      ),
+
       -- Son 30 gün tahsilat (cash + iban)
       last30_inflow AS (
         SELECT COALESCE(SUM(amount), 0) AS total
@@ -251,6 +273,23 @@ export async function getWeeklyKpi(): Promise<WeeklyKpiResult> {
         WHERE ps.sold_at >= last30_window.last30_start
           AND ps.sold_at <  last30_window.last30_end
           AND ps.deleted_at IS NULL
+      ),
+
+      -- Son 30 gün hak edişinin ödenmemiş kısmı: ciroyla AYNI kalemler (ders
+      -- starts_at, satış sold_at penceresi). Paket dersleri borç yaratmaz,
+      -- etkinlik ders payı zaten ödemeden gelir → ikisi de ödenmiş sayılır.
+      last30_outstanding AS (
+        SELECT
+          (SELECT COALESCE(SUM(GREATEST(0, lb.remaining_receivable)), 0)
+             FROM v_lesson_balances lb, last30_window
+            WHERE lb.status = 'completed' AND lb.prepaid_package_id IS NULL
+              AND lb.starts_at >= last30_window.last30_start
+              AND lb.starts_at <  last30_window.last30_end)
+          +
+          (SELECT COALESCE(SUM(GREATEST(0, pb.remaining_receivable)), 0)
+             FROM v_product_sale_balances pb, last30_window
+            WHERE pb.sold_at >= last30_window.last30_start
+              AND pb.sold_at <  last30_window.last30_end) AS total
       )
 
     SELECT
@@ -296,16 +335,18 @@ export async function getWeeklyKpi(): Promise<WeeklyKpiResult> {
       (monthly_inflow.total + monthly_event_inflow.total)::text                                  AS monthly_cash_inflow_total,
       (monthly_lesson_rev.lesson_revenue + monthly_event_inflow.lesson_revenue + monthly_product_rev.product_revenue)::text AS monthly_revenue_total,
       monthly_event_inflow.lesson_revenue::text                                                  AS monthly_revenue_event_lesson,
+      monthly_outstanding.total::text                                                            AS monthly_revenue_outstanding,
 
       -- son 30 gün finansal
       last30_window.last30_start::text                                                            AS last30_start,
       (last30_inflow.total + last30_event_inflow.total)::text                                    AS last30_cash_inflow_total,
       (last30_lesson_rev.lesson_revenue + last30_event_inflow.lesson_revenue + last30_product_rev.product_revenue)::text AS last30_revenue_total,
-      last30_event_inflow.lesson_revenue::text                                                   AS last30_revenue_event_lesson
+      last30_event_inflow.lesson_revenue::text                                                   AS last30_revenue_event_lesson,
+      last30_outstanding.total::text                                                             AS last30_revenue_outstanding
 
     FROM date_window, month_window, last30_window, inflow, event_inflow, lesson_rev, product_rev, lesson_counts, receivable, deferred, debtor_students, total_students,
-         monthly_inflow, monthly_event_inflow, monthly_lesson_rev, monthly_product_rev,
-         last30_inflow, last30_event_inflow, last30_lesson_rev, last30_product_rev
+         monthly_inflow, monthly_event_inflow, monthly_lesson_rev, monthly_product_rev, monthly_outstanding,
+         last30_inflow, last30_event_inflow, last30_lesson_rev, last30_product_rev, last30_outstanding
   `);
 
   const row = result.rows[0];
@@ -346,6 +387,7 @@ export async function getWeeklyKpi(): Promise<WeeklyKpiResult> {
     monthlyRevenue: {
       total: r["monthly_revenue_total"] as string,
       eventLesson: r["monthly_revenue_event_lesson"] as string,
+      outstanding: r["monthly_revenue_outstanding"] as string,
     },
     last30Start: r["last30_start"] as string,
     last30CashInflow: {
@@ -354,6 +396,7 @@ export async function getWeeklyKpi(): Promise<WeeklyKpiResult> {
     last30Revenue: {
       total: r["last30_revenue_total"] as string,
       eventLesson: r["last30_revenue_event_lesson"] as string,
+      outstanding: r["last30_revenue_outstanding"] as string,
     },
   };
 }

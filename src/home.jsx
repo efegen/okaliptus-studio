@@ -19,6 +19,7 @@ import {
 } from './api';
 import { ReceivePaymentModal } from './students';
 import { useCan } from './currentUser';
+import { earnedPaidRate, percentSuffix } from './earnedPaid';
 import { useLessonActions } from './mobile/shared/useLessonActions';
 import {
   COMPLETE_AVAILABLE_AFTER_MINUTES,
@@ -2723,7 +2724,6 @@ export function HomePage({ layout, onNavigate }) {
   const studioSettings = useStudioSettings();
   const weeklyKpiData = weeklyKpiState.data;
   const cashInflowTotal = parseNumericValue(weeklyKpiData?.cashInflow?.total, 0);
-  const revenueTotal = parseNumericValue(weeklyKpiData?.revenue?.total, 0);
   const lessonsPlanned = parseNumericValue(weeklyKpiData?.lessonCounts?.planned, 0);
   const lessonsCompleted = parseNumericValue(weeklyKpiData?.lessonCounts?.completed, 0);
   const occupancyRatio = parseNumericValue(weeklyKpiData?.occupancyRatio, null);
@@ -2731,13 +2731,20 @@ export function HomePage({ layout, onNavigate }) {
   const debtorStudentCount = parseNumericValue(weeklyKpiData?.debtorStudentCount, null);
   const totalStudentCount = parseNumericValue(weeklyKpiData?.totalStudentCount, null);
   const activeStudentCount = parseNumericValue(weeklyKpiData?.activeStudentCount, null);
-  const collectionRateValue = revenueTotal > 0 ? Math.round((cashInflowTotal / revenueTotal) * 100) : 0;
-  const collectionRateBarWidth = clampBarWidth(collectionRateValue);
+  // Aylık tahsilat kartı: büyük sayı kasaya giren para (ödeme tarihine göre);
+  // bar + alt satır ayın hak edişinin ödenen yüzdesi (aynı kalemler, bkz.
+  // earnedPaid.js). Kasa girişi hak edişe bölünmez.
   const monthlyCashInflowTotal = parseNumericValue(weeklyKpiData?.monthlyCashInflow?.total, 0);
   const monthlyRevenueTotal = parseNumericValue(weeklyKpiData?.monthlyRevenue?.total, 0);
   const monthlyEventLessonRevenue = parseNumericValue(weeklyKpiData?.monthlyRevenue?.eventLesson, 0);
-  const monthlyCollectionRateValue = monthlyRevenueTotal > 0 ? Math.round((monthlyCashInflowTotal / monthlyRevenueTotal) * 100) : 0;
-  const monthlyCollectionRateBarWidth = clampBarWidth(monthlyCollectionRateValue);
+  const monthlyOutstanding = parseNumericValue(weeklyKpiData?.monthlyRevenue?.outstanding, 0);
+  const monthlyHasEarnings = monthlyRevenueTotal > 0.005;
+  const monthlyFullyPaid = monthlyHasEarnings && monthlyOutstanding <= 0.005;
+  const monthlyPaidRate = earnedPaidRate(monthlyRevenueTotal, monthlyOutstanding);
+  const monthlyPaidBarWidth = clampBarWidth(monthlyPaidRate);
+  const monthlyPaidLabel = monthlyFullyPaid
+    ? 'tamamı ödendi'
+    : `%${monthlyPaidRate}'${percentSuffix(monthlyPaidRate)} ödendi`;
   const currentMonthLabel = getIstanbulToday().toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' }).toLocaleUpperCase('tr-TR');
   const weeklyCapacity = studioSettings?.weeklyCapacity ?? null;
   const occupancyPercent = occupancyRatio !== null ? Math.round(occupancyRatio * 100) : (weeklyCapacity ? Math.round(lessonsPlanned / weeklyCapacity * 100) : 0);
@@ -2851,12 +2858,12 @@ export function HomePage({ layout, onNavigate }) {
           <div className="card">
             <div className="card-head">
               <h3 className="card-title">Tahsilat <span style={{opacity:0.55, fontWeight:500, fontSize:"0.85em"}}>· {currentMonthLabel}</span></h3>
-              <span className="card-sub">%{monthlyCollectionRateValue} · hedef</span>
+              <span className="card-sub">{monthlyHasEarnings ? `hak edişin ${monthlyPaidLabel}` : 'hak ediş yok'}</span>
             </div>
             <div className="income-row">
               <div className="income-main">{fmtTL(monthlyCashInflowTotal)}</div>
             </div>
-            <div className="progress"><div className="progress-bar" style={{ width: monthlyCollectionRateBarWidth + "%" }}></div></div>
+            <div className="progress"><div className="progress-bar" style={{ width: monthlyPaidBarWidth + "%" }}></div></div>
             <IncomeSparkline />
             <div className="sparkline-labels"><span>8 hafta önce</span><span>bu hafta</span></div>
           </div>
@@ -2890,18 +2897,20 @@ export function HomePage({ layout, onNavigate }) {
       <div className="kpi-row">
         {canSeeFinance && (<>
         <div className="kpi-card">
-          <div className="kpi-card-label">Tahsilat / Ciro <span style={{opacity:0.55, fontWeight:500}}>· {currentMonthLabel}</span></div>
+          <div className="kpi-card-label">Tahsil edilen <span style={{opacity:0.55, fontWeight:500}}>· {currentMonthLabel}</span></div>
           <div className="kpi-card-main">
             <span className="kpi-card-val">{fmtTL(monthlyCashInflowTotal)}</span>
-            <span className="kpi-card-sep">/</span>
-            <span className="kpi-card-val2">{fmtTL(monthlyRevenueTotal)}</span>
           </div>
           <div className="kpi-card-bar">
-            <div className="kpi-card-bar-fill" style={{width: `${monthlyCollectionRateBarWidth}%`}} />
+            <div className="kpi-card-bar-fill" style={{width: `${monthlyPaidBarWidth}%`}} />
           </div>
           <div className="kpi-card-sub">
-            Tahsilat oranı <strong>%{monthlyCollectionRateValue}</strong>
-            {monthlyEventLessonRevenue > 0 && <> · Etkinlik dersi <strong>{fmtTL(monthlyEventLessonRevenue)}</strong></>}
+            {monthlyHasEarnings ? (
+              <>
+                Bu ayın hak edişi <strong>{fmtTL(monthlyRevenueTotal)}</strong> · <strong>{monthlyPaidLabel}</strong>
+                {monthlyEventLessonRevenue > 0 && <> · Etkinlik dersi <strong>{fmtTL(monthlyEventLessonRevenue)}</strong></>}
+              </>
+            ) : 'Bu ay hak ediş yok'}
           </div>
         </div>
 

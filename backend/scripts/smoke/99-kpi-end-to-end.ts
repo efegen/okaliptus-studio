@@ -282,6 +282,29 @@ async function run(): Promise<void> {
     const dCredit = delta(kpiAfter.activeCreditValue, kpiBefore.activeCreditValue);
     assertMoney(dCredit.toFixed(2), "3500.00", "Δ activeCreditValue = 3500 (7×500)");
 
+    // Son 30 gün hak ediş + ödenmemiş kısmı (ana sayfa hero alt satırı).
+    // D (8 gün önce) 30 gün penceresinde → hak edişe girer, tam ödendi.
+    // B1 paket dersi hak edişte ama ödenmiş sayılır; açık kalan yalnız A2.
+    const dLast30Rev = delta(kpiAfter.last30Revenue.total, kpiBefore.last30Revenue.total);
+    const dLast30Out = delta(kpiAfter.last30Revenue.outstanding, kpiBefore.last30Revenue.outstanding);
+    assertMoney(dLast30Rev.toFixed(2), "3000.00", "Δ last30Revenue.total = 3000 (2500 + D1 500)");
+    assertMoney(dLast30Out.toFixed(2), "300.00", "Δ last30Revenue.outstanding = 300 (yalnız A2; paket dersi ödenmiş)");
+
+    // Ayın hak edişinin ödenmemiş kısmı: yine yalnız A2 — ama A2 ancak cari
+    // ayın içindeyse (ay başının ilk saatlerinde çalışırsa önceki aya düşer).
+    const a2InMonth = await pool.query<{ in_month: boolean }>(
+      `SELECT l.starts_at >= (date_trunc('month', now() AT TIME ZONE 'Europe/Istanbul')
+                              AT TIME ZONE 'Europe/Istanbul') AS in_month
+         FROM lessons l WHERE l.id = $1`,
+      [lessonA2.id],
+    );
+    const dMonthOut = delta(kpiAfter.monthlyRevenue.outstanding, kpiBefore.monthlyRevenue.outstanding);
+    if (a2InMonth.rows[0].in_month) {
+      assertMoney(dMonthOut.toFixed(2), "300.00", "Δ monthlyRevenue.outstanding = 300 (yalnız A2)");
+    } else {
+      info("monthlyRevenue.outstanding", "A2 önceki ayda kaldı — aylık kontrol atlandı");
+    }
+
     ok("\nSMOKE 99 — KPI E2E TÜM DELTALAR DOĞRU ✓");
   } finally {
     await cleanupSmoke(studentIds);

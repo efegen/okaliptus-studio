@@ -214,8 +214,10 @@ export function MobileHome({ user, onLogout, onOpenFinance, onOpenOccupancy, onO
   }, [sessions, todayIndex]);
 
   const collected = parseNumericValue(kpi?.last30CashInflow?.total, 0);
+  // Hak ediş ve onun ödenmemiş kısmı aynı kalemlerden gelir; hero alt satırı
+  // "hak edişin %X'i ödendi"yi bunlardan kurar (kasa girişine bölmez).
   const revenue = parseNumericValue(kpi?.last30Revenue?.total, 0);
-  const collectionRate = revenue > 0 ? Math.round((collected / revenue) * 100) : 0;
+  const outstanding = Math.min(revenue, Math.max(0, parseNumericValue(kpi?.last30Revenue?.outstanding, 0)));
 
   const receivable = parseNumericValue(kpi?.receivable, 0);
   const debtorCount = parseNumericValue(kpi?.debtorStudentCount, 0);
@@ -243,7 +245,7 @@ export function MobileHome({ user, onLogout, onOpenFinance, onOpenOccupancy, onO
         onOpenNotes={onOpenNotes}
         collected={collected}
         revenue={revenue}
-        collectionRate={collectionRate}
+        outstanding={outstanding}
         receivable={receivable}
         debtorCount={debtorCount}
         occupancy={occupancy}
