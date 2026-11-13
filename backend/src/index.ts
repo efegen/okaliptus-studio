@@ -5,6 +5,7 @@ import { closeDatabaseConnection, verifyDatabaseConnection } from "./db/connecti
 import { createApp } from "./server/app.js";
 import { startOrderPoller, stopOrderPoller } from "./services/trendyol/order-poller.js";
 import { startNotificationScheduler, stopNotificationScheduler } from "./services/notification-scheduler.js";
+import { startSiteRefreshScheduler, stopSiteRefreshScheduler } from "./services/site-refresh.service.js";
 import { closeAllStreams } from "./services/live-sync.service.js";
 
 async function main(): Promise<void> {
@@ -28,11 +29,16 @@ async function main(): Promise<void> {
   // sipariş). VAPID + interval kendi içinde kontrol edilir.
   startNotificationScheduler();
 
+  // Web sitesi mağazası: Trendyol listesini günde bir yeniler, site listesi
+  // değişince siteyi yeniden build ettirir (bkz. site-refresh.service.ts).
+  startSiteRefreshScheduler();
+
   const shutdown = async (signal: string) => {
     console.log(`${signal} received, shutting down.`);
 
     stopOrderPoller();
     stopNotificationScheduler();
+    stopSiteRefreshScheduler();
     // Açık SSE akışları bitmeden server.close() tamamlanmaz; önce kapat ki
     // istemciler yeni sunucuya hemen yeniden bağlansın.
     closeAllStreams();
