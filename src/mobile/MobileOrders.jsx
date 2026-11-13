@@ -7,16 +7,21 @@
 // kanal segmenti durur ama yalnız Trendyol akar. Ana sayfadaki "Siparişler"
 // (V3·B) butonundan açılır; geri tuşu → ana sayfa.
 //
-// Yapı, mobil öğrenci profiliyle (.mobile-msp-page) aynı kalıpta: sabit koyu
-// başlık + sabit durum sekmeleri + yalnızca gövde kayar. Tüm görsel sınıflar
-// `mo-*` ad alanında (mobil app global CSS'iyle çakışmasın).
+// Yapı: sabit koyu başlık + kayan gövde. Gövdenin başında Trendyol özeti (kart
+// şeridi, ordersInsights/ — tuval "Siparişler mini dashboard" C6) durur; durum
+// sekmeleri onun hemen altında, listeye bitişik ve kaydırınca tepede yapışık kalır
+// (şerit gidince sekmelerin üstüne tek satır özet gelir). Kartlar detay katmanını
+// (InsightPage) açar. Tüm görsel sınıflar `mo-*` / `moi-*` ad alanında.
 
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { getTrendyolOrdersList } from '../api';
+import { getTrendyolInsights, getTrendyolOrdersList } from '../api';
+import { useCan } from '../currentUser';
 import { queryKeys } from '../hooks/queryKeys';
 import { useCargoChangeWatcher } from '../hooks/useCargoChangeWatcher';
 import { ORDERS_WINDOW_DAYS } from '../marketplaceOrders';
+import { InsightsMiniBar, InsightsStrip } from './ordersInsights/InsightsStrip';
+import { InsightPage } from './ordersInsights/InsightPage';
 
 // ─── Biçimlendiriciler (web orders.jsx ile aynı davranış) ────────────────────
 function fmtTL(raw) {
@@ -254,9 +259,35 @@ export function MobileOrders({ onBack, onOpenDetail }) {
     },
     staleTime: 30 * 1000,
   });
+  // ── Trendyol özeti (kart şeridi) — yalnız finansı görebilenler (asistan değil) ──
+  const canSeeInsights = useCan('finance.read');
+  const [period, setPeriod] = React.useState('ay');
+  const [insightView, setInsightView] = React.useState(null); // 'kalan' | 'cok' | 'satis' | 'odeme'
+  const [collapsed, setCollapsed] = React.useState(false);
+  const scrollRef = React.useRef(null);
+  const stripRef = React.useRef(null);
+  const insightsQuery = useQuery({
+    queryKey: queryKeys.trendyolInsights(period),
+    queryFn: () => getTrendyolInsights(period),
+    enabled: canSeeInsights,
+    staleTime: 60 * 1000,
+  });
+
+  // Şerit kaydırılıp tamamen gidince sekmelerin üstünde tek satır özet görünür.
+  function onScroll(e) {
+    if (!canSeeInsights) return;
+    const stripH = stripRef.current ? stripRef.current.offsetHeight : 0;
+    const next = stripH > 0 && e.currentTarget.scrollTop > stripH - 8;
+    if (next !== collapsed) setCollapsed(next);
+  }
+  function expandSummary() {
+    scrollRef.current?.scrollTo?.({ top: 0, behavior: 'smooth' });
+  }
+
   function refreshNow() {
     forceRef.current = true;
     ordersQuery.refetch();
+    if (canSeeInsights) insightsQuery.refetch();
   }
 
   const data = ordersQuery.data;
@@ -291,25 +322,45 @@ export function MobileOrders({ onBack, onOpenDetail }) {
         </div>
       </header>
 
-      {/* ── Durum sekmeleri (sabit) ── */}
-      <nav className="mo-tabs" role="tablist" aria-label="Sipariş durumu">
-        {TABS.map(t => (
-          <button
-            key={t.key}
-            type="button"
-            role="tab"
-            aria-selected={tab === t.key}
-            className={'mo-tab' + (tab === t.key ? ' active' : '')}
-            onClick={() => setTab(t.key)}
-          >
-            <span className="mo-tab-l">{t.label}</span>
-            <span className="mo-tab-c">{tabCount(t.key)} paket</span>
-          </button>
-        ))}
-      </nav>
-
       {/* ── Kayan gövde ── */}
-      <div className="mo-scroll">
+      <div className="mo-scroll" ref={scrollRef} onScroll={onScroll}>
+        {/* Trendyol özeti: listeyle birlikte yukarı kayar */}
+        {canSeeInsights && (
+          <div ref={stripRef}>
+            <InsightsStrip
+              period={period}
+              onPeriodChange={setPeriod}
+              data={insightsQuery.data}
+              isLoading={insightsQuery.isLoading}
+              isError={insightsQuery.isError}
+              onRetry={() => insightsQuery.refetch()}
+              onOpen={setInsightView}
+            />
+          </div>
+        )}
+
+        {/* Durum sekmeleri: listenin hemen üstünde; kaydırınca tepede yapışık kalır */}
+        <div className="mo-sticky">
+          {canSeeInsights && collapsed && insightsQuery.data && (
+            <InsightsMiniBar period={period} data={insightsQuery.data} onExpand={expandSummary} />
+          )}
+          <nav className="mo-tabs" role="tablist" aria-label="Sipariş durumu">
+            {TABS.map(t => (
+              <button
+                key={t.key}
+                type="button"
+                role="tab"
+                aria-selected={tab === t.key}
+                className={'mo-tab' + (tab === t.key ? ' active' : '')}
+                onClick={() => setTab(t.key)}
+              >
+                <span className="mo-tab-l">{t.label}</span>
+                <span className="mo-tab-c">{tabCount(t.key)} paket</span>
+              </button>
+            ))}
+          </nav>
+        </div>
+
         {/* arama + kanal filtresi + yenile */}
         <div className="mo-tools">
           <label className="mo-search">
@@ -399,6 +450,16 @@ export function MobileOrders({ onBack, onOpenDetail }) {
           </div>
         )}
       </div>
+
+      {/* Özet kartlarının detayı: liste ve kaydırma konumu korunur */}
+      {insightView && (
+        <InsightPage
+          view={insightView}
+          period={period}
+          data={insightsQuery.data}
+          onBack={() => setInsightView(null)}
+        />
+      )}
     </div>
   );
 }

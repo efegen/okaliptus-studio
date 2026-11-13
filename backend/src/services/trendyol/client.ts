@@ -1,6 +1,7 @@
 // v1.6 — Trendyol Marketplace client.
 //
-// Çoğunlukla OKUMA (GET: getOrders / getApprovedProducts / getClaims). Model C /
+// Çoğunlukla OKUMA (GET: getOrders / getApprovedProducts / getClaims / finans
+// ekstresi: getSettlements / getOtherFinancials / getCargoInvoiceItems). Model C /
 // Faz 2 ile TEK bir yazma yolu eklendi: updateStock (price-and-inventory) — yalnız
 // STOK alanını gönderir, fiyata dokunmaz. Yazmanın gerçekten uygulandığını
 // doğrulamak için getBatchRequestResult (GET) eşlik eder. Diğer yazma uçları
@@ -147,6 +148,12 @@ export type TrendyolOrderLine = {
   productSize?: string;     // beden
   productColor?: string;    // renk
   orderLineItemStatusName?: string;
+  // Finans özeti (insights) için: TY'nin satıra yazdığı oranlar (yüzde, ör. 20 / 13).
+  vatRate?: number;         // KDV oranı
+  commission?: number;      // komisyon oranı
+  // Yeni sipariş API sürümünün alan adları (eski price/amount yoksa bunlar okunur).
+  lineUnitPrice?: number;
+  lineGrossAmount?: number;
 };
 
 // Sipariş teslimat/fatura adresi (yalnız görünümde kullandığımız alanlar).
@@ -212,6 +219,112 @@ export async function getOrders(params: GetOrdersParams = {}): Promise<TrendyolO
   if (params.orderByDirection) url.searchParams.set("orderByDirection", params.orderByDirection);
 
   return trendyolGetJson<TrendyolOrdersResponse>(url, "Trendyol siparişleri alınamadı");
+}
+
+// ── Muhasebe & finans (cari hesap ekstresi) — read-only ─────────────────────
+//
+// GET {base}/integration/finance/che/sellers/{sellerId}/settlements      (Sale | Return)
+// GET {base}/integration/finance/che/sellers/{sellerId}/otherfinancials  (PaymentOrder |
+//     DeductionInvoices | …) — her istekte TEK transactionType.
+// startDate/endDate ms ve ZORUNLU; aralık en fazla 15 gün. size 500 | 1000.
+// Kayıt sipariş TESLİM edildikten sonra oluşur (taze siparişin kaydı yoktur).
+// Kaynak: developers.trendyol.com "Current Account Statement Integration".
+
+export type TrendyolFinanceRecord = {
+  id?: string;
+  transactionDate?: number;
+  barcode?: string;
+  transactionType?: string;
+  description?: string;
+  debt?: number;
+  credit?: number;
+  commissionRate?: number;
+  commissionAmount?: number;
+  sellerRevenue?: number;
+  orderNumber?: string;
+  paymentOrderId?: number | string | null;
+  paymentDate?: number | null;
+  orderDate?: number;
+  shipmentPackageId?: number | string;
+};
+
+export type TrendyolFinanceResponse = {
+  page?: number;
+  size?: number;
+  totalPages?: number;
+  totalElements?: number;
+  content?: TrendyolFinanceRecord[];
+};
+
+export type GetFinanceParams = {
+  transactionType: string;
+  startDate: number; // ms
+  endDate: number;   // ms (startDate'ten en fazla 15 gün sonra)
+  page?: number;
+  size?: number;
+};
+
+async function getFinance(
+  kind: "settlements" | "otherfinancials",
+  params: GetFinanceParams,
+): Promise<TrendyolFinanceResponse> {
+  if (!isTrendyolConfigured()) {
+    throw new TrendyolNotConfiguredError();
+  }
+  const url = new URL(
+    `${env.trendyolApiBaseUrl}/integration/finance/che/sellers/${env.trendyolSellerId}/${kind}`,
+  );
+  url.searchParams.set("transactionType", params.transactionType);
+  url.searchParams.set("startDate", String(params.startDate));
+  url.searchParams.set("endDate", String(params.endDate));
+  url.searchParams.set("page", String(params.page ?? 0));
+  url.searchParams.set("size", String(params.size ?? 500));
+  return trendyolGetJson<TrendyolFinanceResponse>(url, "Trendyol cari hesap ekstresi alınamadı");
+}
+
+export function getSettlements(params: GetFinanceParams): Promise<TrendyolFinanceResponse> {
+  return getFinance("settlements", params);
+}
+
+export function getOtherFinancials(params: GetFinanceParams): Promise<TrendyolFinanceResponse> {
+  return getFinance("otherfinancials", params);
+}
+
+// GET {base}/integration/finance/che/sellers/{sellerId}/cargo-invoice/{invoiceSerialNumber}/items
+// invoiceSerialNumber = DeductionInvoices kaydındaki "Kargo Fatura" satırının id'si.
+// Paket başına kargo bedeli (gönderim + iade kargosu).
+export type TrendyolCargoInvoiceItem = {
+  shipmentPackageType?: string;
+  parcelUniqueId?: number | string;
+  orderNumber?: string;
+  amount?: number;
+  desi?: number;
+};
+
+export type TrendyolCargoInvoiceResponse = {
+  page?: number;
+  totalPages?: number;
+  content?: TrendyolCargoInvoiceItem[];
+};
+
+export async function getCargoInvoiceItems(
+  invoiceSerialNumber: string,
+  page = 0,
+): Promise<TrendyolCargoInvoiceResponse> {
+  if (!isTrendyolConfigured()) {
+    throw new TrendyolNotConfiguredError();
+  }
+  const url = new URL(
+    `${env.trendyolApiBaseUrl}/integration/finance/che/sellers/${env.trendyolSellerId}/cargo-invoice/${encodeURIComponent(invoiceSerialNumber)}/items`,
+  );
+  url.searchParams.set("page", String(page));
+  url.searchParams.set("size", "500");
+  const raw = await trendyolGetJson<TrendyolCargoInvoiceResponse | TrendyolCargoInvoiceItem[]>(
+    url,
+    "Trendyol kargo faturası alınamadı",
+  );
+  // Belge yanıtın sayfalı mı düz dizi mi olduğunu kesin söylemiyor: ikisini de kabul et.
+  return Array.isArray(raw) ? { page: 0, totalPages: 1, content: raw } : raw;
 }
 
 // ── Ürün listesi (read-only) ────────────────────────────────────────────────

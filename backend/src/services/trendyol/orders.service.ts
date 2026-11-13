@@ -212,6 +212,8 @@ export type DisplayLine = {
   color: string | null;
   size: string | null;
   unitPrice: number | null;
+  commissionRate: number | null; // TY satır komisyon oranı (%), finans özeti tahmini için
+  vatRate: number | null;        // TY satır KDV oranı (%)
   matched: boolean;
   internalProductId: string | null;
   internalName: string | null;
@@ -307,7 +309,9 @@ export function buildOrdersList(
         merchantSku: l.merchantSku ?? l.sku ?? null,
         color: l.productColor ?? null,
         size: l.productSize ?? null,
-        unitPrice: typeof l.price === "number" ? l.price : null,
+        unitPrice: typeof l.price === "number" ? l.price : typeof l.lineUnitPrice === "number" ? l.lineUnitPrice : null,
+        commissionRate: typeof l.commission === "number" && Number.isFinite(l.commission) ? l.commission : null,
+        vatRate: typeof l.vatRate === "number" && Number.isFinite(l.vatRate) ? l.vatRate : null,
         matched: !!m,
         internalProductId: m?.productId ?? null,
         internalName: m?.internalName ?? null,

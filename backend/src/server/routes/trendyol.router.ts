@@ -26,9 +26,25 @@ import {
   runStockPush,
   getStockPushStatus,
 } from "../../services/trendyol/stock-push.service.js";
+import { getTrendyolInsights, parseInsightPeriod } from "../../services/trendyol/insights.service.js";
 import { sendError } from "../middleware/response.js";
+import { requireCan } from "../middleware/requireRole.js";
 
 export const trendyolRouter = Router();
+
+// GET /trendyol/insights?period=hafta|ay|gecen — Siparişler ekranının özet şeridi +
+// detayları: satış, sana kalan (komisyon / kargo / KDV / kesintiler), en çok satanlar,
+// ödemeler. SALT-OKUMA (sipariş snapshot'ı + cari hesap ekstresi). Finansal veri →
+// ayrıca finance.read. marketplace_sync kapalıysa 409.
+trendyolRouter.get("/insights", requireCan("finance.read"), async (req, res) => {
+  try {
+    const period = parseInsightPeriod(req.query.period);
+    const data = await getTrendyolInsights(period);
+    res.json({ data });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
 
 // POST /trendyol/products/sync — Trendyol onaylı ürünlerini (read-only) çekip
 // channel_products snapshot'ına yazar. Manuel; poller yok. → { synced, pages, pruned }

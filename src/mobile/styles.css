@@ -3469,6 +3469,153 @@
   .mo-empty-t { font-size: 15px; font-weight: 600; color: var(--ink-2); margin: 16px 0 5px; }
   .mo-empty-d { font-size: 12.5px; line-height: 1.5; color: var(--ink-3); }
 
+  /* ---------- Siparişler · Trendyol özeti (moi-*) ----------
+     Tuval "Siparişler mini dashboard" C6: gövdenin başında dönem düğmeleri + yatay
+     kart şeridi; durum sekmeleri (.mo-sticky) onun altında ve kaydırınca yapışık.
+     Kartlar .moi-page detay katmanını açar. Renkler .mo-page'e scope'lu. */
+  .mo-page {
+    --moi-kom: oklch(0.64 0.15 47);
+    --moi-kargo: oklch(0.66 0.1 245);
+    --moi-kdv: oklch(0.82 0.11 85);
+    --moi-diger: oklch(0.76 0.01 60);
+    --moi-kalan: oklch(0.45 0.09 145);
+  }
+  .mo-sticky { position: sticky; top: 0; z-index: 4; }
+  .mo-sticky .mo-tabs { border-top: 1px solid var(--line); }
+
+  .moi-strip { padding: 10px 0 12px; }
+  .moi-periods { display: flex; gap: 6px; padding: 0 16px 8px; }
+  .moi-period {
+    min-height: 34px; height: 34px; padding: 0 13px; border-radius: 999px;
+    border: 1px solid var(--line-2); background: var(--surface); color: var(--ink-2);
+    font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
+  }
+  .moi-period.on { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+  .moi-cards {
+    display: flex; gap: 8px; overflow-x: auto; padding: 0 16px 2px;
+    scroll-snap-type: x mandatory; scroll-padding: 0 16px; scrollbar-width: none;
+  }
+  .moi-cards::-webkit-scrollbar { display: none; }
+  .moi-card {
+    flex: 0 0 150px; scroll-snap-align: start; box-sizing: border-box; height: 112px;
+    padding: 10px 12px 11px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line);
+    color: var(--ink); font: inherit; text-align: left; cursor: pointer;
+    display: flex; flex-direction: column; justify-content: space-between; min-width: 0;
+  }
+  .moi-card:active { background: var(--surface-2); }
+  .moi-card-kalan { flex-basis: 196px; }
+  .moi-card-top { flex-basis: 200px; }
+  .moi-card-label { display: flex; align-items: center; justify-content: space-between; font-size: 11.5px; font-weight: 600; color: var(--ink-3); }
+  .moi-card-label svg { color: var(--ink-4); flex-shrink: 0; }
+  .moi-card-value { font-size: 22px; font-weight: 700; letter-spacing: -0.03em; line-height: 1.1; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .moi-card-sub { font-size: 11.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+  .moi-card-foot { display: flex; flex-direction: column; gap: 5px; }
+  .moi-card-name { display: flex; flex-direction: column; min-width: 0; }
+  .moi-card-skel { cursor: default; background: linear-gradient(90deg, var(--surface) 0%, var(--surface-2) 50%, var(--surface) 100%); background-size: 200% 100%; animation: moi-shimmer 1.2s linear infinite; }
+  @keyframes moi-shimmer { to { background-position: -200% 0; } }
+  .moi-card-error { flex: 1 1 auto; height: auto; min-height: 76px; cursor: default; justify-content: center; gap: 6px; font-size: 13px; color: var(--ink-2); }
+  .moi-linkbtn { align-self: flex-start; min-height: 32px; border: 0; background: none; padding: 0; color: var(--accent-ink); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+  .moi-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-width: 0; }
+  .moi-baseline { align-items: baseline; justify-content: flex-start; }
+  .moi-green { color: var(--accent-ink); }
+  .moi-up { color: var(--accent-ink); font-weight: 600; }
+  .moi-down { color: var(--warn-ink); font-weight: 600; }
+  .moi-ellipsis { min-width: 0; font-size: 12.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .moi-empty-note { margin: auto 0; }
+  .moi-bar { display: flex; gap: 1px; height: 6px; border-radius: 3px; overflow: hidden; background: var(--surface-2); }
+  .moi-bar > span { display: block; height: 100%; }
+  .moi-bar-lg { height: 14px; gap: 2px; border-radius: 7px; margin-top: 14px; }
+  .moi-stack { display: flex; align-items: center; }
+  .moi-thumb { position: relative; display: grid; place-items: center; overflow: hidden; flex-shrink: 0; background: var(--bg-2); color: var(--ink-4); border-radius: 10px; }
+  .moi-thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+  .moi-thumb svg { width: 55%; height: 55%; }
+  .moi-stack-item { width: 38px; height: 38px; box-sizing: border-box; border-radius: 11px; border: 2px solid var(--surface); }
+  .moi-stack-item.overlap { margin-left: -10px; }
+  .moi-more { margin-left: 8px; }
+  .moi-minibars { display: flex; align-items: flex-end; height: 22px; }
+  .moi-minibars > span { flex: 1; min-width: 0; border-radius: 2px 2px 1px 1px; background: oklch(0.8 0.07 145); }
+
+  /* şerit gidince sekmelerin üstünde kalan tek satır */
+  .moi-mini { display: flex; align-items: center; gap: 10px; height: 42px; padding: 0 10px 0 16px; background: var(--surface); border-top: 1px solid var(--line); }
+  .moi-mini-period { flex-shrink: 0; font-size: 11.5px; color: var(--ink-3); }
+  .moi-mini-val { min-width: 0; font-size: 13px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+  .moi-mini-val span { font-weight: 500; color: var(--ink-3); }
+  .moi-mini-btn {
+    margin-left: auto; flex-shrink: 0; min-height: 32px; height: 32px; padding: 0 10px; border-radius: 9px;
+    border: 1px solid var(--line-2); background: var(--surface); color: var(--ink);
+    font: inherit; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;
+  }
+
+  /* ── Detay katmanı ── */
+  .moi-page { position: absolute; inset: 0; z-index: 30; display: flex; flex-direction: column; background: var(--bg-2); }
+  .moi-page-scroll {
+    flex: 1 1 auto; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    display: flex; flex-direction: column; gap: 6px;
+    padding-bottom: calc(64px + env(safe-area-inset-bottom) + 24px);
+  }
+  .moi-page-scroll::-webkit-scrollbar { width: 0; }
+  .moi-sect { background: var(--surface); padding: 14px 16px 16px; }
+  .moi-hero-label { font-size: 12.5px; font-weight: 600; color: var(--ink-3); }
+  .moi-hero-value { font-size: 34px; font-weight: 700; letter-spacing: -0.035em; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .moi-hero-sub { font-size: 13px; color: var(--ink-2); margin-top: 2px; }
+  .moi-note { padding: 11px 16px; font-size: 12.5px; line-height: 1.45; background: var(--amber-2); color: var(--amber-ink); }
+  .moi-note b { font-weight: 600; }
+  .moi-note-warn { background: var(--warn-2); color: var(--warn-ink); }
+  .moi-h2 { margin: 0 0 4px; font-size: 14px; font-weight: 700; letter-spacing: -0.02em; }
+  .moi-xrow { border-bottom: 1px solid var(--line); }
+  .moi-xrow-btn { width: 100%; display: flex; align-items: center; gap: 11px; padding: 12px 0; border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+  .moi-dot { flex-shrink: 0; width: 10px; height: 10px; border-radius: 3px; }
+  .moi-xrow-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .moi-xrow-label { font-size: 14px; font-weight: 600; }
+  .moi-xrow-sub { font-size: 12px; font-weight: 400; color: var(--ink-3); }
+  .moi-xrow-amt { flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 1px; font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .moi-chev { flex-shrink: 0; color: var(--ink-4); transition: transform 160ms ease; }
+  .moi-chev.open { transform: rotate(180deg); }
+  .moi-chev-space { flex-shrink: 0; width: 16px; }
+  .moi-xrow-detail { margin: -4px 0 12px 21px; padding: 9px 11px; border-radius: 10px; background: var(--surface-2); font-size: 12.5px; line-height: 1.5; color: var(--ink-2); }
+  .moi-total { display: flex; align-items: center; gap: 11px; padding: 14px 27px 6px 0; }
+  .moi-total-label { flex: 1; font-size: 15px; font-weight: 700; }
+  .moi-total .moi-xrow-amt { font-size: 16px; }
+  .moi-foot { margin: 6px 16px 0; font-size: 12px; line-height: 1.5; color: var(--ink-3); }
+
+  .moi-seg { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; margin: 10px 16px 4px; padding: 3px; border-radius: 12px; background: var(--surface-2); }
+  .moi-seg-btn { min-height: 36px; height: 36px; border-radius: 9px; border: 0; background: transparent; color: var(--ink-3); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+  .moi-seg-btn.on { background: var(--surface); color: var(--ink); box-shadow: 0 1px 3px oklch(0.3 0.03 80 / 0.15); }
+  .moi-rank { list-style: none; margin: 0; padding: 0; background: var(--surface); }
+  .moi-rank-row { display: flex; align-items: center; gap: 11px; padding: 11px 16px; border-bottom: 1px solid var(--line); }
+  .moi-rank-no { flex-shrink: 0; width: 18px; font-size: 13px; font-weight: 700; color: var(--ink-3); text-align: center; font-variant-numeric: tabular-nums; }
+  .moi-rank-thumb { width: 44px; height: 54px; box-sizing: border-box; border-radius: 9px; border: 1px solid var(--line); }
+  .moi-rank-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+  .moi-rank-name { font-size: 13.5px; }
+  .moi-rank-val { flex-shrink: 0; font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .moi-rank-track { display: block; height: 5px; border-radius: 3px; overflow: hidden; background: var(--surface-2); }
+  .moi-rank-track > span { display: block; height: 100%; border-radius: 3px; background: var(--accent); }
+
+  .moi-pill { display: inline-flex; margin-top: 10px; padding: 5px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .moi-pill-up { background: var(--accent-2); color: var(--accent-ink); }
+  .moi-pill-down { background: var(--warn-2); color: var(--warn-ink); }
+  .moi-daysel { margin-top: 10px; padding: 9px 12px; border-radius: 12px; background: var(--surface-2); display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font-size: 12.5px; color: var(--ink-3); }
+  .moi-daysel > span:first-child { font-weight: 600; color: var(--ink-2); }
+  .moi-daysel b { color: var(--ink); font-weight: 700; font-variant-numeric: tabular-nums; }
+  .moi-days { display: flex; align-items: stretch; gap: 4px; height: 132px; margin-top: 12px; }
+  .moi-days.dense { gap: 2px; }
+  .moi-day { flex: 1; min-width: 0; min-height: 0; border: 0; padding: 0; background: none; cursor: pointer; display: flex; flex-direction: column; align-items: stretch; justify-content: flex-end; gap: 5px; font: inherit; }
+  .moi-day-bar { display: block; max-height: 108px; border-radius: 4px 4px 2px 2px; background: oklch(0.84 0.05 145); }
+  .moi-day.on .moi-day-bar { background: var(--accent-ink); }
+  .moi-day-no { height: 13px; font-size: 10.5px; color: var(--ink-3); text-align: center; font-variant-numeric: tabular-nums; }
+  .moi-day.on .moi-day-no { color: var(--ink); font-weight: 700; }
+  .moi-list { padding-top: 4px; padding-bottom: 4px; }
+  .moi-list > .moi-h2 { margin-top: 10px; }
+  .moi-kv { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); font-size: 13.5px; color: var(--ink-2); }
+  .moi-kv:last-child { border-bottom: 0; }
+  .moi-kv b { color: var(--ink); font-weight: 700; font-variant-numeric: tabular-nums; }
+  .moi-kv-main { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+  .moi-kv-main > span:first-child { font-weight: 600; color: var(--ink); }
+  .moi-paid-ic { flex-shrink: 0; width: 32px; height: 32px; border-radius: 10px; background: var(--accent-2); color: var(--accent-ink); display: grid; place-items: center; }
+  .moi-paid-detail { margin: -2px 0 12px 42px; padding: 8px 12px; border-radius: 10px; background: var(--surface-2); }
+  .moi-kv-sm { display: flex; justify-content: space-between; gap: 10px; padding: 4px 0; font-size: 12.5px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+  .moi-kv-total { margin-top: 4px; padding-top: 7px; border-top: 1px dashed var(--line-2); font-size: 13px; font-weight: 700; color: var(--ink); }
+
   /* ---------- Mobil Pazaryeri Sipariş Detayı (od-*) ----------
      Liste ekranındaki (mo-*) bir karttan açılan tam ekran detay. Tasarım:
      Claude Design "Mobil Pazaryeri Sipariş Detayı". Sabit koyu başlık + kayan

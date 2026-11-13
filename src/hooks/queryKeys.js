@@ -22,6 +22,8 @@ export const queryKeys = {
     ? ['trendyolOrders', p.startDate ?? null, p.endDate ?? null, p.windowDays ?? null]
     : ['trendyolOrders'],
   trendyolCargoChanges:(ids)  => ['trendyolCargoChanges', ids],
+  // Siparişler ekranının özet şeridi (satış, sana kalan, çok satanlar, ödemeler).
+  trendyolInsights:   (period)=> period !== undefined ? ['trendyolInsights', period] : ['trendyolInsights'],
   debtors:            ()      => ['debtors'],
   auditLogs:          (params)=> ['auditLogs', params],
   auditUsers:         ()      => ['auditUsers'],
