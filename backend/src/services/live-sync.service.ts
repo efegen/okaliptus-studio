@@ -88,6 +88,7 @@ export function signalCapability(method: string, path: string): Capability | nul
       return null;
     case "channels":
     case "mapping":
+    case "site-products":
       return "marketplace.manage";
     case "events":
       // Etkinlik günü (kapı) ekranı asistana kapalı.

@@ -30,6 +30,7 @@ import { usersRouter } from "./routes/users.router.js";
 import { notificationSettingsRouter } from "./routes/notification-settings.router.js";
 import { eventsRouter, listStudentEventBalancesHandler } from "./routes/events.router.js";
 import { notesRouter } from "./routes/notes.router.js";
+import { siteFeedHandler, siteFeedLimiter, siteProductsRouter } from "./routes/site.router.js";
 import { requireAuth } from "./middleware/requireAuth.js";
 import { publishWrites } from "./middleware/publishWrites.js";
 import { liveStreamHandler } from "./routes/live.router.js";
@@ -97,6 +98,10 @@ export function createApp() {
   // Yazma (POST/DELETE /products/:id/image) authed router'da kalır.
   app.get("/products/:id/image", serveProductImageHandler);
 
+  // Web sitesi mağazasının ürün listesi (salt-okuma). Oturum yerine sitenin
+  // ayrı okuma anahtarını ister; anahtar tanımlı değilse 404. Bkz. site.router.ts.
+  app.get("/site/products", siteFeedLimiter, siteFeedHandler);
+
   // ── Auth gate ─────────────────────────────────────────────────────────────
   app.use(requireAuth);
 
@@ -128,6 +133,8 @@ export function createApp() {
   app.use("/channels", requireCan("marketplace.manage"), channelsRouter);
   app.use("/trendyol", requireCan("marketplace.manage"), trendyolRouter);
   app.use("/mapping", requireCan("marketplace.manage"), mappingRouter);
+  // Web sitesi mağazası ayarları (hangi ürün sitede, hangi köşede).
+  app.use("/site-products", requireCan("marketplace.manage"), siteProductsRouter);
 
   // KPI — karışık: /weekly + /occupancy-flow rol-bazlı alan soyar,
   // /finance-flow router içinde requireCan ile sert bloklu (asistan finansal görmez).
