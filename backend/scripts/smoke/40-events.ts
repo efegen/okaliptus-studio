@@ -59,7 +59,7 @@ import {
   assertMoney,
   assertRejects,
   ok,
-  fail,
+  abort,
   closePool,
   cleanupSmoke,
   seedAdminUser,
@@ -886,8 +886,7 @@ async function run(): Promise<void> {
       assertEqual(feePatch.status, 400, "L: HTTP tutar güncellemesi ödeme kilidini uygular");
       try {
         if (!token) {
-          fail("L: login başarısız");
-          process.exit(1);
+          abort("L: login başarısız");
         }
         const res = await fetch(`${base}/events/${event.id}`, {
           headers: { Cookie: `session=${token}` },

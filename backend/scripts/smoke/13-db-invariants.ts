@@ -200,7 +200,12 @@ async function run(): Promise<void> {
       mode: "onsite",
     });
 
-    // BEGIN ... ROLLBACK ile sarmala — başarısızlık session'ı bozmasın
+    // BEGIN ... ROLLBACK ile sarmala — başarısızlık session'ı bozmasın.
+    // ROLLBACK finally'de: assertion fırlatırsa bağlantı havuza bozuk
+    // (aborted) transaction'la dönüp cleanupSmoke'u düşürmesin.
+    // Mesaj PG sürümüne göre "violates foreign key constraint" ya da
+    // "violates RESTRICT setting of foreign key constraint"; ikisinde de
+    // aşağıdaki parça geçer.
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
@@ -210,11 +215,11 @@ async function run(): Promise<void> {
             `DELETE FROM students WHERE id = $1`,
             [studentF.id],
           ),
-        "violates foreign key",
+        `foreign key constraint "lessons_student_id_fkey"`,
         "F: student raw DELETE → FK RESTRICT ihlali",
       );
-      await client.query("ROLLBACK");
     } finally {
+      await client.query("ROLLBACK").catch(() => undefined);
       client.release();
     }
 

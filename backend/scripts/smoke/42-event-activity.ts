@@ -46,7 +46,7 @@ import {
   assertRejects,
   getActorUserId,
   ok,
-  fail,
+  abort,
   closePool,
   cleanupSmoke,
   seedAdminUser,
@@ -57,8 +57,7 @@ type Activity = Awaited<ReturnType<typeof listEventActivity>>[number];
 function findActivity(rows: Activity[], action: string, entityId?: string): Activity {
   const found = rows.find((row) => row.action === action && (!entityId || row.entity_id === entityId));
   if (!found) {
-    fail(`Hareket bulunamadı: ${action}${entityId ? ` (entity ${entityId})` : ""}`);
-    process.exit(1);
+    abort(`Hareket bulunamadı: ${action}${entityId ? ` (entity ${entityId})` : ""}`);
   }
   return found;
 }
@@ -117,8 +116,7 @@ async function run(): Promise<void> {
 
     const actorUserId = await getActorUserId();
     if (actorUserId === null) {
-      fail("Aktif kullanıcı yok — önce `npm run db:bootstrap` çalıştırın.");
-      process.exit(1);
+      abort("Aktif kullanıcı yok — önce `npm run db:bootstrap` çalıştırın.");
     }
 
     // ── A. Kurulum ────────────────────────────────────────────────────────────
@@ -336,8 +334,7 @@ async function run(): Promise<void> {
       const token = await login(admin.username, admin.password);
       try {
         if (!token) {
-          fail("I: login başarısız");
-          process.exit(1);
+          abort("I: login başarısız");
         }
         const res = await fetch(`${base}/events/${event.id}/activity`, {
           headers: { Cookie: `session=${token}` },

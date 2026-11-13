@@ -15,7 +15,7 @@ import { createApp } from "../../src/server/app.js";
 import { login, logout } from "../../src/services/auth.service.js";
 import { createUser } from "../../src/services/users.service.js";
 import { pool } from "../../src/db/connection.js";
-import { section, assert, assertEqual, ok, fail, closePool, seedAdminUser } from "./_shared.js";
+import { section, assert, assertEqual, ok, abort, closePool, seedAdminUser } from "./_shared.js";
 
 async function run(): Promise<void> {
   const admin = seedAdminUser();
@@ -48,7 +48,7 @@ async function run(): Promise<void> {
     section("SMOKE 46 — Görüntülenme");
     const ownerRow = await pool.query<{ id: string }>(`SELECT id FROM users WHERE username = $1`, [admin.username]);
     const ownerId = ownerRow.rows[0]?.id;
-    if (!ownerId) { fail("owner satırı yok"); process.exit(1); }
+    if (!ownerId) { abort("owner satırı yok"); }
 
     const ceren = await createUser(
       { username: "smoke46_ceren", displayName: "Ceren S46", password: "Smoke46Pass1", role: "assistant" }, ownerId);
@@ -59,7 +59,7 @@ async function run(): Promise<void> {
     const tokenOwner = await login(admin.username, admin.password);
     const tokenCeren = await login("smoke46_ceren", "Smoke46Pass1");
     const tokenDeniz = await login("smoke46_deniz", "Smoke46Pass1");
-    if (!tokenOwner || !tokenCeren || !tokenDeniz) { fail("login başarısız"); process.exit(1); }
+    if (!tokenOwner || !tokenCeren || !tokenDeniz) { abort("login başarısız"); }
     tokens.push(tokenOwner, tokenCeren, tokenDeniz);
 
     const root = await req("POST", "/notes", tokenOwner, { body: "S46 kök not" });

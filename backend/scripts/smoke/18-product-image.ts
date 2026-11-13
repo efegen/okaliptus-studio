@@ -7,6 +7,7 @@
  *   3. getProductImage → bytes/mime/byteSize doğru döner.
  *   4. Tekrar setProductImage (değiştir) → versiyon (?v=) ilerler.
  *   5. Geçersiz mime → VALIDATION_ERROR.
+ *   5b. İçerik imzası bildirilen türle uyuşmuyor → VALIDATION_ERROR.
  *   6. Boş bytes → VALIDATION_ERROR.
  *   7. deleteProductImage → bytes gider (getProductImage null), image_url temizlenir.
  *   8. Harici (TY CDN) URL'li üründe deleteProductImage URL'i SİLMEZ.
@@ -31,6 +32,16 @@ import {
 
 const BASE = "http://localhost:4000";
 
+// setProductImage içeriği imzasından (magic bytes) doğrular; sahte bayt
+// "Görsel içeriği belirtilen türle uyuşmuyor" ile reddedilir. Bunlar gerçek,
+// çözülebilir 1×1 görseller (WebP lossless 38 B, gri tonlu JPEG 159 B).
+const WEBP_1X1 = Buffer.from("UklGRh4AAABXRUJQVlA4TBEAAAAvAAAAAAdQ0OJVq/+BiOh/AAA=", "base64");
+const JPEG_1X1 = Buffer.from(
+  "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDABALDA4MChAODQ4SERATGCgaGBYWGDEjJR0oOjM9PDkzODdASFxOQERXRTc4UG1RV19iZ2hnPk1xeXBkeFxlZ2P/" +
+    "wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAAA//EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AZ//Z",
+  "base64",
+);
+
 async function run(): Promise<void> {
   const productIds: string[] = [];
 
@@ -52,7 +63,7 @@ async function run(): Promise<void> {
 
     // ── 2. Görsel yükle ──────────────────────────────────────────────────────
     step("setProductImage (image/webp)...");
-    const bytes = Buffer.from("SMOKE18-fake-webp-bytes-0123456789", "utf8");
+    const bytes = WEBP_1X1;
     const withImg = await setProductImage(product.id, "image/webp", bytes, BASE, actorUserId);
     info("image_url", withImg.image_url);
     assert(
@@ -79,7 +90,7 @@ async function run(): Promise<void> {
     step("Görsel değiştiriliyor, ?v= ilerlemeli...");
     const v1 = new URL(withImg.image_url as string).searchParams.get("v");
     await new Promise(r => setTimeout(r, 5)); // updated_at farkı için minik bekleme
-    const bytes2 = Buffer.from("SMOKE18-second-image-payload", "utf8");
+    const bytes2 = JPEG_1X1;
     const withImg2 = await setProductImage(product.id, "image/jpeg", bytes2, BASE, actorUserId);
     const v2 = new URL(withImg2.image_url as string).searchParams.get("v");
     assert(!!v1 && !!v2 && v1 !== v2, `versiyon ilerledi (${v1} → ${v2})`);
@@ -92,6 +103,14 @@ async function run(): Promise<void> {
       () => setProductImage(product.id, "image/gif", bytes, BASE, actorUserId),
       "VALIDATION_ERROR",
       "image/gif kabul edilmemeli",
+    );
+
+    // ── 5b. İçerik/tür uyuşmazlığı ───────────────────────────────────────────
+    step("Bildirilen türle uyuşmayan içerik reddedilmeli...");
+    await assertRejects(
+      () => setProductImage(product.id, "image/webp", JPEG_1X1, BASE, actorUserId),
+      "VALIDATION_ERROR",
+      "image/webp diye gönderilen JPEG kabul edilmemeli",
     );
 
     // ── 6. Boş bytes ─────────────────────────────────────────────────────────

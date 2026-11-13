@@ -49,7 +49,7 @@ import {
   assert,
   assertEqual,
   ok,
-  fail,
+  abort,
   closePool,
   cleanupSmoke,
   getActorUserId,
@@ -67,8 +67,7 @@ async function run(): Promise<void> {
       `SELECT id FROM instructors WHERE is_active AND deleted_at IS NULL ORDER BY id ASC LIMIT 1`,
     );
     if (!instructorRow.rows[0]) {
-      fail("Setup: aktif eğitmen bulunamadı");
-      process.exit(1);
+      abort("Setup: aktif eğitmen bulunamadı");
     }
     const instructorId = instructorRow.rows[0].id;
 
@@ -76,8 +75,7 @@ async function run(): Promise<void> {
       `SELECT id FROM lesson_types WHERE is_active AND deleted_at IS NULL ORDER BY id ASC LIMIT 1`,
     );
     if (!lessonTypeRow.rows[0]) {
-      fail("Setup: aktif ders tipi bulunamadı");
-      process.exit(1);
+      abort("Setup: aktif ders tipi bulunamadı");
     }
     const lessonTypeId = lessonTypeRow.rows[0].id;
 

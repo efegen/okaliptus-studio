@@ -37,7 +37,7 @@ import {
   assert,
   assertEqual,
   ok,
-  fail,
+  abort,
   closePool,
   seedAdminUser,
 } from "./_shared.js";
@@ -88,8 +88,7 @@ async function run(): Promise<void> {
       [admin.username],
     );
     if (!seedRow.rows[0]) {
-      fail("Setup: seed admin satırı bulunamadı");
-      process.exit(1);
+      abort("Setup: seed admin satırı bulunamadı");
     }
     originalRole = seedRow.rows[0].role;
     ownerId = seedRow.rows[0].id;
@@ -128,8 +127,7 @@ async function run(): Promise<void> {
 
     const tokenOwner = await login(admin.username, admin.password);
     if (!tokenOwner) {
-      fail("B: owner login başarısız");
-      process.exit(1);
+      abort("B: owner login başarısız");
     }
     tokensToCleanup.push(tokenOwner);
     const ownerUser = await validateSession(tokenOwner);
@@ -173,13 +171,13 @@ async function run(): Promise<void> {
 
     // Login ile AuthUser.role doğrulaması + sonraki testler için token'lar
     const tokenAdmin = await login(adminUsername, adminPasswordOld);
-    if (!tokenAdmin) { fail("C: smoke36_admin login başarısız"); process.exit(1); }
+    if (!tokenAdmin) { abort("C: smoke36_admin login başarısız"); }
     tokensToCleanup.push(tokenAdmin);
     const adminAuthUser = await validateSession(tokenAdmin);
     assertEqual(adminAuthUser?.role, "admin", "C: smoke36_admin AuthUser.role = admin");
 
     const tokenAssistant = await login(assistantUsername, assistantPassword);
-    if (!tokenAssistant) { fail("C: smoke36_assistant login başarısız"); process.exit(1); }
+    if (!tokenAssistant) { abort("C: smoke36_assistant login başarısız"); }
     tokensToCleanup.push(tokenAssistant);
     const assistantAuthUser = await validateSession(tokenAssistant);
     assertEqual(assistantAuthUser?.role, "assistant", "C: smoke36_assistant AuthUser.role = assistant");

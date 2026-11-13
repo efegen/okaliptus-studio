@@ -42,7 +42,7 @@ import {
   assertEqual,
   assertRejects,
   ok,
-  fail,
+  abort,
   closePool,
   cleanupSmoke,
   seedAdminUser,
@@ -394,8 +394,7 @@ async function run(): Promise<void> {
       const token = await login(admin.username, admin.password);
       try {
         if (!token) {
-          fail("G: login başarısız");
-          process.exit(1);
+          abort("G: login başarısız");
         }
 
         const malformedReminderBody = "SMOKE41 HTTP hatalı hatırlatıcı.";

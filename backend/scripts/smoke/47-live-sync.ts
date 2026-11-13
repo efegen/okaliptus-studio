@@ -26,7 +26,7 @@ import {
   recheckSessions,
 } from "../../src/services/live-sync.service.js";
 import { pool } from "../../src/db/connection.js";
-import { section, assert, assertEqual, ok, fail, closePool, cleanupSmoke, seedAdminUser } from "./_shared.js";
+import { section, assert, assertEqual, ok, fail, abort, closePool, cleanupSmoke, seedAdminUser } from "./_shared.js";
 
 type SseEvent = { event: string; id: string | null; data: any };
 
@@ -147,7 +147,7 @@ async function run(): Promise<void> {
     section("SMOKE 47 — Canlı senkron akışı");
     const ownerRow = await pool.query<{ id: string }>(`SELECT id FROM users WHERE username = $1`, [admin.username]);
     const ownerId = ownerRow.rows[0]?.id;
-    if (!ownerId) { fail("owner satırı yok"); process.exit(1); }
+    if (!ownerId) { abort("owner satırı yok"); }
 
     const asst = await createUser(
       { username: "smoke47_assistant", displayName: "S47 Assistant", password: "Smoke47Assist1", role: "assistant" },
@@ -156,7 +156,7 @@ async function run(): Promise<void> {
     createdUserIds.push(asst.id);
     const tokenOwner = await login(admin.username, admin.password);
     const tokenAsst = await login("smoke47_assistant", "Smoke47Assist1");
-    if (!tokenOwner || !tokenAsst) { fail("login başarısız"); process.exit(1); }
+    if (!tokenOwner || !tokenAsst) { abort("login başarısız"); }
     tokens.push(tokenOwner, tokenAsst);
 
     section("A — girişsiz bağlantı reddedilir, girişli akış açılır");
@@ -266,14 +266,14 @@ async function run(): Promise<void> {
 
     section("H — çıkış ve düşen oturum akışı kapatır");
     const tokenAsst2 = await login("smoke47_assistant", "Smoke47Assist1");
-    if (!tokenAsst2) { fail("H: login başarısız"); process.exit(1); }
+    if (!tokenAsst2) { abort("H: login başarısız"); }
     const toLogout = await openSse(tokenAsst2);
     streams.push(toLogout);
     await toLogout.waitFor((e) => e.event === "hello");
     await logout(tokenAsst2);
     assert(await toLogout.waitEnded(), "H: logout → akış hemen kapandı");
     const tokenAsst3 = await login("smoke47_assistant", "Smoke47Assist1");
-    if (!tokenAsst3) { fail("H: login başarısız"); process.exit(1); }
+    if (!tokenAsst3) { abort("H: login başarısız"); }
     tokens.push(tokenAsst3);
     const toRevoke = await openSse(tokenAsst3);
     streams.push(toRevoke);

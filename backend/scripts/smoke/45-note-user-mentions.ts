@@ -17,7 +17,7 @@ import { login, logout } from "../../src/services/auth.service.js";
 import { createUser, updateUser } from "../../src/services/users.service.js";
 import { renderNoteBodyPlain } from "../../src/services/note-text.js";
 import { pool } from "../../src/db/connection.js";
-import { section, assert, assertEqual, ok, fail, closePool, seedAdminUser } from "./_shared.js";
+import { section, assert, assertEqual, ok, abort, closePool, seedAdminUser } from "./_shared.js";
 
 async function run(): Promise<void> {
   const admin = seedAdminUser();
@@ -50,14 +50,14 @@ async function run(): Promise<void> {
     section("SMOKE 45 — Kullanıcı etiketi");
     const ownerRow = await pool.query<{ id: string }>(`SELECT id FROM users WHERE username = $1`, [admin.username]);
     const ownerId = ownerRow.rows[0]?.id;
-    if (!ownerId) { fail("owner satırı yok"); process.exit(1); }
+    if (!ownerId) { abort("owner satırı yok"); }
 
     const ceren = await createUser(
       { username: "smoke45_ceren", displayName: "Ceren S45", password: "Smoke45Pass1", role: "assistant" }, ownerId);
     createdUserIds.push(ceren.id);
 
     const tokenOwner = await login(admin.username, admin.password);
-    if (!tokenOwner) { fail("owner login başarısız"); process.exit(1); }
+    if (!tokenOwner) { abort("owner login başarısız"); }
     tokens.push(tokenOwner);
 
     section("A — etiketli not: user_mentions döner, gövde belirteç taşır");

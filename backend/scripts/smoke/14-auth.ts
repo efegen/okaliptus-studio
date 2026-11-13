@@ -33,6 +33,7 @@ import {
   assertEqual,
   ok,
   fail,
+  abort,
   closePool,
   seedAdminUser,
   withinLastSeconds,
@@ -60,8 +61,7 @@ async function run(): Promise<void> {
 
     const tokenA = await login(admin.username, admin.password);
     if (!tokenA) {
-      fail("A: bootstrap admin ile login başarısız — şifre uyumsuz olabilir");
-      process.exit(1);
+      abort("A: bootstrap admin ile login başarısız — şifre uyumsuz olabilir");
     }
     tokensToCleanup.push(tokenA);
     info("token length", tokenA.length);
@@ -235,30 +235,28 @@ async function run(): Promise<void> {
     // ─────────────────────────────────────────────────────────────────────────
     section("K — Auth audit logging: login/logout audit_logs'a yazılıyor");
 
-    const authCountSql =
-      `SELECT COUNT(*)::text AS c FROM audit_logs WHERE action IN ('user_login', 'user_logout')`;
-    const beforeK = await pool.query<{ c: string }>(authCountSql);
+    // Yalnız bu bölümün yazdığı satırlar sayılır: silinmiş kullanıcıların eski
+    // login satırlarında actor_user_id NULL olur (ON DELETE SET NULL).
+    const auditMaxId = await pool.query<{ max_id: string }>(
+      `SELECT COALESCE(MAX(id), 0)::text AS max_id FROM audit_logs`,
+    );
+    const sinceId = auditMaxId.rows[0].max_id;
 
     const tokenK = await login(admin.username, admin.password, "203.0.113.42");
-    if (!tokenK) {
-      fail("K: login başarısız — audit testi atlandı");
-    } else {
-      await logout(tokenK, "203.0.113.42");
-      const afterK = await pool.query<{ c: string }>(authCountSql);
-      assertEqual(
-        Number(afterK.rows[0].c) - Number(beforeK.rows[0].c),
-        2,
-        "K: bir login + bir logout = 2 yeni auth audit kaydı",
-      );
+    if (!tokenK) abort("K: login başarısız — audit testi yapılamadı");
+    await logout(tokenK, "203.0.113.42");
 
-      // Şekil: auth audit kayıtları entity_type='user' ve actor_user_id dolu olmalı
-      const shapeK = await pool.query<{ c: string }>(
-        `SELECT COUNT(*)::text AS c FROM audit_logs
-          WHERE action IN ('user_login', 'user_logout')
-            AND (entity_type <> 'user' OR actor_user_id IS NULL)`,
-      );
-      assertEqual(shapeK.rows[0].c, "0", "K: auth audit entity_type='user' ve actor_user_id dolu");
-    }
+    const newAuthK = await pool.query<{ c: string; bad_shape: string }>(
+      `SELECT COUNT(*)::text AS c,
+              COUNT(*) FILTER (WHERE entity_type <> 'user' OR actor_user_id IS NULL)::text AS bad_shape
+         FROM audit_logs
+        WHERE id > $1 AND action IN ('user_login', 'user_logout')`,
+      [sinceId],
+    );
+    assertEqual(Number(newAuthK.rows[0].c), 2, "K: bir login + bir logout = 2 yeni auth audit kaydı");
+
+    // Şekil: auth audit kayıtları entity_type='user' ve actor_user_id dolu olmalı
+    assertEqual(newAuthK.rows[0].bad_shape, "0", "K: auth audit entity_type='user' ve actor_user_id dolu");
 
     ok("\nSMOKE 14 — AUTH TÜM ADIMLAR BAŞARILI ✓");
   } finally {

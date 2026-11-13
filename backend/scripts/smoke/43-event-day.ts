@@ -13,7 +13,8 @@
  *   - özet: kasa ve kahvaltı sayıları, restorana ödenecek tutar,
  *   - arama: Türkçe karakter duyarsız isim, son 4 hane, numaranın başı,
  *   - öğrenci kalıcı silinince satırın adıyla kalması,
- *   - HTTP uçlarının asistan rolüne açık olması,
+ *   - HTTP uçlarının yönetici rollerine açık, asistana kapalı (403) olması
+ *     (`events.day.read`, ekran finansal toplam gösterir),
  *   - kahvaltı fişi onayı (migration 0285): "restorana kendi öder" kayıt
  *     anında değil, fiş gösterilince onaylanır; yalnız bu kahvaltı türünde
  *     geçerlidir, tür değişince kendiliğinden düşer,
@@ -30,6 +31,7 @@ import type { AddressInfo } from "node:net";
 
 import { createApp } from "../../src/server/app.js";
 import { login, logout } from "../../src/services/auth.service.js";
+import { createUser } from "../../src/services/users.service.js";
 import { createStudent, hardDeleteStudent } from "../../src/services/students.service.js";
 import { addExistingParticipant, createEvent } from "../../src/services/events.service.js";
 import {
@@ -50,7 +52,7 @@ import {
   assertSqlRejects,
   getActorUserId,
   ok,
-  fail,
+  abort,
   closePool,
   cleanupSmoke,
   seedAdminUser,
@@ -102,8 +104,7 @@ async function run(): Promise<void> {
 
     const actorUserId = await getActorUserId();
     if (actorUserId === null) {
-      fail("Aktif kullanıcı yok — önce `npm run db:bootstrap` çalıştırın.");
-      process.exit(1);
+      abort("Aktif kullanıcı yok — önce `npm run db:bootstrap` çalıştırın.");
     }
 
     // ── A. Kurulum ────────────────────────────────────────────────────────────
@@ -378,8 +379,11 @@ async function run(): Promise<void> {
     assertEqual(orphan!.student_id, null, "J: öğrenci bağı koptu");
     assertEqual(orphan!.full_name, "SMOKE43 Silinecek", "J: satır ad kopyasıyla görünüyor");
 
-    // ── K. HTTP + asistan ─────────────────────────────────────────────────────
-    section("K — HTTP uçları asistan rolüne açık");
+    // ── K. HTTP: yönetici rolleri açık, asistan 403 ──────────────────────────
+    // Kapı ekranı finansal toplam gösterdiği için `events.day.read` asistanı
+    // dışlar (permissions.ts). Seed kullanıcının rolüne dokunulmaz; asistan
+    // için geçici bir kullanıcı açılıp finally'de silinir.
+    section("K — HTTP uçları: yönetici rolü açık, asistan 403");
     const admin = seedAdminUser();
     if (!admin) {
       ok("K: BOOTSTRAP_ADMINS yok, HTTP kontrolü atlandı (servis katmanı doğrulandı)");
@@ -387,48 +391,67 @@ async function run(): Promise<void> {
       const server: Server = createServer(createApp());
       await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
       const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-      const token = await login(admin.username, admin.password);
-      const previousRole = await pool.query<{ role: string }>(
-        `SELECT role FROM users WHERE username = $1`,
-        [admin.username],
-      );
+      const tokens: string[] = [];
+      const tempUserIds: string[] = [];
       try {
-        if (!token) {
-          fail("K: login başarısız");
-          process.exit(1);
-        }
-        await pool.query(`UPDATE users SET role = 'assistant' WHERE username = $1`, [admin.username]);
-        const headers = { Cookie: `session=${token}`, "Content-Type": "application/json" };
+        const seedRow = await pool.query<{ id: string; role: string }>(
+          `SELECT id, role FROM users WHERE username = $1`,
+          [admin.username],
+        );
+        if (!seedRow.rows[0]) abort("K: seed kullanıcı satırı yok");
+        const seedRole = seedRow.rows[0].role;
+        assert(
+          seedRole !== "assistant",
+          `K: seed kullanıcı yönetici rolünde (${seedRole}) — 'assistant' ise önceki bir smoke rolü geri yüklememiş`,
+        );
 
-        const dayRes = await fetch(`${base}/events/${event.id}/day`, { headers });
-        assertEqual(dayRes.status, 200, "K: asistan etkinlik günü ekranını açar");
+        const adminToken = await login(admin.username, admin.password);
+        if (!adminToken) abort("K: seed kullanıcı login başarısız");
+        tokens.push(adminToken);
+
+        const assistantUser = await createUser(
+          { username: "smoke43_assistant", displayName: "Smoke43 Asistan", password: "Smoke43Assist1", role: "assistant" },
+          seedRow.rows[0].id,
+        );
+        tempUserIds.push(assistantUser.id);
+        const assistantToken = await login("smoke43_assistant", "Smoke43Assist1");
+        if (!assistantToken) abort("K: asistan login başarısız");
+        tokens.push(assistantToken);
+
+        const headersFor = (token: string) => ({ Cookie: `session=${token}`, "Content-Type": "application/json" });
+        const adminHeaders = headersFor(adminToken);
+        const assistantHeaders = headersFor(assistantToken);
+
+        // Yönetici rolü: ekranın tamamı çalışır.
+        const dayRes = await fetch(`${base}/events/${event.id}/day`, { headers: adminHeaders });
+        assertEqual(dayRes.status, 200, `K: ${seedRole} etkinlik günü ekranını açar`);
         const dayBody = await dayRes.json();
-        assert(typeof dayBody.data?.summary?.total === "string", "K: asistan toplamları da görür");
+        assert(typeof dayBody.data?.summary?.total === "string", `K: ${seedRole} toplamları görür`);
 
         const createRes = await fetch(`${base}/events/${event.id}/day/entries`, {
           method: "POST",
-          headers,
+          headers: adminHeaders,
           body: JSON.stringify({
-            fullName: "SMOKE43 Asistan",
+            fullName: "SMOKE43 Kapı HTTP",
             phone: "05321234567",
             amount: "1700",
             paymentMethod: "cash",
             breakfast: "paid_to_us",
           }),
         });
-        assertEqual(createRes.status, 201, "K: asistan kayıt ekler");
+        assertEqual(createRes.status, 201, `K: ${seedRole} kayıt ekler`);
         const created = (await createRes.json()).data as { id: string };
 
         const patchRes = await fetch(`${base}/events/day-entries/${created.id}`, {
           method: "PATCH",
-          headers,
+          headers: adminHeaders,
           body: JSON.stringify({ checked: true }),
         });
-        assertEqual(patchRes.status, 200, "K: asistan tik atar");
+        assertEqual(patchRes.status, 200, `K: ${seedRole} tik atar`);
 
         const searchRes = await fetch(
-          `${base}/events/${event.id}/day/search?q=${encodeURIComponent("asistan")}`,
-          { headers },
+          `${base}/events/${event.id}/day/search?q=${encodeURIComponent("kapı http")}`,
+          { headers: adminHeaders },
         );
         const searchBody = await searchRes.json();
         assert(
@@ -438,22 +461,54 @@ async function run(): Promise<void> {
 
         const badRes = await fetch(`${base}/events/${event.id}/day/entries`, {
           method: "POST",
-          headers,
+          headers: adminHeaders,
           body: JSON.stringify({ fullName: "SMOKE43 Hatalı", amount: "600", paymentMethod: "cash", breakfast: "paid_to_us" }),
         });
         assertEqual(badRes.status, 400, "K: kural ihlali 400 döner");
         assert(JSON.stringify(await badRes.json()).includes("Kahvaltı"), "K: hata mesajı Türkçe ve açıklayıcı");
 
-        const deleteRes = await fetch(`${base}/events/day-entries/${created.id}`, { method: "DELETE", headers });
-        assertEqual(deleteRes.status, 200, "K: asistan kayıt siler");
-        const restoreRes = await fetch(`${base}/events/day-entries/${created.id}/restore`, { method: "POST", headers });
-        assertEqual(restoreRes.status, 200, "K: asistan silineni geri alır");
+        // Asistan: kapı ekranının hiçbir ucu açık değil (ön kayıt uçları ayrı, bkz. smoke 38).
+        const assistantCalls: Array<[string, string, unknown?]> = [
+          ["GET", `/events/${event.id}/day`],
+          ["GET", `/events/${event.id}/day/search?q=${encodeURIComponent("kapı")}`],
+          ["POST", `/events/${event.id}/day/entries`, { fullName: "SMOKE43 Asistan", amount: "0", breakfast: "none" }],
+          ["PATCH", `/events/day-entries/${created.id}`, { checked: false }],
+          ["DELETE", `/events/day-entries/${created.id}`],
+          ["POST", `/events/day-entries/${created.id}/restore`],
+        ];
+        for (const [method, path, body] of assistantCalls) {
+          const res = await fetch(`${base}${path}`, {
+            method,
+            headers: assistantHeaders,
+            body: body === undefined ? undefined : JSON.stringify(body),
+          });
+          assertEqual(res.status, 403, `K: asistan ${method} ${path.replace(/\?.*$/, "")}`);
+        }
+        const afterAssistant = (await getEventDay(event.id)).entries.find((entry) => entry.id === created.id);
+        assert(Boolean(afterAssistant), "K: asistanın silme denemesi kaydı silmedi");
+        assert(afterAssistant!.checked_at !== null, "K: asistanın tik kaldırma denemesi uygulanmadı");
+        assert(
+          !(await getEventDay(event.id)).entries.some((entry) => entry.full_name === "SMOKE43 Asistan"),
+          "K: asistanın ekleme denemesi kayıt oluşturmadı",
+        );
+
+        const deleteRes = await fetch(`${base}/events/day-entries/${created.id}`, { method: "DELETE", headers: adminHeaders });
+        assertEqual(deleteRes.status, 200, `K: ${seedRole} kayıt siler`);
+        const restoreRes = await fetch(`${base}/events/day-entries/${created.id}/restore`, { method: "POST", headers: adminHeaders });
+        assertEqual(restoreRes.status, 200, `K: ${seedRole} silineni geri alır`);
       } finally {
-        await pool.query(`UPDATE users SET role = $2 WHERE username = $1`, [
-          admin.username,
-          previousRole.rows[0].role,
-        ]);
-        if (token) await logout(token).catch(() => undefined);
+        for (const token of tokens) await logout(token).catch(() => undefined);
+        if (tempUserIds.length > 0) {
+          // Önce geçici kullanıcının audit satırları (ON DELETE SET NULL; yoksa
+          // smoke 14'ün "auth audit actor dolu" kontrolü bozulur), sonra kullanıcı.
+          await pool.query(
+            `DELETE FROM audit_logs WHERE entity_type = 'user' AND entity_id = ANY($1::bigint[])`,
+            [tempUserIds],
+          ).catch(() => undefined);
+          await pool.query(`DELETE FROM audit_logs WHERE actor_user_id = ANY($1::bigint[])`, [tempUserIds]).catch(() => undefined);
+          await pool.query(`DELETE FROM sessions WHERE user_id = ANY($1::bigint[])`, [tempUserIds]).catch(() => undefined);
+          await pool.query(`DELETE FROM users WHERE id = ANY($1::bigint[])`, [tempUserIds]).catch(() => undefined);
+        }
         await new Promise<void>((resolve) => server.close(() => resolve()));
       }
     }

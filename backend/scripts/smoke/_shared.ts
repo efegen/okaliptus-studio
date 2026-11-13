@@ -7,6 +7,14 @@
  *   trg_block_package_payment_delete trigger can see the package soft-delete and allow the
  *   payment soft-delete in the same transaction.
  *
+ * FAILURES:
+ *   Assertion helpers (and abort()) THROW a SmokeAssertionError instead of calling
+ *   process.exit(1). The error unwinds through the script's try/finally, so cleanup
+ *   (soft-deleting test lessons, restoring user roles and settings) still runs and
+ *   the next smoke starts from a clean DB. Every script ends with
+ *   `run().catch(err => { ...; process.exit(1); })`, which turns the failure into a
+ *   non-zero exit code for run-all. Never call process.exit() inside run().
+ *
  * HOW TO RUN SCRIPTS:
  *   cd backend
  *   npx tsx scripts/smoke/01-student-lesson-basic.ts
@@ -46,14 +54,41 @@ export function info(label: string, value: unknown): void {
   console.log(`    ${B}${label}${X}: ${String(value)}`);
 }
 
+// ─── Failure signalling ───────────────────────────────────────────────────────
+
+/**
+ * Thrown by every assertion helper. The message has already been printed in red
+ * by fail(); the stack is trimmed to the line in the smoke script that failed so
+ * the final `run().catch` print points straight at it.
+ */
+export class SmokeAssertionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SmokeAssertionError";
+    const caller = (this.stack ?? "")
+      .split("\n")
+      .slice(1)
+      .find(line => !line.includes("_shared.") && !line.includes("node:") && !line.includes("node_modules"));
+    if (caller) this.stack = `${this.name}: ${message}\n${caller}`;
+  }
+}
+
+/**
+ * Prints the failure and throws, so the script's finally blocks still run.
+ * Use instead of `fail(msg)` followed by `process.exit(1)` inside run().
+ */
+export function abort(message: string): never {
+  fail(message);
+  throw new SmokeAssertionError(message);
+}
+
 // ─── Assertion helpers ────────────────────────────────────────────────────────
 
 export function assert(condition: boolean, description: string): void {
   if (condition) {
     ok(description);
   } else {
-    fail(`ASSERTION FAILED: ${description}`);
-    process.exit(1);
+    abort(`ASSERTION FAILED: ${description}`);
   }
 }
 
@@ -68,7 +103,7 @@ export function assertEqual<T>(
     fail(`ASSERTION FAILED: ${description}`);
     info("expected", String(expected));
     info("  actual", String(actual));
-    process.exit(1);
+    throw new SmokeAssertionError(`ASSERTION FAILED: ${description}`);
   }
 }
 
@@ -86,7 +121,7 @@ export function assertMoney(
     fail(`ASSERTION FAILED: ${description}`);
     info("expected", `${expected} TRY`);
     info("  actual", `${actual} TRY`);
-    process.exit(1);
+    throw new SmokeAssertionError(`ASSERTION FAILED: ${description}`);
   }
 }
 
@@ -96,21 +131,26 @@ export async function assertRejects(
   expectedCode: string,
   description: string,
 ): Promise<void> {
+  let rejected = false;
+  let err: unknown;
   try {
     await fn();
-    fail(`EXPECTED REJECTION (${expectedCode}) but call succeeded: ${description}`);
-    process.exit(1);
-  } catch (err: unknown) {
-    const code = (err as { code?: string }).code;
-    if (code === expectedCode) {
-      ok(`Correctly rejected [${expectedCode}]: ${description}`);
-    } else {
-      fail(`Wrong error for: ${description}`);
-      info("expected code", expectedCode);
-      info("  actual code", code ?? "(none)");
-      info("      message", (err as Error).message ?? "");
-      process.exit(1);
-    }
+  } catch (caught: unknown) {
+    rejected = true;
+    err = caught;
+  }
+  if (!rejected) {
+    abort(`EXPECTED REJECTION (${expectedCode}) but call succeeded: ${description}`);
+  }
+  const code = (err as { code?: string } | undefined)?.code;
+  if (code === expectedCode) {
+    ok(`Correctly rejected [${expectedCode}]: ${description}`);
+  } else {
+    fail(`Wrong error for: ${description}`);
+    info("expected code", expectedCode);
+    info("  actual code", code ?? "(none)");
+    info("      message", (err as Error | undefined)?.message ?? String(err));
+    throw new SmokeAssertionError(`Wrong error for: ${description}`);
   }
 }
 
@@ -311,8 +351,7 @@ export async function assertAuditLog(opts: AuditAssertion): Promise<void> {
   );
 
   if (rows.rows.length === 0) {
-    fail(`AUDIT MISSING: ${opts.action} on ${opts.entityType}#${opts.entityId}`);
-    process.exit(1);
+    abort(`AUDIT MISSING: ${opts.action} on ${opts.entityType}#${opts.entityId}`);
   }
 
   const row = rows.rows[0];
@@ -321,8 +360,7 @@ export async function assertAuditLog(opts: AuditAssertion): Promise<void> {
     const expected = opts.expectActorUserId === null ? null : String(opts.expectActorUserId);
     const actual = row.actor_user_id === null ? null : String(row.actor_user_id);
     if (expected !== actual) {
-      fail(`AUDIT actor_user_id mismatch on ${opts.action}: expected ${expected}, got ${actual}`);
-      process.exit(1);
+      abort(`AUDIT actor_user_id mismatch on ${opts.action}: expected ${expected}, got ${actual}`);
     }
   }
 
@@ -349,15 +387,13 @@ function assertJsonContains(
       const aa = parseFloat(actual);
       if (!Number.isNaN(ea) && !Number.isNaN(aa)) {
         if (Math.abs(ea - aa) >= 0.001) {
-          fail(`${description}: ${key} expected ${expected}, got ${actual}`);
-          process.exit(1);
+          abort(`${description}: ${key} expected ${expected}, got ${actual}`);
         }
         continue;
       }
     }
     if (actual !== expected) {
-      fail(`${description}: ${key} expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
-      process.exit(1);
+      abort(`${description}: ${key} expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
     }
   }
 }
@@ -374,20 +410,25 @@ export async function assertSqlRejects(
   expectedMessageSubstring: string,
   description: string,
 ): Promise<void> {
+  let rejected = false;
+  let err: unknown;
   try {
     await sqlFn();
-    fail(`EXPECTED SQL REJECTION but call succeeded: ${description}`);
-    process.exit(1);
-  } catch (err: unknown) {
-    const message = (err as Error).message ?? String(err);
-    if (message.includes(expectedMessageSubstring)) {
-      ok(`Correctly rejected at DB level [${expectedMessageSubstring}]: ${description}`);
-    } else {
-      fail(`Wrong DB-level error for: ${description}`);
-      info("expected substring", expectedMessageSubstring);
-      info("  actual message", message);
-      process.exit(1);
-    }
+  } catch (caught: unknown) {
+    rejected = true;
+    err = caught;
+  }
+  if (!rejected) {
+    abort(`EXPECTED SQL REJECTION but call succeeded: ${description}`);
+  }
+  const message = (err as Error | undefined)?.message ?? String(err);
+  if (message.includes(expectedMessageSubstring)) {
+    ok(`Correctly rejected at DB level [${expectedMessageSubstring}]: ${description}`);
+  } else {
+    fail(`Wrong DB-level error for: ${description}`);
+    info("expected substring", expectedMessageSubstring);
+    info("  actual message", message);
+    throw new SmokeAssertionError(`Wrong DB-level error for: ${description}`);
   }
 }
 
@@ -416,16 +457,14 @@ export async function assertViewRow(
 
   const row = result.rows[0];
   if (!row) {
-    fail(`assertViewRow: no row in ${viewName} matching ${JSON.stringify(where)}`);
-    process.exit(1);
+    abort(`assertViewRow: no row in ${viewName} matching ${JSON.stringify(where)}`);
   }
 
   for (const [col, want] of Object.entries(expected)) {
     const got = row[col] as unknown;
     if (want === null) {
       if (got !== null) {
-        fail(`${viewName}.${col} expected null, got ${String(got)}`);
-        process.exit(1);
+        abort(`${viewName}.${col} expected null, got ${String(got)}`);
       }
       continue;
     }
@@ -433,14 +472,12 @@ export async function assertViewRow(
       const a = parseFloat(got);
       const e = parseFloat(want);
       if (Math.abs(a - e) >= 0.001) {
-        fail(`${viewName}.${col} expected ${want}, got ${got}`);
-        process.exit(1);
+        abort(`${viewName}.${col} expected ${want}, got ${got}`);
       }
       continue;
     }
     if (String(got) !== String(want)) {
-      fail(`${viewName}.${col} expected ${String(want)}, got ${String(got)}`);
-      process.exit(1);
+      abort(`${viewName}.${col} expected ${String(want)}, got ${String(got)}`);
     }
   }
 

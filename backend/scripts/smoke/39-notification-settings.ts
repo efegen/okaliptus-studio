@@ -6,8 +6,8 @@
  * claim YAPILMAMASI, ayarlanabilir dakika penceresi ve HTTP kapısı (owner-only).
  *
  * DİKKAT: notification_settings GLOBAL (singleton-benzeri). Başta snapshot
- * alınır, finally'de geri yüklenir. Ama assertion hatası process.exit() çağırır
- * ve finally ATLANIR → bozuk config kalır; o durumda `npm run smoke:reset`.
+ * alınır, finally'de geri yüklenir. Assertion hatası exception fırlattığı için
+ * (bkz. _shared.ts) finally test başarısız olsa da çalışır ve config geri gelir.
  *
  * ÇALIŞTIRMA:
  *   cd backend && npx tsx scripts/smoke/39-notification-settings.ts
@@ -33,7 +33,7 @@ import {
   assert,
   assertEqual,
   ok,
-  fail,
+  abort,
   closePool,
   cleanupSmoke,
   seedAdminUser,
@@ -137,7 +137,7 @@ async function run(): Promise<void> {
     const seedRow = await pool.query<{ id: string; role: string }>(
       `SELECT id, role FROM users WHERE username = $1`, [admin.username],
     );
-    if (!seedRow.rows[0]) { fail("Setup: seed admin yok"); process.exit(1); }
+    if (!seedRow.rows[0]) { abort("Setup: seed admin yok"); }
     originalRole = seedRow.rows[0].role;
     ownerId = seedRow.rows[0].id;
 
@@ -154,7 +154,7 @@ async function run(): Promise<void> {
       `SELECT id FROM instructors WHERE is_active AND deleted_at IS NULL ORDER BY id ASC LIMIT 1`);
     const lt = await pool.query<{ id: string }>(
       `SELECT id FROM lesson_types WHERE is_active AND deleted_at IS NULL ORDER BY id ASC LIMIT 1`);
-    if (!instr.rows[0] || !lt.rows[0]) { fail("Setup: instructor/lesson_type yok"); process.exit(1); }
+    if (!instr.rows[0] || !lt.rows[0]) { abort("Setup: instructor/lesson_type yok"); }
     const student = await createStudent({ fullName: "SMOKE39_main" });
     studentIds.push(student.id);
 
@@ -193,14 +193,14 @@ async function run(): Promise<void> {
     section("G — /notification-settings: assistant 403, owner 200");
     await pool.query(`UPDATE users SET role='owner' WHERE id=$1 AND role<>'owner'`, [ownerId]);
     const tokenOwner = await login(admin.username, admin.password);
-    if (!tokenOwner) { fail("G: owner login başarısız"); process.exit(1); }
+    if (!tokenOwner) { abort("G: owner login başarısız"); }
     tokensToCleanup.push(tokenOwner);
 
     const asst = await createUser(
       { username: "smoke39_assistant", displayName: "S39 Assistant", password: "Smoke39Assist1", role: "assistant" }, ownerId);
     createdUserIds.push(asst.id);
     const tokenAsst = await login("smoke39_assistant", "Smoke39Assist1");
-    if (!tokenAsst) { fail("G: assistant login başarısız"); process.exit(1); }
+    if (!tokenAsst) { abort("G: assistant login başarısız"); }
     tokensToCleanup.push(tokenAsst);
 
     assertEqual((await req("GET", "/notification-settings", { token: tokenAsst })).status, 403, "G: assistant → 403");

@@ -5,7 +5,9 @@
  *   1. kpiBefore al
  *   2. daysAgo(35) ile completed lesson + payment ekle
  *   3. kpiAfter al → cash_inflow + revenue deltası 0 olmalı
- *   4. Cari hafta lesson + payment ekle → delta artmalı
+ *   4. Cari hafta lesson + payment ekle → delta artmalı. Ders, tamamlanabilmesi
+ *      için (MIN_MINUTES_AFTER_START_TO_COMPLETE) 25 dk önce başlar; hafta
+ *      sınırına çok yakınsa bu adım atlanır.
  *
  * Geçmiş tarihli olay cari hafta KPI'sine akmaz; cari hafta olay akar.
  *
@@ -13,8 +15,13 @@
  *   cd backend && npx tsx scripts/smoke/07-backdated-events.ts
  */
 
+import { pool } from "../../src/db/connection.js";
 import { createStudent } from "../../src/services/students.service.js";
-import { createLesson, completeLesson } from "../../src/services/lessons.service.js";
+import {
+  createLesson,
+  completeLesson,
+  MIN_MINUTES_AFTER_START_TO_COMPLETE,
+} from "../../src/services/lessons.service.js";
 import { createCashPayment } from "../../src/services/payments.service.js";
 import { getWeeklyKpi } from "../../src/services/kpi.service.js";
 import {
@@ -33,6 +40,30 @@ import {
 
 function delta(after: string, before: string): number {
   return parseFloat(after) - parseFloat(before);
+}
+
+// completeLesson, ders başladıktan MIN_MINUTES_AFTER_START_TO_COMPLETE dakika
+// geçmeden tamamlamayı reddeder; cari hafta dersi bu kadar (+5 dk pay) önce başlar.
+const CURRENT_LESSON_OFFSET_MS = -(MIN_MINUTES_AFTER_START_TO_COMPLETE + 5) * 60_000;
+const WEEK_BOUNDARY_GUARD_SECONDS = 300;
+
+/**
+ * Ciro dersin starts_at'ine, tahsilat paid_at'ine göre haftaya yazılır.
+ * Pazartesi 00:00'dan hemen sonra (ders geçen haftada kalır) ya da hafta
+ * bitmek üzereyken (ölçümler arası hafta döner) Phase 2 anlamlı değildir.
+ */
+async function fitsCurrentWeek(startsAt: string): Promise<boolean> {
+  const result = await pool.query<{ starts_this_week: boolean; secs_left: string }>(
+    `SELECT $1::timestamptz >= (date_trunc('week', now() AT TIME ZONE 'Europe/Istanbul')
+                                 AT TIME ZONE 'Europe/Istanbul') AS starts_this_week,
+            EXTRACT(EPOCH FROM (
+              (date_trunc('week', now() AT TIME ZONE 'Europe/Istanbul')
+                AT TIME ZONE 'Europe/Istanbul' + INTERVAL '7 days') - now()
+            ))::text AS secs_left`,
+    [startsAt],
+  );
+  const row = result.rows[0];
+  return row.starts_this_week && parseFloat(row.secs_left) >= WEEK_BOUNDARY_GUARD_SECONDS;
 }
 
 async function run(): Promise<void> {
@@ -88,12 +119,18 @@ async function run(): Promise<void> {
     // ─────────────────────────────────────────────────────────────────────────
     section("Phase 2 — cari hafta lesson+payment KPI'ye yansır");
 
+    const currentStartsAt = isoNow(CURRENT_LESSON_OFFSET_MS);
+    if (!(await fitsCurrentWeek(currentStartsAt))) {
+      ok("Phase 2 atlandı: hafta sınırına çok yakın (tamamlanabilir ders bu haftaya düşmüyor)");
+      return;
+    }
+
     const studentCur = await createStudent({ fullName: "SMOKE07_current" });
     studentIds.push(studentCur.id);
 
     const lessonCur = await createLesson({
       studentId: studentCur.id,
-      startsAt: isoNow(-60_000),
+      startsAt: currentStartsAt,
       mode: "onsite",
     });
     await completeLesson(lessonCur.id);

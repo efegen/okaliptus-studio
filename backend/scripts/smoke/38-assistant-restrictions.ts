@@ -42,7 +42,7 @@ import {
   assert,
   assertEqual,
   ok,
-  fail,
+  abort,
   closePool,
   cleanupSmoke,
   seedAdminUser,
@@ -93,14 +93,14 @@ async function run(): Promise<void> {
       `SELECT id, role FROM users WHERE username = $1`,
       [admin.username],
     );
-    if (!seedRow.rows[0]) { fail("Setup: seed admin satırı bulunamadı"); process.exit(1); }
+    if (!seedRow.rows[0]) { abort("Setup: seed admin satırı bulunamadı"); }
     originalRole = seedRow.rows[0].role;
     ownerId = seedRow.rows[0].id;
 
     await pool.query(`UPDATE users SET role = 'owner' WHERE id = $1 AND role <> 'owner'`, [ownerId]);
 
     const tokenOwner = await login(admin.username, admin.password);
-    if (!tokenOwner) { fail("Setup: owner login başarısız"); process.exit(1); }
+    if (!tokenOwner) { abort("Setup: owner login başarısız"); }
     tokensToCleanup.push(tokenOwner);
 
     const adminUser = await createUser(
@@ -109,7 +109,7 @@ async function run(): Promise<void> {
     );
     createdUserIds.push(adminUser.id);
     const tokenAdmin = await login("smoke38_admin", "Smoke38Admin1");
-    if (!tokenAdmin) { fail("Setup: admin login başarısız"); process.exit(1); }
+    if (!tokenAdmin) { abort("Setup: admin login başarısız"); }
     tokensToCleanup.push(tokenAdmin);
 
     const assistantUser = await createUser(
@@ -118,7 +118,7 @@ async function run(): Promise<void> {
     );
     createdUserIds.push(assistantUser.id);
     const tokenAssistant = await login("smoke38_assistant", "Smoke38Assist1");
-    if (!tokenAssistant) { fail("Setup: assistant login başarısız"); process.exit(1); }
+    if (!tokenAssistant) { abort("Setup: assistant login başarısız"); }
     tokensToCleanup.push(tokenAssistant);
 
     const student = await createStudent({ fullName: "SMOKE38_main" });

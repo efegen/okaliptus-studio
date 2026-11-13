@@ -16,7 +16,7 @@ import { login, logout } from "../../src/services/auth.service.js";
 import { createUser } from "../../src/services/users.service.js";
 import { recordActivity, listUserActivity } from "../../src/services/user-activity.service.js";
 import { pool } from "../../src/db/connection.js";
-import { section, assert, assertEqual, ok, fail, closePool, seedAdminUser } from "./_shared.js";
+import { section, assert, assertEqual, ok, abort, closePool, seedAdminUser } from "./_shared.js";
 
 async function run(): Promise<void> {
   const admin = seedAdminUser();
@@ -45,7 +45,7 @@ async function run(): Promise<void> {
     section("SMOKE 44 — Kullanıcı aktivitesi");
     const ownerRow = await pool.query<{ id: string }>(`SELECT id FROM users WHERE username = $1`, [admin.username]);
     ownerId = ownerRow.rows[0]?.id ?? null;
-    if (!ownerId) { fail("owner satırı yok"); process.exit(1); }
+    if (!ownerId) { abort("owner satırı yok"); }
 
     const u = await createUser(
       { username: "smoke44_assistant", displayName: "S44 Assistant", password: "Smoke44Assist1", role: "assistant" }, ownerId);
@@ -78,7 +78,7 @@ async function run(): Promise<void> {
     section("D — HTTP kapıları");
     const tokenAsst = await login("smoke44_assistant", "Smoke44Assist1");
     const tokenOwner = await login(admin.username, admin.password);
-    if (!tokenAsst || !tokenOwner) { fail("D: login başarısız"); process.exit(1); }
+    if (!tokenAsst || !tokenOwner) { abort("D: login başarısız"); }
     tokens.push(tokenAsst, tokenOwner);
     assertEqual((await req("POST", "/activity/ping", tokenAsst)).status, 204, "D: assistant ping → 204");
     assertEqual((await req("GET", "/users/activity", tokenAsst)).status, 403, "D: assistant GET → 403");
