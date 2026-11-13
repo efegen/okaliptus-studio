@@ -944,6 +944,26 @@ export async function syncTrendyolProducts() {
   return ensureMutationResult(payload, "Trendyol ürünleri senkronlanamadı.");
 }
 
+// ─── Web sitesi mağazası (okaliptusyoga.com/magaza) ──────────────────────────
+
+// Trendyol'daki her ürün ve sitedeki ayarı. → { syncedAt, products }
+export async function getSiteProducts() {
+  const payload = await apiGet("/site-products");
+  if (!Array.isArray(payload?.data?.products)) {
+    throw new Error("Site mağazası verisi alınamadı.");
+  }
+  return payload.data;
+}
+
+// Bir ürünün site ayarını değiştirir. patch: { hidden?, corner?, displayName? }
+export async function updateSiteProduct(key, patch) {
+  const payload = await apiRequest(`/site-products/${encodeURIComponent(key)}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+  return ensureMutationResult(payload, "Site ayarı kaydedilemedi.");
+}
+
 // Kokpit verisi: iç ürünler + TY/HB eşlemeleri + eşleşmeyen TY ürünleri.
 export async function getMappingOverview() {
   const payload = await apiGet("/mapping");

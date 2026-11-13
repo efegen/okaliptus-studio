@@ -15,6 +15,8 @@ export const queryKeys = {
   lessonTypes:        ()      => ['lessonTypes'],
   products:           (params)=> params !== undefined ? ['products', params] : ['products'],
   productById:        (id)    => ['product', id],
+  // Web sitesi mağazası: Trendyol ürünleri + sitedeki ayarları.
+  siteProducts:       ()      => ['siteProducts'],
   settings:           ()      => ['settings'],
   // Pazaryeri siparişleri: web + mobil liste/detay aynı pencere için AYNI anahtarı
   // paylaşır (tek önbellek). Argümansız çağrı tüm pencereleri kapsayan önektir.

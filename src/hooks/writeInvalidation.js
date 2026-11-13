@@ -128,6 +128,8 @@ export function queryKeysForWrite(method, path) {
     case 'channels':
     case 'mapping':
       return PRODUCTS;
+    case 'site-products':
+      return [['siteProducts']];
     case 'events':
       return EVENT_MONEY;
     default:

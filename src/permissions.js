@@ -34,6 +34,7 @@ export const PAGE_CAPABILITY = {
   orders: 'marketplace.manage',
   'order-detail': 'marketplace.manage',
   mapping: 'marketplace.manage',
+  site: 'marketplace.manage', // web sitesi mağazası ayarları
 };
 
 // Rol verilen sayfayı görebilir mi? (haritada yoksa serbest)

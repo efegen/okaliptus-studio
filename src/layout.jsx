@@ -116,6 +116,7 @@ export const PAGE_LABELS = {
   catalog: "Dersler ve Eğitmenler",
   products: "Ürünler",
   mapping: "Eşleştirme",
+  site: "Site mağazası",
   orders: "Pazaryeri Siparişleri",
   movements: "Hareketler",
   settings: "Ayarlar",

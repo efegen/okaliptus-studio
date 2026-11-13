@@ -2215,6 +2215,12 @@ export function ProductsPage({ onNavigate }) {
               Eşleştirme
             </button>
           )}
+          {marketplaceEnabled && canSeeMarketplace && (
+            <button className="btn btn-ghost" onClick={() => onNavigate?.('site')}>
+              <Icon.Bag width="14" height="14" />
+              Site mağazası
+            </button>
+          )}
           <button className="btn btn-primary" onClick={() => setModal('new')}>
             <Icon.Plus width="14" height="14" />
             Yeni ürün
