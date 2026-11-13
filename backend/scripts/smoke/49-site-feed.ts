@@ -30,7 +30,7 @@ import { pool } from "../../src/db/connection.js";
 import { section, step, assert, assertEqual, ok, closePool, seedAdminUser } from "./_shared.js";
 
 const P = "SMOKE49-";
-const FEED_KEYS = ["id", "name", "corner", "price", "listPrice", "fromPrice", "options", "inStock", "image", "url"].sort();
+const FEED_KEYS = ["id", "name", "brand", "corner", "price", "listPrice", "fromPrice", "options", "inStock", "image", "url"].sort();
 const idOf = (key: string) => createHash("sha256").update(key).digest("hex").slice(0, 12);
 
 type Variant = {
@@ -44,19 +44,21 @@ type Variant = {
   archived?: boolean;
   url?: string | null;
   image?: string | null;
+  brand?: string | null;
 };
 
 async function insertVariant(v: Variant): Promise<void> {
   await pool.query(
     `INSERT INTO channel_products
        (channel, external_id, product_main_id, title, quantity, list_price, sale_price,
-        on_sale, archived, product_url, image_url, raw)
-     VALUES ('trendyol', $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, '{}'::jsonb)`,
+        on_sale, archived, product_url, image_url, brand, raw)
+     VALUES ('trendyol', $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, '{}'::jsonb)`,
     [
       P + v.ext, P + v.main, v.title, v.qty ?? 3, v.list ?? v.sale, v.sale,
       v.onSale ?? true, v.archived ?? false,
       v.url === undefined ? `https://www.trendyol.com/okaliptus/${v.main.toLowerCase()}-p-${v.ext.length}00?merchantId=1` : v.url,
       v.image === undefined ? `https://cdn.dsmcdn.com/ty1/${v.ext.toLowerCase()}.jpg` : v.image,
+      v.brand === undefined ? "Okaliptus" : v.brand,
     ],
   );
 }
@@ -119,7 +121,7 @@ async function run(): Promise<void> {
     await insertVariant({ ext: "LOTUS-1", main: "LOTUS", title: "SMOKE49 Lotus Buhurdanlık Turuncu", sale: 299, list: 349, qty: 5 });
     await insertVariant({ ext: "LOTUS-2", main: "LOTUS", title: "SMOKE49 Lotus Buhurdanlık Siyah", sale: 299, list: 349, qty: 0 });
     await insertVariant({ ext: "LOTUS-3", main: "LOTUS", title: "SMOKE49 Lotus Buhurdanlık Büyük", sale: 329, list: 329, qty: 2 });
-    await insertVariant({ ext: "PALO-1", main: "PALO", title: "SMOKE49 Palo Santo Tütsü", sale: 120 });
+    await insertVariant({ ext: "PALO-1", main: "PALO", title: "SMOKE49 Palo Santo Tütsü", sale: 120, brand: null });
     await insertVariant({ ext: "OFF-1", main: "OFF", title: "SMOKE49 Satışta Değil", sale: 90, onSale: false });
     await insertVariant({ ext: "ARCH-1", main: "ARCH", title: "SMOKE49 Arşivli Mum", sale: 90, archived: true });
     await insertVariant({ ext: "EVIL-1", main: "EVIL", title: "SMOKE49 Yabancı Link", sale: 50, url: "https://evil.example.com/x-p-1" });
@@ -176,6 +178,7 @@ async function run(): Promise<void> {
     assertEqual(lotus.options, 3, "Lotus: 3 seçenek");
     assertEqual(lotus.inStock, true, "Lotus: stokta");
     assertEqual(lotus.corner, "meditasyon", "Lotus: köşe tahmini meditasyon");
+    assertEqual(lotus.brand, "Okaliptus", "Lotus: marka");
     assert(String(lotus.url).startsWith("https://www.trendyol.com/"), "Lotus: link trendyol.com");
     assert(String(lotus.image).startsWith("https://cdn.dsmcdn.com/"), "Lotus: görsel Trendyol sunucusunda");
 
@@ -184,6 +187,7 @@ async function run(): Promise<void> {
     assertEqual(palo.fromPrice, false, "Palo: tek fiyat");
     assertEqual(palo.options, null, "Palo: tek seçenek → null");
     assertEqual(palo.corner, "arinma", "Palo: köşe arinma");
+    assertEqual(palo.brand, null, "Palo: markasız → null");
 
     const noimg = list.find((p: any) => p.id === idOf(P + "NOIMG"));
     assertEqual(noimg.image, null, "Trendyol dışı görsel → boş");

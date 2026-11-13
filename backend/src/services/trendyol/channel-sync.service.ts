@@ -23,6 +23,7 @@ type FlatVariant = {
   externalId: string;
   productMainId: string | null;
   title: string | null;
+  brand: string | null;
   quantity: number | null;
   listPrice: number | null;
   salePrice: number | null;
@@ -33,10 +34,17 @@ type FlatVariant = {
   raw: unknown;
 };
 
+// Marka düz metin ya da { name } olarak gelebilir; boşsa null.
+function brandName(brand: unknown): string | null {
+  const name = typeof brand === "string" ? brand : (brand as { name?: unknown } | null)?.name;
+  return typeof name === "string" && name.trim().length > 0 ? name.trim().slice(0, 120) : null;
+}
+
 function flatten(response: TrendyolProductsResponse): FlatVariant[] {
   const out: FlatVariant[] = [];
   for (const product of response.content ?? []) {
     const imageUrl = product.images?.[0]?.url ?? null;
+    const brand = brandName(product.brand);
     for (const v of product.variants ?? []) {
       const barcode = v.barcode ? String(v.barcode) : "";
       if (!barcode) continue;
@@ -44,6 +52,7 @@ function flatten(response: TrendyolProductsResponse): FlatVariant[] {
         externalId: barcode,
         productMainId: product.productMainId ?? null,
         title: product.title ?? null,
+        brand,
         quantity: typeof v.stock?.quantity === "number" ? v.stock.quantity : null,
         listPrice: typeof v.price?.listPrice === "number" ? v.price.listPrice : null,
         // salePrice bazı ilanlarda boş gelir; Trendyol o durumda fiyatı
@@ -110,12 +119,13 @@ export async function syncTrendyolProducts(deps: SyncDeps = {}): Promise<SyncRes
     for (const r of rows) {
       await client.query(
         `INSERT INTO channel_products
-           (channel, external_id, product_main_id, title, quantity,
+           (channel, external_id, product_main_id, title, brand, quantity,
             list_price, sale_price, on_sale, archived, product_url, image_url, raw, synced_at)
-         VALUES ('trendyol', $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, now())
+         VALUES ('trendyol', $1, $2, $3, $12, $4, $5, $6, $7, $8, $9, $10, $11, now())
          ON CONFLICT (channel, external_id) DO UPDATE SET
            product_main_id = EXCLUDED.product_main_id,
            title           = EXCLUDED.title,
+           brand           = EXCLUDED.brand,
            quantity        = EXCLUDED.quantity,
            list_price      = EXCLUDED.list_price,
            sale_price      = EXCLUDED.sale_price,
@@ -128,7 +138,7 @@ export async function syncTrendyolProducts(deps: SyncDeps = {}): Promise<SyncRes
         [
           r.externalId, r.productMainId, r.title, r.quantity,
           r.listPrice, r.salePrice, r.onSale, r.archived, r.productUrl, r.imageUrl,
-          JSON.stringify(r.raw),
+          JSON.stringify(r.raw), r.brand,
         ],
       );
     }

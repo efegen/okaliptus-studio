@@ -124,3 +124,4 @@
   .site-toggle { grid-area: toggle; }
   .site-row .iconbtn { display: none; }
 }
+.site-brand { font-weight: 600; color: var(--ink-2); }

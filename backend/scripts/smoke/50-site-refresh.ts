@@ -29,12 +29,13 @@ const P = "SMOKE50-";
 const HOOK = "https://api.cloudflare.com/client/v4/pages/webhooks/deploy_hooks/smoke50";
 const HOUR = 3_600_000;
 
-function page(items: Array<{ main: string; title: string; price: number }>): TrendyolProductsResponse {
+function page(items: Array<{ main: string; title: string; price: number; brand?: string | { id: number; name: string } }>): TrendyolProductsResponse {
   return {
     totalPages: 1,
     content: items.map((it) => ({
       productMainId: P + it.main,
       title: it.title,
+      brand: it.brand,
       images: [{ url: `https://cdn.dsmcdn.com/ty1/${it.main.toLowerCase()}.jpg` }],
       variants: [{
         barcode: P + it.main + "-1",
@@ -49,8 +50,8 @@ function page(items: Array<{ main: string; title: string; price: number }>): Tre
 }
 
 const TWO = page([
-  { main: "LOTUS", title: "SMOKE50 Lotus Buhurdanlık", price: 299 },
-  { main: "PALO", title: "SMOKE50 Palo Santo Tütsü", price: 120 },
+  { main: "LOTUS", title: "SMOKE50 Lotus Buhurdanlık", price: 299, brand: { id: 1, name: "Okaliptus" } },
+  { main: "PALO", title: "SMOKE50 Palo Santo Tütsü", price: 120, brand: " HEM " },
 ]);
 
 async function run(): Promise<void> {
@@ -99,6 +100,8 @@ async function run(): Promise<void> {
     assertEqual(r1.productCount, 2, "sitede 2 ürün");
     assertEqual(r1.changed, true, "parmak izi yeni");
     assertEqual(hookCalls.length, 1, "build adresine 1 kez haber");
+    const brands = (await pool.query("SELECT external_id, brand FROM channel_products WHERE external_id LIKE $1 ORDER BY external_id", [P + "%"])).rows;
+    assertEqual(brands.map((b: any) => b.brand).join(","), "Okaliptus,HEM", "marka { name } ve düz metin olarak yazıldı");
 
     step("Liste 24 saatten yeniyse Trendyol'a gidilmez, değişiklik yoksa haber yok");
     const before = fetches;

@@ -103,6 +103,7 @@ type VariantRow = {
   archived: boolean | null;
   product_url: string | null;
   image_url: string | null;
+  brand: string | null;
   synced_at: Date;
 };
 
@@ -117,6 +118,8 @@ export type SiteProduct = {
   key: string;
   /** Trendyol başlığı. */
   title: string;
+  /** Trendyol'daki marka. */
+  brand: string | null;
   /** Panelde girilen site adı; boşsa başlık kullanılır. */
   displayName: string | null;
   /** Sitede görünen ad. */
@@ -174,6 +177,7 @@ function groupProducts(rows: VariantRow[], settings: Map<string, SettingRow>): S
     out.push({
       key,
       title,
+      brand: [lead, ...variants].map((v) => v.brand?.trim()).find((b) => b) ?? null,
       displayName,
       name: displayName ?? title,
       hidden: setting?.hidden ?? false,
@@ -198,7 +202,7 @@ async function loadProducts(keys?: string[]): Promise<SiteProduct[]> {
   const filter = keys ? "AND COALESCE(product_main_id, external_id) = ANY($1::text[])" : "";
   const variants = await pool.query<VariantRow>(
     `SELECT COALESCE(product_main_id, external_id) AS product_key, external_id, title, quantity,
-            list_price, sale_price, on_sale, archived, product_url, image_url, synced_at
+            list_price, sale_price, on_sale, archived, product_url, image_url, brand, synced_at
        FROM channel_products
       WHERE channel = 'trendyol' ${filter}`,
     keys ? [keys] : [],
@@ -280,6 +284,8 @@ export type SiteFeedProduct = {
   /** Model kodunun kısa özeti: sabit kalır, kodun kendisini açık etmez. */
   id: string;
   name: string;
+  /** Trendyol'daki marka; kartta adın önünde. */
+  brand: string | null;
   corner: SiteCorner | null;
   price: number;
   listPrice: number | null;
@@ -301,6 +307,7 @@ export async function getSiteFeed(): Promise<{ syncedAt: string | null; products
       .map((p) => ({
         id: createHash("sha256").update(p.key).digest("hex").slice(0, 12),
         name: p.name,
+        brand: p.brand,
         corner: p.effectiveCorner,
         price: p.price!,
         listPrice: p.listPrice,

@@ -348,7 +348,8 @@ export type TrendyolVariant = {
 export type TrendyolProduct = {
   productMainId?: string;
   title?: string;
-  brand?: string;
+  // V2 yanıtı markayı { id, name } olarak döndürebilir; eski biçim düz metin.
+  brand?: string | { id?: number; name?: string };
   category?: string;
   images?: Array<{ url?: string }>;
   variants?: TrendyolVariant[];

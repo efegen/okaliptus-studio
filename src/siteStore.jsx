@@ -85,6 +85,7 @@ function ProductRow({ product, saving, onPatch }) {
       <div className="site-main">
         <NameField product={product} disabled={saving} onSave={(displayName) => onPatch({ displayName })} />
         <div className="site-meta">
+          {product.brand && <span className="site-brand">{product.brand}</span>}
           {product.displayName && <span className="site-ty-title">Trendyol: {product.title}</span>}
           {product.variantCount > 1 && <span>{product.variantCount} seçenek</span>}
           {status.note && <span className="site-note">{status.note}</span>}
