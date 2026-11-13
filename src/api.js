@@ -1,3 +1,5 @@
+import { invalidateAfterWrite } from "./hooks/writeInvalidation";
+
 function buildApiBaseUrls() {
   const configuredBaseUrl = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
   const candidates = [];
@@ -110,6 +112,10 @@ async function apiRequest(path, options = {}) {
       if (typeof code === 'string') err.code = code;
       throw err;
     }
+
+    // Başarılı yazmadan sonra etkilenen ekranları tek merkezden tazele
+    // (bkz. hooks/writeInvalidation.js). GET'lerde hiçbir şey yapmaz.
+    invalidateAfterWrite(options.method || "GET", path);
 
     return payload;
   }
