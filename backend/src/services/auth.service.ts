@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { pool } from '../db/connection.js';
 import type { Role } from '../auth/permissions.js';
+import { closeStreamsForToken } from './live-sync.service.js';
 
 const SESSION_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -102,6 +103,9 @@ export async function logout(token: string, ip?: string): Promise<void> {
   const userId = owner.rows[0]?.user_id ?? null;
 
   await pool.query(`DELETE FROM sessions WHERE token = $1`, [token]);
+
+  // Bu oturumun açık canlı senkron akışı hemen kapansın (dakikalık kontrolü beklemesin).
+  closeStreamsForToken(token);
 
   // Güvenlik denetimi: başarılı logout audit_logs'a yazılır. user_id
   // bulunamazsa (token zaten geçersiz) audit atlanır. Audit hatası akışı bozmasın.

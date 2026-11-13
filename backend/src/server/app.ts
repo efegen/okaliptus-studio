@@ -31,6 +31,8 @@ import { notificationSettingsRouter } from "./routes/notification-settings.route
 import { eventsRouter, listStudentEventBalancesHandler } from "./routes/events.router.js";
 import { notesRouter } from "./routes/notes.router.js";
 import { requireAuth } from "./middleware/requireAuth.js";
+import { publishWrites } from "./middleware/publishWrites.js";
+import { liveStreamHandler } from "./routes/live.router.js";
 import { requireCan } from "./middleware/requireRole.js";
 import { sendError } from "./middleware/response.js";
 import { recordActivity } from "../services/user-activity.service.js";
@@ -97,6 +99,12 @@ export function createApp() {
 
   // ── Auth gate ─────────────────────────────────────────────────────────────
   app.use(requireAuth);
+
+  // Canlı senkron (bkz. services/live-sync.service.ts): başarılı yazmalar
+  // yanıttan sonra açık akışlara "şu değişti" sinyali olarak yayınlanır.
+  // Router'lardan ÖNCE mount edilmeli ki her yazmanın bitişini yakalasın.
+  app.use(publishWrites);
+  app.get("/live", liveStreamHandler);
 
   // ── Protected resource routers ────────────────────────────────────────────
   // Asistana AÇIK olanlar (yalnız requireAuth): ders/ödeme/paket/ürün satışı,

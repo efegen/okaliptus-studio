@@ -9,7 +9,7 @@ declare global {
   }
 }
 
-function extractSessionToken(cookieHeader: string | undefined): string | null {
+export function extractSessionToken(cookieHeader: string | undefined): string | null {
   if (!cookieHeader) return null;
   for (const part of cookieHeader.split(';')) {
     const eqIdx = part.indexOf('=');

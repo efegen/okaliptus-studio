@@ -5,6 +5,7 @@ import { closeDatabaseConnection, verifyDatabaseConnection } from "./db/connecti
 import { createApp } from "./server/app.js";
 import { startOrderPoller, stopOrderPoller } from "./services/trendyol/order-poller.js";
 import { startNotificationScheduler, stopNotificationScheduler } from "./services/notification-scheduler.js";
+import { closeAllStreams } from "./services/live-sync.service.js";
 
 async function main(): Promise<void> {
   await verifyDatabaseConnection();
@@ -32,6 +33,9 @@ async function main(): Promise<void> {
 
     stopOrderPoller();
     stopNotificationScheduler();
+    // Açık SSE akışları bitmeden server.close() tamamlanmaz; önce kapat ki
+    // istemciler yeni sunucuya hemen yeniden bağlansın.
+    closeAllStreams();
     server.close(async () => {
       await closeDatabaseConnection();
       process.exit(0);
