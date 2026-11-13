@@ -23,6 +23,7 @@ import { queryKeys } from './hooks/queryKeys';
 import { canSeePage } from './permissions';
 import { CurrentUserProvider } from './currentUser';
 import { useActivityPing } from './hooks/useActivityPing';
+import { useLiveSync } from './hooks/useLiveSync';
 import { useIsMobile } from './mobile/useIsMobile';
 import { MobileApp } from './mobile/MobileApp';
 
@@ -52,6 +53,8 @@ function App({ currentUser, onLogout }) {
   const isMobile = useIsMobile();
   const qc = useQueryClient();
   useActivityPing();
+  // Başka kullanıcıların değişiklikleri açık ekrana sessizce yansısın.
+  useLiveSync();
 
   React.useEffect(() => {
     localStorage.setItem("okaliptus-page", page);

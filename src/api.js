@@ -1,4 +1,4 @@
-import { invalidateAfterWrite } from "./hooks/writeInvalidation";
+import { invalidateAfterWrite, rememberOwnWrite } from "./hooks/writeInvalidation";
 
 function buildApiBaseUrls() {
   const configuredBaseUrl = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
@@ -62,9 +62,19 @@ function getErrorMessage(payload) {
   return "API istegi basarisiz oldu.";
 }
 
+// Canlı senkron akışının adresi (bkz. hooks/useLiveSync.js). EventSource,
+// apiRequest'in yedek-aday döngüsünü kullanamaz; ilk aday yeterli (üretimde
+// tek aday var: VITE_API_BASE_URL ya da aynı köken).
+export function liveStreamUrl(since) {
+  const [baseUrl = ""] = buildApiBaseUrls();
+  return `${baseUrl}/live${since ? `?since=${encodeURIComponent(since)}` : ""}`;
+}
+
 async function apiRequest(path, options = {}) {
   const baseUrls = buildApiBaseUrls();
   let lastNetworkError = null;
+  // Bu yazmanın canlı akıştan dönen kendi sinyali ikinci kez tazeleme yapmasın.
+  rememberOwnWrite(options.method || "GET", path);
 
   for (const baseUrl of baseUrls) {
     const url = `${baseUrl}${path}`;
