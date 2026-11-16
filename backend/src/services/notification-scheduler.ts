@@ -178,9 +178,10 @@ export async function checkStaleLessonStatus(preloaded?: LoadedNotificationConfi
   }
 }
 
-// ─── Yeni Trendyol siparişi (sipariş bazlı dedup, satır bazlı değil) ───────
+// ─── Yeni pazaryeri siparişi (sipariş bazlı dedup, satır bazlı değil) ──────
 // Kaynak channel_order_sightings (migration 0259/0260) — salt-okunur sipariş
-// listesi akışından (orders.service.ts, marketplace_sync_enabled) beslenir.
+// listesi akışlarından (trendyol/orders.service.ts + hepsiburada/orders.service.ts,
+// marketplace_sync_enabled) beslenir. Şablona {channel} = kanalın görünen adı (0295).
 // BİLEREK channel_order_lines KULLANILMIYOR: o yalnız stok senkronu
 // (marketplace_orders_enabled, varsayılan kapalı + UI'dan gizli) açıkken dolar —
 // ona bağlı kalsaydı stok fazı kapalıyken "yeni sipariş" bildirimi hiç tetiklenmezdi.
@@ -190,6 +191,8 @@ export async function checkStaleLessonStatus(preloaded?: LoadedNotificationConfi
 // tablo ilk dolduğunda (veya ileride geniş/eski bir pencere ilk kez çekildiğinde)
 // TÜM geçmiş siparişler tek seferde "yeni" sayılıp gerçek kullanıcılara bildirim
 // denendi — bu olaydan sonra düzeltildi (bkz. 0260 migration notu).
+const CHANNEL_NAMES: Record<string, string> = { trendyol: "Trendyol", hepsiburada: "Hepsiburada" };
+
 export async function checkNewChannelOrders(preloaded?: LoadedNotificationConfig): Promise<void> {
   try {
     const cfg = preloaded ?? (await loadNotificationConfig());
@@ -206,7 +209,7 @@ export async function checkNewChannelOrders(preloaded?: LoadedNotificationConfig
       `INSERT INTO notified_channel_orders (channel, order_number)
        SELECT DISTINCT channel, order_number
          FROM channel_order_sightings
-        WHERE channel = 'trendyol'
+        WHERE channel IN ('trendyol', 'hepsiburada')
           AND order_date > now() - interval '1 day'
        ON CONFLICT (channel, order_number) DO NOTHING
        RETURNING channel, order_number`,
@@ -223,7 +226,7 @@ export async function checkNewChannelOrders(preloaded?: LoadedNotificationConfig
       );
       const customerName = detail.rows[0]?.customer_name ?? "Bilinmeyen müşteri";
 
-      const vars = { customer: customerName, order: order_number };
+      const vars = { channel: CHANNEL_NAMES[channel] ?? channel, customer: customerName, order: order_number };
       const payload: PushPayload = {
         title: renderTemplate(no.titleTemplate, vars),
         body: renderTemplate(no.bodyTemplate, vars),

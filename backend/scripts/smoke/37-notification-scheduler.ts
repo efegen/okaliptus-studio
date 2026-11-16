@@ -206,6 +206,21 @@ async function run(): Promise<void> {
     );
     assertEqual(countAll.rows[0].c, "2", "D: farklı sipariş için ayrı kayıt oluştu (global kilit yok)");
 
+    // Hepsiburada siparişi de aynı akıştan bildirilir (0295: {channel} şablonu).
+    const orderNumberHb = `SMOKE37-${Date.now()}-hb`;
+    orderNumbers.push(orderNumberHb);
+    await pool.query(
+      `INSERT INTO channel_order_sightings (channel, order_number, customer_name, first_seen_at, order_date)
+       VALUES ('hepsiburada', $1, 'HB Müşteri', now(), now())`,
+      [orderNumberHb],
+    );
+    await checkNewChannelOrders();
+    const countHb = await pool.query<{ c: string }>(
+      `SELECT COUNT(*)::text AS c FROM notified_channel_orders WHERE channel = 'hepsiburada' AND order_number = $1`,
+      [orderNumberHb],
+    );
+    assertEqual(countHb.rows[0].c, "1", "D: Hepsiburada siparişi de bildirim kaydı aldı");
+
     // ─────────────────────────────────────────────────────────────────────────
     // E. Regresyon — REGRESYON (2026-07-16 canlı olay): first_seen_at YENİ ama
     // order_date ESKİ (ör. geniş bir pencere ilk kez çekildiğinde geçmiş
@@ -288,10 +303,10 @@ async function run(): Promise<void> {
   } finally {
     if (orderNumbers.length > 0) {
       await pool
-        .query(`DELETE FROM notified_channel_orders WHERE channel = 'trendyol' AND order_number = ANY($1::text[])`, [orderNumbers])
+        .query(`DELETE FROM notified_channel_orders WHERE channel IN ('trendyol', 'hepsiburada') AND order_number = ANY($1::text[])`, [orderNumbers])
         .catch(() => undefined);
       await pool
-        .query(`DELETE FROM channel_order_sightings WHERE channel = 'trendyol' AND order_number = ANY($1::text[])`, [orderNumbers])
+        .query(`DELETE FROM channel_order_sightings WHERE channel IN ('trendyol', 'hepsiburada') AND order_number = ANY($1::text[])`, [orderNumbers])
         .catch(() => undefined);
     }
     if (noteIds.length > 0) {

@@ -28,8 +28,8 @@ const NOTIF_META = {
   },
   new_order: {
     title: 'Yeni sipariş',
-    desc: 'Trendyol’dan yeni sipariş geldiğinde.',
-    vars: ['{customer}', '{order}'],
+    desc: 'Trendyol ya da Hepsiburada’dan yeni sipariş geldiğinde.',
+    vars: ['{channel}', '{customer}', '{order}'],
     kind: 'event',
   },
   note_reminder: {
@@ -98,7 +98,7 @@ function normalizeCfg(key, config) {
   }
   return {
     titleTemplate: c.titleTemplate ?? 'Yeni sipariş',
-    bodyTemplate: c.bodyTemplate ?? 'Trendyol’dan yeni sipariş: {customer} — #{order}',
+    bodyTemplate: c.bodyTemplate ?? '{channel}’dan yeni sipariş: {customer} — #{order}',
   };
 }
 

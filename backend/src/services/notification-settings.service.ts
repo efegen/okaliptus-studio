@@ -29,7 +29,7 @@ const DEFAULT_STALE = {
 };
 const DEFAULT_NEW_ORDER = {
   titleTemplate: "Yeni sipariş",
-  bodyTemplate: "Trendyol'dan yeni sipariş: {customer} — #{order}",
+  bodyTemplate: "{channel}'dan yeni sipariş: {customer} — #{order}",
 };
 // note_reminder'ın DİĞER türlerden farkı: alıcılar burada GLOBAL değil — her
 // hatırlatmayla birlikte notu oluşturan kullanıcı tarafından seçilir (bkz.
@@ -430,7 +430,7 @@ export async function updateNotificationSetting(key: string, patch: UpdatePatch)
 const SAMPLE_VARS: Record<NotificationKey, Record<string, string | number>> = {
   lesson_reminder: { student: "Örnek Öğrenci", minutes: 30 },
   stale_lesson: { student: "Örnek Öğrenci", time: "14:00" },
-  new_order: { customer: "Örnek Müşteri", order: "1234567890" },
+  new_order: { channel: "Trendyol", customer: "Örnek Müşteri", order: "1234567890" },
   note_reminder: { author: "Örnek Kullanıcı", note: "Salı günü matlar temizlenecek." },
   note_added: { author: "Örnek Kullanıcı", note: "Salı günü matlar temizlenecek." },
   note_reply: { author: "Örnek Kullanıcı", note: "Tamam, ben hallederim." },
