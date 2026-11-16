@@ -323,6 +323,30 @@ async function tick(): Promise<void> {
   }
 }
 
+// Yeni pazaryeri siparişi görülür görülmez çağrılır (trendyol/ + hepsiburada/
+// orders.service, yeni channel_order_sightings satırı yazınca). Tikin (≤ 1 dk)
+// beklenmeden "yeni sipariş" bildirimi gider. Tikle AYNI kurallar: zamanlayıcı
+// çalışmıyorsa (VAPID yok / kapalı) hiçbir şey yapmaz; sessiz saatlerde claim edilmez
+// (pencere bitince tik gönderir). Claim atomik → tikle yarışsa da sipariş bir kez
+// bildirilir. Zaten bir anlık gönderim sürüyorsa yenisi başlamaz (kalanı tik yakalar).
+let newOrderRun: Promise<void> | null = null;
+export function notifyNewChannelOrdersNow(): void {
+  if (!timer || newOrderRun) return;
+  newOrderRun = (async () => {
+    try {
+      const cfg = await loadNotificationConfig();
+      if (cfg.quietHours.enabled && isWithinQuietHours(new Date(), cfg.quietHours.start, cfg.quietHours.end, env.timeZone)) {
+        return;
+      }
+      await checkNewChannelOrders(cfg);
+    } catch (err) {
+      console.error("[notif-scheduler] anlık yeni sipariş bildirimi hatası:", err instanceof Error ? err.message : err);
+    } finally {
+      newOrderRun = null;
+    }
+  })();
+}
+
 export function startNotificationScheduler(): void {
   if (timer) return; // zaten başladı
   const ms = env.notificationSchedulerMs;

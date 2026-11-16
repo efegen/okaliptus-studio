@@ -10,10 +10,27 @@
 import { env } from "../../config/env.js";
 import { getSettings } from "../settings.service.js";
 import { isHepsiburadaConfigured } from "./client.js";
-import { warmHepsiburadaOrders } from "./orders.service.js";
+import { checkNewHepsiburadaOrders, warmHepsiburadaOrders } from "./orders.service.js";
 
 let timer: ReturnType<typeof setInterval> | null = null;
 let running = false;
+// Hızlı yeni sipariş kontrolü (HEPSIBURADA_NEW_ORDER_POLL_MS, ~1 dk) — ayrı zamanlayıcı.
+let newOrderTimer: ReturnType<typeof setInterval> | null = null;
+let newOrderRunning = false;
+
+async function newOrderTick(): Promise<void> {
+  if (newOrderRunning) return;
+  newOrderRunning = true;
+  try {
+    if (!isHepsiburadaConfigured()) return;
+    const settings = await getSettings();
+    if (settings.marketplaceSyncEnabled) await checkNewHepsiburadaOrders();
+  } catch (err) {
+    console.error("[hb-poll] yeni sipariş kontrolü hatası:", err instanceof Error ? err.message : err);
+  } finally {
+    newOrderRunning = false;
+  }
+}
 
 async function tick(): Promise<void> {
   if (running) return;
@@ -44,12 +61,25 @@ export function startHepsiburadaOrderPoller(): void {
     void tick();
   }, ms);
   if (typeof timer.unref === "function") timer.unref();
-  console.log(`[hb-poll] başladı (her ${Math.round(ms / 1000)}sn, ${env.hepsiburadaEnv === "prod" ? "canlı" : "test"} ortam).`);
+  const fastMs = env.hepsiburadaNewOrderPollMs;
+  if (fastMs > 0) {
+    newOrderTimer = setInterval(() => {
+      void newOrderTick();
+    }, fastMs);
+    if (typeof newOrderTimer.unref === "function") newOrderTimer.unref();
+  }
+  console.log(
+    `[hb-poll] başladı (liste her ${Math.round(ms / 1000)}sn, yeni sipariş ${fastMs > 0 ? `her ${Math.round(fastMs / 1000)}sn` : "kapalı"}, ${env.hepsiburadaEnv === "prod" ? "canlı" : "test"} ortam).`,
+  );
 }
 
 export function stopHepsiburadaOrderPoller(): void {
   if (timer) {
     clearInterval(timer);
     timer = null;
+  }
+  if (newOrderTimer) {
+    clearInterval(newOrderTimer);
+    newOrderTimer = null;
   }
 }

@@ -19,10 +19,28 @@ import { isTrendyolConfigured } from "./client.js";
 import { syncTrendyolOrders } from "./order-sync.service.js";
 import { syncTrendyolClaims } from "./claims-sync.service.js";
 import { runStockPush } from "./stock-push.service.js";
-import { warmOrdersSnapshot } from "./orders.service.js";
+import { checkNewTrendyolOrders, warmOrdersSnapshot } from "./orders.service.js";
 
 let timer: ReturnType<typeof setInterval> | null = null;
 let running = false; // süreç-içi üst üste binme koruması
+// Hızlı yeni sipariş kontrolü (TRENDYOL_NEW_ORDER_POLL_MS, ~1 dk) — ayrı zamanlayıcı,
+// yalnız son 2 günü okur ve yeni siparişin bildirimini hemen tetikler. Salt-okuma.
+let newOrderTimer: ReturnType<typeof setInterval> | null = null;
+let newOrderRunning = false;
+
+async function newOrderTick(): Promise<void> {
+  if (newOrderRunning) return;
+  newOrderRunning = true;
+  try {
+    if (!isTrendyolConfigured()) return;
+    const settings = await getSettings();
+    if (settings.marketplaceSyncEnabled) await checkNewTrendyolOrders();
+  } catch (err) {
+    console.error("[trendyol-poll] yeni sipariş kontrolü hatası:", err instanceof Error ? err.message : err);
+  } finally {
+    newOrderRunning = false;
+  }
+}
 
 // Sipariş senkronu (stok düşür/geri al + eşleşmeyen/iade kuyrukları). Kendi
 // try'ında: hata sızmaz, claims senkronunu atlamaz.
@@ -136,12 +154,25 @@ export function startOrderPoller(): void {
   }, ms);
   // Timer süreci canlı tutmasın (temiz kapanış).
   if (typeof timer.unref === "function") timer.unref();
-  console.log(`[trendyol-poll] başladı (her ${Math.round(ms / 1000)}sn).`);
+  const fastMs = env.trendyolNewOrderPollMs;
+  if (fastMs > 0) {
+    newOrderTimer = setInterval(() => {
+      void newOrderTick();
+    }, fastMs);
+    if (typeof newOrderTimer.unref === "function") newOrderTimer.unref();
+  }
+  console.log(
+    `[trendyol-poll] başladı (her ${Math.round(ms / 1000)}sn, yeni sipariş ${fastMs > 0 ? `her ${Math.round(fastMs / 1000)}sn` : "kapalı"}).`,
+  );
 }
 
 export function stopOrderPoller(): void {
   if (timer) {
     clearInterval(timer);
     timer = null;
+  }
+  if (newOrderTimer) {
+    clearInterval(newOrderTimer);
+    newOrderTimer = null;
   }
 }

@@ -26,6 +26,7 @@ import { createProduct } from "../../src/services/products.service.js";
 import { createChannelListing } from "../../src/services/channel-listings.service.js";
 import {
   buildHepsiburadaOrders,
+  checkNewHepsiburadaOrders,
   collectPackages,
   enrichmentNeeds,
   hbDate,
@@ -304,6 +305,28 @@ async function run(): Promise<void> {
     );
     assertEqual(seen.rows.length, 1, "sightings kaydı açıldı (yeni sipariş bildirimi için)");
     assertEqual(seen.rows[0].customer_name, "Nil T.", "müşteri adı kaydedildi");
+
+    // ── 7. Hızlı yeni sipariş kontrolü (poller ~1 dk) ─────────────────────────
+    step("Hızlı kontrol: yalnız kargoya hazır + paketsiz listeler, yeni siparişi bir kez sayar...");
+    const fastOrder = `SMOKE51F-${stamp}`;
+    orderNumbers.push(fastOrder);
+    let eventCalls = 0;
+    const fastSource: HbOrderSource = {
+      ...emptySource,
+      packedPackages: async () => [{ ...packedPackage(fastOrder, `${fastOrder}-P`, SKU), orderDate: recentOrderDate, items: [{ ...packedPackage(fastOrder, `${fastOrder}-P`, SKU).items![0], orderDate: recentOrderDate }] }],
+      packageEvents: async () => {
+        eventCalls += 1;
+        return [];
+      },
+    };
+    assertEqual(await checkNewHepsiburadaOrders(fastSource), 1, "yeni sipariş görüldü");
+    assertEqual(await checkNewHepsiburadaOrders(fastSource), 0, "ikinci kontrolde yeni değil");
+    assertEqual(eventCalls, 0, "kargodaki/teslim listeleri hızlı kontrolde çekilmez");
+    const fastSeen = await pool.query(
+      `SELECT 1 FROM channel_order_sightings WHERE channel = 'hepsiburada' AND order_number = $1`,
+      [fastOrder],
+    );
+    assertEqual(fastSeen.rows.length, 1, "görülme kaydı yazıldı (bildirim bunu okur)");
 
     ok("\nSMOKE 51 — TÜM ADIMLAR BAŞARILI ✓");
   } finally {

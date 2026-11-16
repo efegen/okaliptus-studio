@@ -61,6 +61,9 @@ export const env = {
   // Model C / Faz 1 sipariş poller'ı. 0 → poller hiç başlamaz (manuel uç yine
   // çalışır). Pencere TY'nin ~2 haftalık sipariş aralığı kısıtına uyar (≤14 gün).
   trendyolOrderPollMs: Math.max(0, Number.parseInt(process.env.TRENDYOL_ORDER_POLL_MS ?? "180000", 10) || 0),
+  // Hızlı yeni sipariş kontrolü (yalnız son 2 gün, tek pencere) → yeni sipariş bildirimi
+  // bu sürede gider. 0 → kapalı (bildirim ~3 dk'lık tam liste ısıtmasıyla gelir).
+  trendyolNewOrderPollMs: Math.max(0, Number.parseInt(process.env.TRENDYOL_NEW_ORDER_POLL_MS ?? "60000", 10) || 0),
   trendyolOrderWindowDays: Math.min(14, Math.max(1, Number.parseInt(process.env.TRENDYOL_ORDER_WINDOW_DAYS ?? "14", 10) || 14)),
 
   // İade (claims) penceresi: claimDate'e göre süzülür (orders'tan AYRI, 2 hafta
@@ -79,6 +82,9 @@ export const env = {
   // Siparişler ekranının HB listesini arka planda tazeleme aralığı (ms). 0 → kapalı
   // (ekran yine açılışta canlı çeker). Salt-okuma; HB'ye yazmaz.
   hepsiburadaOrderPollMs: Math.max(0, Number.parseInt(process.env.HEPSIBURADA_ORDER_POLL_MS ?? "180000", 10) || 0),
+  // Hızlı yeni sipariş kontrolü (yalnız kargoya hazır + paketlenmemiş listeler) →
+  // yeni sipariş bildirimi bu sürede gider. 0 → kapalı (bildirim tam listeyle gelir).
+  hepsiburadaNewOrderPollMs: Math.max(0, Number.parseInt(process.env.HEPSIBURADA_NEW_ORDER_POLL_MS ?? "60000", 10) || 0),
 
   // Etap 4 — bildirim zamanlayıcısı (ders hatırlatma + durum dürtmesi + yeni
   // sipariş). 0 → zamanlayıcı hiç başlamaz. VAPID anahtarları yoksa da başlamaz

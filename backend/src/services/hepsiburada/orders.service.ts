@@ -27,6 +27,7 @@
 
 import { pool } from "../../db/connection.js";
 import { getSettings } from "../settings.service.js";
+import { notifyNewChannelOrdersNow } from "../notification-scheduler.js";
 import {
   MarketplaceSyncDisabledError,
   countTabs,
@@ -728,10 +729,11 @@ function storeSnapshot(key: string, result: OrdersListResult, startedAt: number)
 }
 
 // "Yeni sipariş" bildirimini besler (notification-scheduler checkNewChannelOrders).
-// order_date = HB'nin GERÇEK sipariş tarihi. Hata sızmaz.
-async function recordOrderSightings(result: OrdersListResult): Promise<void> {
+// order_date = HB'nin GERÇEK sipariş tarihi. Yeni satır yazıldıysa bildirim
+// zamanlayıcının tikini beklemeden hemen gönderilir. Hata sızmaz. → yeni sipariş sayısı.
+async function recordOrderSightings(result: OrdersListResult): Promise<number> {
   const rows = result.orders.filter(o => o.orderDate !== null);
-  if (rows.length === 0) return;
+  if (rows.length === 0) return 0;
   try {
     const seen = new Set<string>();
     const params: unknown[] = [];
@@ -743,15 +745,37 @@ async function recordOrderSightings(result: OrdersListResult): Promise<void> {
       params.push("hepsiburada", o.orderNumber, o.buyerName, new Date(o.orderDate as number));
       values.push(`($${i++}, $${i++}, $${i++}, $${i++})`);
     }
-    await pool.query(
+    const inserted = await pool.query(
       `INSERT INTO channel_order_sightings (channel, order_number, customer_name, order_date)
        VALUES ${values.join(", ")}
-       ON CONFLICT (channel, order_number) DO NOTHING`,
+       ON CONFLICT (channel, order_number) DO NOTHING
+       RETURNING order_number`,
       params,
     );
+    const count = inserted.rowCount ?? 0;
+    if (count > 0) notifyNewChannelOrdersNow();
+    return count;
   } catch (err) {
     console.error("[hb-orders] sipariş görülme kaydı hatası:", err instanceof Error ? err.message : err);
+    return 0;
   }
+}
+
+// ── Hızlı yeni sipariş kontrolü (poller, ~1 dk) ──────────────────────────────
+// Tam liste (6 uç + detaylar) ~3 dk'da bir tazelenir. Yeni sipariş yalnız kargoya
+// hazır paketlerde (otomatik paketleme) ya da henüz paketlenmemiş siparişlerde
+// görünür → yalnız bu iki liste çekilir, görülme kaydı yazılır (→ anında bildirim).
+// Yeni sipariş çıktıysa tam liste de hemen tazelenir → bildirime dokunan kullanıcı
+// siparişi listede görür. Salt-okuma.
+export async function checkNewHepsiburadaOrders(source: HbOrderSource = defaultHbOrderSource): Promise<number> {
+  const [packed, paid] = await Promise.all([source.packedPackages(), source.paidOrders()]);
+  const result = buildHepsiburadaOrders(
+    { packed, events: { shipped: [], delivered: [], undelivered: [] }, paid, cancelled: [] },
+    { details: new Map(), cargo: new Map(), matchMap: new Map() },
+  );
+  const fresh = await recordOrderSightings(result);
+  if (fresh > 0 && source === defaultHbOrderSource) void warmHepsiburadaOrders();
+  return fresh;
 }
 
 async function revalidate(key: string, params: HbListParams): Promise<void> {

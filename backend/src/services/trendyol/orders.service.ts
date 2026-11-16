@@ -10,6 +10,7 @@
 import { pool } from "../../db/connection.js";
 import { AppError } from "../errors.js";
 import { getSettings } from "../settings.service.js";
+import { notifyNewChannelOrdersNow } from "../notification-scheduler.js";
 import {
   getOrders as defaultGetOrders,
   TrendyolApiError,
@@ -495,8 +496,12 @@ function storeSnapshot(key: string, result: OrdersListResult, startedAt: number)
 // first_seen_at yalnız "defterimiz ilk kez ne zaman doldu"yu yansıtır: geniş/eski
 // bir pencere ilk kez çekildiğinde tüm geçmiş siparişler first_seen_at=now() alır
 // ve YANLIŞLIKLA "yeni" sayılır (bkz. 0260 migration notu — canlı olayda yaşandı).
-async function recordOrderSightings(result: OrdersListResult): Promise<void> {
-  if (result.orders.length === 0) return;
+//
+// Yeni satır yazıldıysa bildirim zamanlayıcının tikini beklemeden hemen gönderilir
+// (notifyNewChannelOrdersNow; sessiz saat / zamanlayıcı kapalı kuralları orada).
+// → yeni yazılan sipariş sayısı.
+async function recordOrderSightings(result: OrdersListResult): Promise<number> {
+  if (result.orders.length === 0) return 0;
   try {
     const params: unknown[] = [];
     const rows: string[] = [];
@@ -505,15 +510,37 @@ async function recordOrderSightings(result: OrdersListResult): Promise<void> {
       params.push("trendyol", o.orderNumber, o.buyerName, o.orderDate !== null ? new Date(o.orderDate) : null);
       rows.push(`($${i++}, $${i++}, $${i++}, $${i++})`);
     }
-    await pool.query(
+    const inserted = await pool.query(
       `INSERT INTO channel_order_sightings (channel, order_number, customer_name, order_date)
        VALUES ${rows.join(", ")}
-       ON CONFLICT (channel, order_number) DO NOTHING`,
+       ON CONFLICT (channel, order_number) DO NOTHING
+       RETURNING order_number`,
       params,
     );
+    const count = inserted.rowCount ?? 0;
+    if (count > 0) notifyNewChannelOrdersNow();
+    return count;
   } catch (err) {
     console.error("[trendyol-orders] sipariş görülme kaydı hatası:", err instanceof Error ? err.message : err);
+    return 0;
   }
+}
+
+// ── Hızlı yeni sipariş kontrolü (poller, ~1 dk) ──────────────────────────────
+// Tam liste ısıtması (14 günlük pencereler + Askıda) ~3 dk'da bir; yeni siparişi
+// daha erken yakalamak için yalnız son 2 günü TEK pencereyle çeker ve görülme
+// kaydını yazar (→ anında bildirim). Yeni sipariş çıktıysa tam listeyi de hemen
+// tazeler → bildirime dokunan kullanıcı siparişi listede görür. Salt-okuma.
+const NEW_ORDER_LOOKBACK_MS = 2 * 86_400_000;
+
+export async function checkNewTrendyolOrders(deps: PreviewDeps = {}): Promise<number> {
+  const fetchOrders = deps.fetchOrders ?? defaultGetOrders;
+  const endDate = Date.now();
+  const raw: TrendyolOrder[] = [];
+  await collectPages(fetchOrders, { startDate: endDate - NEW_ORDER_LOOKBACK_MS, endDate }, raw);
+  const fresh = await recordOrderSightings(buildOrdersList(raw, new Map(), new Map()));
+  if (fresh > 0 && !deps.fetchOrders) void warmOrdersSnapshot();
+  return fresh;
 }
 
 async function collectPages(

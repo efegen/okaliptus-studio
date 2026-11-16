@@ -26,6 +26,7 @@ import {
   statusToTab,
   buildOrdersList,
   listTrendyolOrders,
+  checkNewTrendyolOrders,
   type DisplayMatchMap,
   type ChannelInfoMap,
 } from "../../src/services/trendyol/orders.service.js";
@@ -39,6 +40,7 @@ import {
 
 async function run(): Promise<void> {
   const productIds: string[] = [];
+  const fastOrders: string[] = [];
   const stamp = Date.now().toString();
   const BARCODE = `SMOKE32_${stamp}`;
   const UNMATCHED = `SMOKE32_NOMATCH_${stamp}`;
@@ -177,6 +179,24 @@ async function run(): Promise<void> {
     const askOrder = list.orders.find(o => o.orderNumber === "TY-ASK")!;
     assertEqual(askOrder.tab, "aski", "TY-ASK tab=aski");
 
+    // ── 6. Hızlı yeni sipariş kontrolü (poller ~1 dk) ─────────────────────────
+    step("Hızlı kontrol: tek pencere (son 2 gün), yeni siparişi bir kez sayar...");
+    const fastOrder = `SMOKE32F-${stamp}`;
+    fastOrders.push(fastOrder);
+    const windows: GetOrdersParams[] = [];
+    const fastFetch = async (params: GetOrdersParams): Promise<TrendyolOrdersResponse> => {
+      windows.push(params);
+      return { totalPages: 1, content: [{ orderNumber: fastOrder, shipmentPackageStatus: "Created", id: 77, orderDate: Date.now() - 600_000, lines: [] }] };
+    };
+    assertEqual(await checkNewTrendyolOrders({ fetchOrders: fastFetch }), 1, "yeni sipariş görüldü");
+    assertEqual(await checkNewTrendyolOrders({ fetchOrders: fastFetch }), 0, "ikinci kontrolde yeni değil");
+    assertEqual(windows.length, 2, "her kontrol tek istek");
+    assert(
+      windows[0].startDate !== undefined && windows[0].endDate !== undefined && windows[0].endDate - windows[0].startDate <= 2 * 86_400_000,
+      "pencere son 2 gün",
+    );
+    assert(windows[0].status === undefined, "durum süzgeci yok (yeni siparişler dahil)");
+
     ok("\nSMOKE 32 — TÜM ADIMLAR BAŞARILI ✓");
   } finally {
     try {
@@ -186,6 +206,9 @@ async function run(): Promise<void> {
     }
     try {
       await pool.query(`DELETE FROM channel_products WHERE channel = 'trendyol' AND external_id = ANY($1::text[])`, [[BARCODE]]);
+      await pool.query(`DELETE FROM channel_order_sightings WHERE channel = 'trendyol' AND order_number = ANY($1::text[])`, [
+        [...fastOrders, "TY-NEW", "TY-ASK"],
+      ]);
     } catch {
       // yut
     }
