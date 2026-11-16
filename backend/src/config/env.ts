@@ -68,6 +68,15 @@ export const env = {
   // için orders penceresinden geniştir; her tick yeniden görülür (idempotent).
   trendyolClaimWindowDays: Math.min(180, Math.max(1, Number.parseInt(process.env.TRENDYOL_CLAIM_WINDOW_DAYS ?? "60", 10) || 60)),
 
+  // Hepsiburada Marketplace. Kimlik: Basic base64(merchantId:secretKey) +
+  // User-Agent = HB'nin verdiği developer kullanıcı adı. Ortam varsayılanı
+  // "sit" (HB test ortamı): canlıya geçmek için HEPSIBURADA_ENV=prod AÇIKÇA
+  // set edilmeli — yanlışlıkla canlı mağazaya yazmayı önler.
+  hepsiburadaEnv: (process.env.HEPSIBURADA_ENV ?? "sit").trim().toLowerCase() === "prod" ? ("prod" as const) : ("sit" as const),
+  hepsiburadaMerchantId: (process.env.HEPSIBURADA_MERCHANT_ID ?? "").trim(),
+  hepsiburadaSecretKey: (process.env.HEPSIBURADA_SECRET_KEY ?? "").trim(),
+  hepsiburadaUserAgent: (process.env.HEPSIBURADA_USER_AGENT ?? "").trim(),
+
   // Etap 4 — bildirim zamanlayıcısı (ders hatırlatma + durum dürtmesi + yeni
   // sipariş). 0 → zamanlayıcı hiç başlamaz. VAPID anahtarları yoksa da başlamaz
   // (bkz. notification-scheduler.ts).

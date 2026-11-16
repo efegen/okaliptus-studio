@@ -19,7 +19,9 @@
     "products:import": "tsx scripts/products-import.ts",
     "db:size": "tsx scripts/db-size-check.ts",
     "db:backup": "tsx scripts/backup-db.ts",
-    "seed:trendyol-listings": "tsx scripts/seed-trendyol-listings.ts"
+    "seed:trendyol-listings": "tsx scripts/seed-trendyol-listings.ts",
+    "hb:sit": "tsx scripts/hepsiburada-sit.ts",
+    "hb:live-check": "tsx scripts/hepsiburada-live-check.ts"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
