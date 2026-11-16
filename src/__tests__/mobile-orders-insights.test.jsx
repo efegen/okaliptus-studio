@@ -13,6 +13,7 @@ import {
 
 vi.mock('../api', () => ({
   getTrendyolOrdersList: vi.fn(),
+  getHepsiburadaOrdersList: vi.fn(async () => ({ orders: [], tabCounts: {}, total: 0, configured: false })),
   getTrendyolInsights: vi.fn(),
   getCargoChangeStatuses: vi.fn(async () => []),
 }));

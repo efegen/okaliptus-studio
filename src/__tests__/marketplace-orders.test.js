@@ -7,6 +7,7 @@ import {
   applyCargoChangeStatuses,
   cargoProviderCodeFromName,
   findOrderIn,
+  mergeOrderLists,
   patchOrdersList,
   pendingCargoPackageIds,
 } from '../marketplaceOrders';
@@ -49,6 +50,31 @@ describe('takip yardımcıları', () => {
     const renumbered = order({ id: 'O1::P9', packageId: 'P9' });
     expect(findOrderIn([renumbered], order())).toBe(renumbered);
     expect(findOrderIn([order({ id: 'O1::P9', packageId: 'P9' }), order({ id: 'O1::P8', packageId: 'P8' })], order())).toBeNull();
+  });
+});
+
+describe('mergeOrderLists', () => {
+  it('iki kanalı tarihe göre birleştirir, sekme sayılarını toplar', () => {
+    const ty = { orders: [order({ id: 'T1', channel: 'trendyol', orderDate: 100 }), order({ id: 'T2', channel: 'trendyol', orderDate: 300 })], tabCounts: { tum: 2, yeni: 2 }, total: 2 };
+    const hb = { orders: [order({ id: 'H1', channel: 'hepsiburada', orderDate: 200, tab: 'teslim' })], tabCounts: { tum: 1, teslim: 1 }, total: 1, configured: true };
+    const merged = mergeOrderLists(ty, hb);
+    expect(merged.orders.map(o => o.id)).toEqual(['T2', 'H1', 'T1']);
+    expect(merged.tabCounts).toEqual({ tum: 3, yeni: 2, teslim: 1 });
+    expect(merged.total).toBe(3);
+  });
+
+  it('yalnız biri geldiyse onu, hiçbiri yoksa undefined döndürür', () => {
+    expect(mergeOrderLists(undefined, undefined)).toBeUndefined();
+    const only = mergeOrderLists({ orders: [order()], tabCounts: { tum: 1 } }, undefined);
+    expect(only.total).toBe(1);
+  });
+});
+
+describe('findOrderIn — kanallar', () => {
+  it('aynı paket no başka kanaldaysa onu döndürmez', () => {
+    const hb = order({ id: 'hb:O1::P1', channel: 'hepsiburada' });
+    expect(findOrderIn([hb], order({ id: 'X', channel: 'trendyol' }))).toBeNull();
+    expect(findOrderIn([hb], order({ id: 'Y', channel: 'hepsiburada' }))).toBe(hb);
   });
 });
 

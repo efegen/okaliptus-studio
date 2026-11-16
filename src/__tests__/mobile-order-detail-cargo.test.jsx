@@ -12,6 +12,7 @@ vi.mock('jsbarcode', () => ({ default: vi.fn() }));
 vi.mock('../api', () => ({
   getSettings: vi.fn(async () => ({ marketplaceFulfillmentEnabled: true })),
   getTrendyolOrdersList: vi.fn(),
+  getHepsiburadaOrdersList: vi.fn(async () => ({ orders: [], tabCounts: {}, total: 0, configured: false })),
   changeOrderCargoProvider: vi.fn(),
   getCargoChangeStatuses: vi.fn(),
 }));

@@ -16,11 +16,13 @@
 import React from 'react';
 import JsBarcode from 'jsbarcode';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { getSettings, getTrendyolOrdersList, changeOrderCargoProvider } from '../api';
+import { getSettings, changeOrderCargoProvider } from '../api';
 import { queryKeys } from '../hooks/queryKeys';
 import { useCargoChangeWatcher } from '../hooks/useCargoChangeWatcher';
+import { useMarketplaceOrders } from '../hooks/useMarketplaceOrders';
 import {
   CARGO_PROVIDERS,
+  CHANNEL_LABELS,
   ORDERS_WINDOW_DAYS,
   cargoCode,
   cargoProviderCodeFromName,
@@ -274,7 +276,7 @@ function BarcodeModal({ order, onClose }) {
 // ─── İşlemler alt sayfası (bottom sheet) ─────────────────────────────────────
 // Web'deki ActionsMenu'nün mobil karşılığı. "Kargo Firması Değiştir" işlevsel;
 // "İşleme Al" hâlâ pasif (TY'ye yazma = Faz 2).
-function ActionsSheet({ onClose, onChangeCargo }) {
+function ActionsSheet({ onClose, onChangeCargo, cargoSoon = false }) {
   React.useEffect(() => {
     function onKey(e) { if (e.key === 'Escape') onClose(); }
     document.addEventListener('keydown', onKey);
@@ -286,9 +288,10 @@ function ActionsSheet({ onClose, onChangeCargo }) {
       <div className="od-sheet" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="İşlemler">
         <div className="od-sheet-grip" aria-hidden="true" />
         <div className="od-sheet-title">İşlemler</div>
-        <button type="button" className="od-sheet-item" onClick={onChangeCargo}>
+        <button type="button" className="od-sheet-item" onClick={onChangeCargo} disabled={cargoSoon} title={cargoSoon ? 'Yakında' : undefined}>
           <span className="od-sheet-ic">{I.truck(18)}</span>
           <span className="od-sheet-item-txt">Kargo Firması Değiştir</span>
+          {cargoSoon && <span className="od-sheet-soon">Yakında</span>}
         </button>
         <button type="button" className="od-sheet-item" disabled title="Yakında (Faz 2)">
           <span className="od-sheet-ic">{I.check(18)}</span>
@@ -494,14 +497,9 @@ export function MobileOrderDetail({ order: openedOrder, onBack }) {
   const settingsQuery = useQuery({ queryKey: queryKeys.settings(), queryFn: getSettings, staleTime: 60 * 1000 });
   const fulfillmentEnabled = settingsQuery.data?.marketplaceFulfillmentEnabled === true;
 
-  // Liste ekranıyla (MobileOrders) AYNI sorgu → sipariş canlı önbellekten okunur.
+  // Liste ekranıyla (MobileOrders) AYNI sorgular → sipariş canlı önbellekten okunur.
   // Açılıştaki nesne dondurulmuş bir kopyadır; yalnız önbellekte bulunamazsa kullanılır.
-  const ordersQuery = useQuery({
-    queryKey: queryKeys.trendyolOrders({ windowDays: ORDERS_WINDOW_DAYS }),
-    queryFn: () => getTrendyolOrdersList({ windowDays: ORDERS_WINDOW_DAYS }),
-    staleTime: 30 * 1000,
-    enabled: !!openedOrder,
-  });
+  const ordersQuery = useMarketplaceOrders({ windowDays: ORDERS_WINDOW_DAYS }, { enabled: !!openedOrder });
   const order = findOrderIn(ordersQuery.data?.orders, openedOrder) || openedOrder;
   useCargoChangeWatcher(order ? [order] : []);
 
@@ -595,6 +593,12 @@ export function MobileOrderDetail({ order: openedOrder, onBack }) {
               <span className="od-band-txt">{band.label}{band.value ? <>: <b>{band.value}</b></> : null}</span>
             </div>
           )}
+          {order.returnRequested && (
+            <div className="od-band od-band-warn" role="status">
+              {I.warn(16)}
+              <span className="od-band-txt">Müşteri iade talebi açtı</span>
+            </div>
+          )}
 
           <div className="od-info-rows">
             <div className="od-info-row">
@@ -677,7 +681,7 @@ export function MobileOrderDetail({ order: openedOrder, onBack }) {
                 <span className="od-info-k">Kargo Kodu</span>
                 <span className="od-cargo-code">
                   <span className="od-cargo-code-v">{order.cargoTrackingNumber}</span>
-                  <span className="od-cargo-code-s">Trendyol Anlaşmalı Kargo</span>
+                  <span className="od-cargo-code-s">{CHANNEL_LABELS[order.channel] || 'Pazaryeri'} Anlaşmalı Kargo</span>
                 </span>
               </div>
             )}
@@ -739,6 +743,8 @@ export function MobileOrderDetail({ order: openedOrder, onBack }) {
       {barcodeOpen && <BarcodeModal order={order} onClose={() => setBarcodeOpen(false)} />}
       {actionsOpen && (
         <ActionsSheet
+          // Hepsiburada kargo firması değiştirme henüz bağlanmadı (sıradaki adım).
+          cargoSoon={order.channel === 'hepsiburada'}
           onClose={() => setActionsOpen(false)}
           onChangeCargo={() => { setActionsOpen(false); setCargoOpen(true); }}
         />

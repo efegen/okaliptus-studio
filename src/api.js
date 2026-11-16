@@ -890,6 +890,23 @@ export async function getTrendyolOrdersList({ startDate, endDate, windowDays, fo
   return payload.data;
 }
 
+// Hepsiburada siparişleri — Trendyol listesiyle AYNI biçim ({ orders[], tabCounts,
+// total }) + configured (HB kimliği yoksa false, liste boş). SALT-OKUMA.
+// marketplaceSyncEnabled kapalıysa 409.
+export async function getHepsiburadaOrdersList({ startDate, endDate, windowDays, force } = {}) {
+  const params = new URLSearchParams();
+  if (startDate) params.set("startDate", String(startDate));
+  if (endDate) params.set("endDate", String(endDate));
+  if (windowDays) params.set("windowDays", String(windowDays));
+  if (force) params.set("force", "1");
+  const qs = params.toString();
+  const payload = await apiGet(`/hepsiburada/orders/list${qs ? `?${qs}` : ""}`);
+  if (typeof payload?.data !== "object" || payload.data === null || Array.isArray(payload.data)) {
+    throw new Error("Hepsiburada sipariş listesi alınamadı.");
+  }
+  return payload.data;
+}
+
 // Faz 2: bir siparişin kargo etiketini (Trendyol Ortak Etiket) OLUŞTURUR + getirir.
 // CANLI TY yazması; marketplaceFulfillmentEnabled kapalıysa 409. format 'PDF'|'ZPL'.
 // → { contentType, base64?|text?|json?, format, cargoTrackingNumber }

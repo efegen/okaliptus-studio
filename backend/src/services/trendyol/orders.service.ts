@@ -249,6 +249,9 @@ export type DisplayOrder = {
   lines: DisplayLine[];
   // Yalnız takip edilen bir kargo firması değişikliği varsa (cargo-change-tracker).
   cargoChange?: CargoChangeView;
+  // Müşteri iade talebi açtı (HB: kalem durumu "Claim…"). Trendyol'da sipariş
+  // verisinde gelmez (iade ayrı API) → alan yok.
+  returnRequested?: boolean;
 };
 
 export type OrdersListResult = {

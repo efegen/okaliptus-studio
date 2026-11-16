@@ -3,10 +3,10 @@
 // Editöryel serif YOK — yoğun bir operasyon ekranı için temiz Geist sans + mono.
 // Tüm görsel sınıflar `oo-*` ad alanında.
 //
-// Faz 1 (SALT-OKUNUR): gerçek Trendyol siparişlerini GET /trendyol/orders/list ucundan
-// çeker (TY fotoğrafı + iç ürün eşleşmesiyle zenginleştirilmiş). Trendyol'a HİÇ yazma
-// yok; iç STOĞA dokunmaz (order-sync defterinden bağımsız, `marketplaceSyncEnabled`
-// flag'iyle açılır). HB API'si yok → kanal yapısı durur ama yalnız Trendyol akar.
+// Faz 1 (SALT-OKUNUR): Trendyol (GET /trendyol/orders/list) ve Hepsiburada (GET
+// /hepsiburada/orders/list) siparişlerini aynı biçimde çekip tek tabloda gösterir
+// (useMarketplaceOrders). Pazaryerlerine HİÇ yazma yok; iç STOĞA dokunmaz
+// (`marketplaceSyncEnabled` flag'iyle açılır). Kanal segmenti istemci tarafı süzer.
 //
 // İşlemler menüsü (Durum kolonu): "Kargo Firması Değiştir" İŞLEVSEL — CANLI TY
 // yazması (PUT cargo-providers), marketplaceFulfillmentEnabled flag + onay diyaloğu
@@ -20,9 +20,10 @@ import React from 'react';
 import ReactDOM from 'react-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import JsBarcode from 'jsbarcode';
-import { getTrendyolOrdersList, changeOrderCargoProvider, getSettings } from './api';
+import { changeOrderCargoProvider, getSettings } from './api';
 import { queryKeys } from './hooks/queryKeys';
 import { useCargoChangeWatcher } from './hooks/useCargoChangeWatcher';
+import { useMarketplaceOrders } from './hooks/useMarketplaceOrders';
 import {
   CARGO_PROVIDERS,
   cargoCode,
@@ -495,7 +496,12 @@ function ActionsMenu({ order, onChangeCargo }) {
           role="menu"
           style={{ top: pos.top, right: pos.right }}
         >
-          {order.tab !== 'teslim' ? (
+          {order.tab !== 'teslim' && order.channel === 'hepsiburada' ? (
+            // Hepsiburada kargo firması değiştirme henüz bağlanmadı (sıradaki adım).
+            <button type="button" className="oo-actions-item" role="menuitem" disabled title="Yakında">
+              {I.truck(13)} Kargo Firması Değiştir <span className="oo-soon">Yakında</span>
+            </button>
+          ) : order.tab !== 'teslim' ? (
             <button
               type="button"
               className="oo-actions-item"
@@ -587,6 +593,12 @@ function OrderGroup({ order, checked, onToggle, onMatch, onBarcode, onChangeCarg
               <span className="oo-kalan-label">Kalan Süre</span>
               <span className="oo-kalan">{I.clock(13)}{remaining}</span>
             </>
+          )}
+          {order.returnRequested && (
+            <div className="oo-cchg oo-cchg-warn" role="status">
+              {I.warn(11)}
+              <span className="oo-cchg-txt">Müşteri iade talebi açtı</span>
+            </div>
           )}
         </td>
         <td className="oo-col-buyer" rowSpan={rows}>
@@ -688,21 +700,11 @@ export function OrdersPage({ onNavigate }) {
   const endDate = applied.bitis ? Date.parse(applied.bitis) + 86_399_999 : undefined;
   const hasDates = startDate !== undefined || endDate !== undefined;
 
-  // "Yenile" tıklanınca bir sonraki sorgu sunucu anlık önbelleğini baypas edip canlı
-  // çeksin diye işaretlenir (normal açılışlar snapshot'tan ANINDA gelir, force=false).
-  const forceRef = React.useRef(false);
-  const ordersQuery = useQuery({
-    queryKey: queryKeys.trendyolOrders({ startDate, endDate, windowDays: hasDates ? null : periodDays }),
-    queryFn: () => {
-      const force = forceRef.current;
-      forceRef.current = false;
-      return getTrendyolOrdersList(hasDates ? { startDate, endDate, force } : { windowDays: periodDays, force });
-    },
-    staleTime: 30 * 1000,
-  });
+  // Trendyol + Hepsiburada (iki sorgu, tek liste). Anahtarlar mobil ekranla aynı →
+  // tarih filtresi yokken önbellek paylaşılır. "Yenile" sunucu anlık önbelleğini baypas eder.
+  const ordersQuery = useMarketplaceOrders({ startDate, endDate, windowDays: hasDates ? null : periodDays });
   function refreshNow() {
-    forceRef.current = true;
-    ordersQuery.refetch();
+    ordersQuery.refresh();
   }
 
   const data = ordersQuery.data;
@@ -829,6 +831,9 @@ export function OrdersPage({ onNavigate }) {
             <div className="oo-meta">
               <div className="oo-meta-main">Filtreleme Sonuçları: Toplam <b>{filtered.length}</b> sipariş bilgisi</div>
               <div className="oo-meta-sub">Son Güncelleme: {lastUpdated || '—'}</div>
+              {ordersQuery.failedChannel && (
+                <div className="oo-meta-sub" role="status">{ordersQuery.failedChannel} siparişleri alınamadı; yalnız diğer kanal gösteriliyor.</div>
+              )}
             </div>
             <div className="oo-excel-split">
               <button type="button" className="oo-excel-btn" disabled title="Yakında">{I.excel(15)}Excel ile İndir</button>
@@ -845,7 +850,7 @@ export function OrdersPage({ onNavigate }) {
           <div className="oo-seg" role="tablist" aria-label="Kanal filtresi">
             <button type="button" className={'oo-seg-btn' + (channel === 'all' ? ' on' : '')} onClick={() => changeChannel('all')}>Tümü</button>
             <button type="button" className={'oo-seg-btn' + (channel === 'ty' ? ' on' : '')} onClick={() => changeChannel('ty')}><span className="oo-seg-dot ty" />Trendyol</button>
-            <button type="button" className={'oo-seg-btn' + (channel === 'hb' ? ' on' : '')} onClick={() => changeChannel('hb')} title="Hepsiburada entegrasyonu yakında"><span className="oo-seg-dot hb" />Hepsiburada</button>
+            <button type="button" className={'oo-seg-btn' + (channel === 'hb' ? ' on' : '')} onClick={() => changeChannel('hb')}><span className="oo-seg-dot hb" />Hepsiburada</button>
           </div>
 
           <button type="button" className="oo-sortsel" onClick={refreshNow} disabled={ordersQuery.isFetching} title="Yenile">
@@ -889,7 +894,7 @@ export function OrdersPage({ onNavigate }) {
           <div className="oo-empty">
             <div className="oo-empty-med">{I.bag(28)}</div>
             <div className="oo-empty-title">Siparişler alınamadı</div>
-            <div className="oo-empty-sub">{ordersQuery.error?.message || 'Bilinmeyen hata.'} Trendyol kimliği ve "Pazaryeri senkronu" ayarını kontrol edin.</div>
+            <div className="oo-empty-sub">{ordersQuery.error?.message || 'Bilinmeyen hata.'} Pazaryeri kimliklerini ve "Pazaryeri senkronu" ayarını kontrol edin.</div>
           </div>
         ) : filtered.length === 0 ? (
           <div className="oo-empty">

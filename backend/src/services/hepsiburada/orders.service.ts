@@ -326,6 +326,9 @@ function fromEvent(entry: PackageEntry, enrich: HbEnrichment): DisplayOrder {
     cargoTrackingLink: str(cargo?.trackingInfoUrl),
     ...totals(lines),
     invoiced: entry.hasInvoice ?? items.some(i => i.hasInvoice === true),
+    // İade talebi açık (ör. "ClaimCreated"). Sekme DEĞİŞMEZ (Trendyol'da da talep
+    // açıkken sipariş Teslim'de kalır); ekran yalnız not gösterir.
+    returnRequested: items.some(i => /^claim/i.test(i.status ?? "")),
     lines: stripMoney(lines),
   };
 }

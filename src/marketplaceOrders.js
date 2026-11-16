@@ -15,6 +15,26 @@ import { queryKeys } from './hooks/queryKeys';
 // Trendyol API yalnız son ~3 ayı döndürür; web + mobil varsayılan pencere.
 export const ORDERS_WINDOW_DAYS = 90;
 
+export const CHANNEL_LABELS = { trendyol: 'Trendyol', hepsiburada: 'Hepsiburada' };
+
+// Trendyol + Hepsiburada listelerini tek listeye birleştirir (saf): siparişler sipariş
+// tarihine göre yeniden eskiye (eşitlerde gelen sıra korunur), sekme sayıları toplanır.
+// İkisi de yoksa undefined (henüz veri yok).
+export function mergeOrderLists(...lists) {
+  const present = lists.filter(l => l && Array.isArray(l.orders));
+  if (present.length === 0) return undefined;
+  const orders = present
+    .flatMap(l => l.orders)
+    .map((o, i) => [o, i])
+    .sort(([a, ai], [b, bi]) => ((b.orderDate ?? 0) - (a.orderDate ?? 0)) || ai - bi)
+    .map(([o]) => o);
+  const tabCounts = {};
+  for (const l of present) {
+    for (const [k, v] of Object.entries(l.tabCounts || {})) tabCounts[k] = (tabCounts[k] || 0) + (Number(v) || 0);
+  }
+  return { orders, tabCounts, total: orders.length };
+}
+
 // Trendyol pazaryeri kargo firma KODLARI ("Kargo Firması Değiştir" seçenekleri).
 // Backend whitelist'iyle (backend/src/services/trendyol/cargo-providers.ts) SENKRON
 // tutulmalı — backend güvenlik sınırıdır, tanımsız kodu 422 ile reddeder. `aliases`,
@@ -93,9 +113,11 @@ export function pendingCargoPackageIds(orders) {
 }
 
 // Açılmış bir siparişin listedeki güncel hâli: id → paket no → (tek paketliyse) sipariş no.
-// TY kargo değişikliğinde paketi yeniden numaralandırsa bile detay kaybolmaz.
-export function findOrderIn(orders, ref) {
-  if (!ref || !Array.isArray(orders)) return null;
+// TY kargo değişikliğinde paketi yeniden numaralandırsa bile detay kaybolmaz. Liste iki
+// kanalı birlikte taşıdığı için yalnız aynı kanalın siparişlerine bakılır.
+export function findOrderIn(allOrders, ref) {
+  if (!ref || !Array.isArray(allOrders)) return null;
+  const orders = ref.channel ? allOrders.filter(o => o.channel === ref.channel) : allOrders;
   const byId = orders.find(o => o.id === ref.id);
   if (byId) return byId;
   if (ref.packageId) {

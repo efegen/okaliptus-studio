@@ -4,8 +4,9 @@ import { MobileHomeView } from './home/MobileHomeView';
 import { MobileAgenda } from './home/MobileAgenda';
 import { useWeeklyKpi, parseNumericValue } from './shared/useWeeklyKpi';
 import { useWeekLessons } from './shared/useWeekLessons';
-import { getSettings, getTrendyolOrdersList, getNotes, markNotesSeen } from '../api';
+import { getSettings, getNotes, markNotesSeen } from '../api';
 import { queryKeys } from '../hooks/queryKeys';
+import { useMarketplaceOrders } from '../hooks/useMarketplaceOrders';
 import { can } from '../permissions';
 
 const ORDERS_WINDOW_DAYS = 90;
@@ -136,14 +137,9 @@ export function MobileHome({ user, onLogout, onOpenFinance, onOpenOccupancy, onO
     staleTime: 5 * 60 * 1000,
   });
 
-  // Sipariş sorgusu — MobileOrders ile aynı query key → önbellek paylaşılır.
-  // Asistanda /trendyol 403 döneceği için sorgu hiç çalıştırılmaz (enabled).
-  const { data: ordersData } = useQuery({
-    queryKey: queryKeys.trendyolOrders({ windowDays: ORDERS_WINDOW_DAYS }),
-    queryFn: () => getTrendyolOrdersList({ windowDays: ORDERS_WINDOW_DAYS }),
-    staleTime: 30 * 1000,
-    enabled: canSeeOrders,
-  });
+  // Sipariş sorguları (Trendyol + Hepsiburada) — MobileOrders ile aynı query key'ler →
+  // önbellek paylaşılır. Asistanda pazaryeri uçları 403 döneceği için hiç çalışmaz (enabled).
+  const { data: ordersData } = useMarketplaceOrders({ windowDays: ORDERS_WINDOW_DAYS }, { enabled: canSeeOrders });
   const tabCounts = ordersData?.tabCounts ?? {};
   const ordersPending = (tabCounts.yeni ?? 0) + (tabCounts.isleme ?? 0);
   const ordersUrgent = React.useMemo(() => {

@@ -8,6 +8,7 @@ import * as api from '../api';
 vi.mock('../api', () => ({
   getSettings: vi.fn(async () => ({ weeklyCapacity: 25 })),
   getTrendyolOrdersList: vi.fn(async () => ({ orders: [], tabCounts: {} })),
+  getHepsiburadaOrdersList: vi.fn(async () => ({ orders: [], tabCounts: {}, total: 0, configured: false })),
   getNotes: vi.fn(),
   markNotesSeen: vi.fn(async () => {}),
   getNoteImage: vi.fn(),

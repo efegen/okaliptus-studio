@@ -1,11 +1,12 @@
 // Mobil · Pazaryeri Siparişleri — web operasyon ekranının (src/orders.jsx) mobil
 // karşılığı. Tasarım kaynağı: Claude Design "Mobil Pazaryeri Siparişleri" (chat24).
 //
-// SALT-OKUNUR: gerçek Trendyol siparişlerini GET /trendyol/orders/list ucundan
-// çeker (TY fotoğrafı + iç ürün eşleşmesiyle zenginleştirilmiş). Trendyol'a/iç
-// STOĞA hiç yazma yok; `marketplaceSyncEnabled` flag'iyle açılır. HB parke —
-// kanal segmenti durur ama yalnız Trendyol akar. Ana sayfadaki "Siparişler"
-// (V3·B) butonundan açılır; geri tuşu → ana sayfa.
+// SALT-OKUNUR: Trendyol (GET /trendyol/orders/list) ve Hepsiburada (GET
+// /hepsiburada/orders/list) siparişlerini aynı biçimde çekip tek listede gösterir
+// (useMarketplaceOrders). Pazaryerlerine/iç STOĞA hiç yazma yok;
+// `marketplaceSyncEnabled` flag'iyle açılır. Kanal filtresi (Tümü / Trendyol /
+// Hepsiburada) istemci tarafıdır. Ana sayfadaki "Siparişler" (V3·B) butonundan
+// açılır; geri tuşu → ana sayfa.
 //
 // Yapı: sabit koyu başlık + kayan gövde. Gövdenin başında Trendyol özeti (kart
 // şeridi, ordersInsights/ — tuval "Siparişler mini dashboard" C6) durur; durum
@@ -15,10 +16,11 @@
 
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { getTrendyolInsights, getTrendyolOrdersList } from '../api';
+import { getTrendyolInsights } from '../api';
 import { useCan } from '../currentUser';
 import { queryKeys } from '../hooks/queryKeys';
 import { useCargoChangeWatcher } from '../hooks/useCargoChangeWatcher';
+import { useMarketplaceOrders } from '../hooks/useMarketplaceOrders';
 import { ORDERS_WINDOW_DAYS } from '../marketplaceOrders';
 import { InsightsMiniBar, InsightsStrip } from './ordersInsights/InsightsStrip';
 import { InsightPage } from './ordersInsights/InsightPage';
@@ -104,7 +106,7 @@ const TABS = [
 const CHANNELS = [
   { key: 'all', label: 'Tümü', dot: null },
   { key: 'ty', label: 'Trendyol', dot: 'ty' },
-  { key: 'hb', label: 'Hepsiburada', dot: 'hb', title: 'Hepsiburada entegrasyonu yakında' },
+  { key: 'hb', label: 'Hepsiburada', dot: 'hb' },
 ];
 
 const EMPTY_LABELS = {
@@ -202,6 +204,12 @@ function OrderCard({ order, onOpenDetail }) {
           <span className="mo-band-txt">{band.label}{band.value ? <>: <b>{band.value}</b></> : null}</span>
         </div>
       )}
+      {order.returnRequested && (
+        <div className="mo-band mo-band-warn">
+          {I.info(15)}
+          <span className="mo-band-txt">Müşteri iade talebi açtı</span>
+        </div>
+      )}
 
       <div
         className="mo-items-row"
@@ -245,20 +253,9 @@ export function MobileOrders({ onBack, onOpenDetail }) {
   const [search, setSearch] = React.useState('');
   const [filterOpen, setFilterOpen] = React.useState(false);
 
-  // Web orders ekranıyla AYNI sorgu anahtarı → önbellek paylaşılır (viewport
-  // değişince yeniden çekmez), salt-okunur 90 günlük pencere.
-  // "Yenile" bir sonraki sorguda sunucu anlık önbelleğini baypas etsin diye işaretler;
-  // normal açılışlar snapshot'tan ANINDA gelir (force=false).
-  const forceRef = React.useRef(false);
-  const ordersQuery = useQuery({
-    queryKey: queryKeys.trendyolOrders({ windowDays: ORDERS_WINDOW_DAYS }),
-    queryFn: () => {
-      const force = forceRef.current;
-      forceRef.current = false;
-      return getTrendyolOrdersList({ windowDays: ORDERS_WINDOW_DAYS, force });
-    },
-    staleTime: 30 * 1000,
-  });
+  // Web orders ekranıyla AYNI sorgu anahtarları → önbellek paylaşılır (viewport
+  // değişince yeniden çekmez), salt-okunur 90 günlük pencere, iki kanal birleşik.
+  const ordersQuery = useMarketplaceOrders({ windowDays: ORDERS_WINDOW_DAYS });
   // ── Trendyol özeti (kart şeridi) — yalnız finansı görebilenler (asistan değil) ──
   const canSeeInsights = useCan('finance.read');
   const [period, setPeriod] = React.useState('ay');
@@ -285,8 +282,7 @@ export function MobileOrders({ onBack, onOpenDetail }) {
   }
 
   function refreshNow() {
-    forceRef.current = true;
-    ordersQuery.refetch();
+    ordersQuery.refresh();
     if (canSeeInsights) insightsQuery.refetch();
   }
 
@@ -422,6 +418,9 @@ export function MobileOrders({ onBack, onOpenDetail }) {
         <div className="mo-meta">
           <div className="mo-meta-main">Toplam <b>{filtered.length}</b> sipariş · {currentTab?.label}</div>
           <div className="mo-meta-sub">Son güncelleme: {lastUpdated || '—'}</div>
+          {ordersQuery.failedChannel && (
+            <div className="mo-meta-sub" role="status">{ordersQuery.failedChannel} siparişleri alınamadı; yalnız diğer kanal gösteriliyor.</div>
+          )}
         </div>
 
         {/* liste / durumlar */}
@@ -434,7 +433,7 @@ export function MobileOrders({ onBack, onOpenDetail }) {
           <div className="mo-empty">
             <div className="mo-empty-med">{I.bag(26)}</div>
             <div className="mo-empty-t">Siparişler alınamadı</div>
-            <div className="mo-empty-d">{ordersQuery.error?.message || 'Bilinmeyen hata.'} Trendyol kimliği ve "Pazaryeri senkronu" ayarını kontrol edin.</div>
+            <div className="mo-empty-d">{ordersQuery.error?.message || 'Bilinmeyen hata.'} Pazaryeri kimliklerini ve "Pazaryeri senkronu" ayarını kontrol edin.</div>
           </div>
         ) : filtered.length === 0 ? (
           <div className="mo-empty">

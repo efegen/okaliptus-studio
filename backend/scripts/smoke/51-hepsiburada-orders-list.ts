@@ -218,8 +218,23 @@ async function run(): Promise<void> {
     assertEqual(t1.cargoTrackingLink, "https://ptt.example/KP1", "takip linki kargo bilgisinden");
     assertEqual(t1.lastModifiedDate, hbDate("2026-11-16T15:14:20"), "son değişim = kargoya verilme");
 
+    assertEqual(t1.returnRequested, false, "iade talebi yok");
+
     const t2 = built.orders.find(o => o.packageId === "P-T2")!;
     assertEqual(t2.tab, "teslim", "teslim → teslim");
+
+    // İade talebi açık teslim edilmiş paket: sekme değişmez, yalnız işaret.
+    const claimed = buildHepsiburadaOrders(
+      {
+        packed: [],
+        events: { shipped: [], undelivered: [], delivered: [{ PackageNumber: "P-R", OrderNumber: "O-R", Barcode: "BR", DeliveredDate: "2026-11-15T10:00:00" }] },
+        paid: [],
+        cancelled: [],
+      },
+      { details: new Map([["O-R", detail("O-R", [{ packageNumber: "P-R", sku: "S", status: "ClaimCreated" }])]]), cargo: new Map(), matchMap: new Map() },
+    ).orders[0];
+    assertEqual(claimed.tab, "teslim", "iade talebi açık → yine Teslim");
+    assertEqual(claimed.returnRequested, true, "iade talebi işaretli");
     assert(t2.invoiced, "HasInvoice → faturalandı");
     assertEqual(t2.lastModifiedDate, hbDate("2026-11-16T09:00:00"), "son değişim = teslim");
 
