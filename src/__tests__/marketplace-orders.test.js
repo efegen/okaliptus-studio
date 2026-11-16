@@ -5,6 +5,7 @@ vi.mock('../api', () => ({ getCargoChangeStatuses: vi.fn() }));
 
 import {
   applyCargoChangeStatuses,
+  canChangeCargo,
   cargoProviderCodeFromName,
   findOrderIn,
   mergeOrderLists,
@@ -67,6 +68,31 @@ describe('mergeOrderLists', () => {
     expect(mergeOrderLists(undefined, undefined)).toBeUndefined();
     const only = mergeOrderLists({ orders: [order()], tabCounts: { tum: 1 } }, undefined);
     expect(only.total).toBe(1);
+  });
+});
+
+describe('kanal ayrımı', () => {
+  it('kargo değiştirilebilirlik: Trendyol teslim hariç, Hepsiburada yalnız Yeni + paket', () => {
+    expect(canChangeCargo(order({ tab: 'tasima' }))).toBe(true);
+    expect(canChangeCargo(order({ tab: 'teslim' }))).toBe(false);
+    expect(canChangeCargo(order({ channel: 'hepsiburada', tab: 'yeni' }))).toBe(true);
+    expect(canChangeCargo(order({ channel: 'hepsiburada', tab: 'tasima' }))).toBe(false);
+    expect(canChangeCargo(order({ channel: 'hepsiburada', tab: 'yeni', packageId: null }))).toBe(false);
+  });
+
+  it('bekleyenleri kanala göre ayırır, Hepsiburada önbelleğine yamar', () => {
+    const ty = order({ packageId: 'P1', cargoChange: pending });
+    const hb = order({ id: 'hb:O2::P2', orderNumber: 'O2', packageId: 'P2', channel: 'hepsiburada', cargoChange: pending });
+    expect(pendingCargoPackageIds([ty, hb], 'trendyol')).toEqual(['P1']);
+    expect(pendingCargoPackageIds([ty, hb], 'hepsiburada')).toEqual(['P2']);
+
+    const client = new QueryClient();
+    const hbKey = queryKeys.hepsiburadaOrders({ windowDays: 90 });
+    client.setQueryData(hbKey, { orders: [hb], tabCounts: { tum: 1 }, total: 1 });
+    const fresh = { ...hb, cargoProvider: 'Aras Kargo' };
+    expect(applyCargoChangeStatuses(client, [{ packageId: 'P2', change: applied, order: fresh }], 'hepsiburada')).toBe(true);
+    expect(client.getQueryData(hbKey).orders[0].cargoProvider).toBe('Aras Kargo');
+    expect(applyCargoChangeStatuses(client, [{ packageId: 'P2', change: applied, order: fresh }], 'trendyol')).toBe(false);
   });
 });
 

@@ -907,6 +907,40 @@ export async function getHepsiburadaOrdersList({ startDate, endDate, windowDays,
   return payload.data;
 }
 
+// Hepsiburada paketinin geçebileceği aktif kargo firmaları (HB'nin o paket için
+// döndürdüğü liste) + mevcut firmanın kodu. Salt-okuma.
+// → { packageId, options: [{ code, name, logoUrl }], currentCode }
+export async function getHepsiburadaCargoOptions(packageId) {
+  const payload = await apiGet(`/hepsiburada/orders/cargo-options?packageId=${encodeURIComponent(packageId)}`);
+  if (typeof payload?.data !== "object" || payload.data === null || !Array.isArray(payload.data.options)) {
+    throw new Error("Kargo firmaları alınamadı.");
+  }
+  return payload.data;
+}
+
+// Hepsiburada paketinin kargo firmasını DEĞİŞTİRİR (CANLI HB yazması). cargoCompany =
+// HB kısa kodu (getHepsiburadaCargoOptions'tan). marketplaceFulfillmentEnabled kapalıysa 409.
+// → { packageId, cargoProvider, name, change, order }
+export async function changeHepsiburadaCargoCompany({ packageId, cargoCompany, orderNumber }) {
+  const payload = await apiRequest("/hepsiburada/orders/cargo-company", {
+    method: "POST",
+    body: JSON.stringify({ packageId, cargoCompany, orderNumber }),
+  });
+  return ensureMutationResult(payload, "Kargo firması değiştirilemedi.");
+}
+
+// Hepsiburada kargo firması değişikliklerinin durumu + en taze paket verisi.
+// → [{ packageId, change, order }]
+export async function getHepsiburadaCargoChangeStatuses(packageIds, { check = false } = {}) {
+  const params = new URLSearchParams({ packageIds: packageIds.join(",") });
+  if (check) params.set("check", "1");
+  const payload = await apiGet(`/hepsiburada/orders/cargo-changes?${params.toString()}`);
+  if (!Array.isArray(payload?.data)) {
+    throw new Error("Kargo değişikliği durumu alınamadı.");
+  }
+  return payload.data;
+}
+
 // Faz 2: bir siparişin kargo etiketini (Trendyol Ortak Etiket) OLUŞTURUR + getirir.
 // CANLI TY yazması; marketplaceFulfillmentEnabled kapalıysa 409. format 'PDF'|'ZPL'.
 // → { contentType, base64?|text?|json?, format, cargoTrackingNumber }

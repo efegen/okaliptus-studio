@@ -27,6 +27,8 @@ export const queryKeys = {
     ? ['hepsiburadaOrders', p.startDate ?? null, p.endDate ?? null, p.windowDays ?? null]
     : ['hepsiburadaOrders'],
   trendyolCargoChanges:(ids)  => ['trendyolCargoChanges', ids],
+  hepsiburadaCargoChanges:(ids) => ['hepsiburadaCargoChanges', ids],
+  hepsiburadaCargoOptions:(packageId) => ['hepsiburadaCargoOptions', packageId],
   // Siparişler ekranının özet şeridi (satış, sana kalan, çok satanlar, ödemeler).
   trendyolInsights:   (period)=> period !== undefined ? ['trendyolInsights', period] : ['trendyolInsights'],
   debtors:            ()      => ['debtors'],

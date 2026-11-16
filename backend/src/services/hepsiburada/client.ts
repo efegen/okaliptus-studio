@@ -637,6 +637,36 @@ export async function getPackageEvents(
   });
 }
 
+// Paketin geçebileceği kargo firmaları (paketlenmiş, henüz kargoya verilmemiş paket).
+// HB alan adları PascalCase. ShortName değişiklikte gönderilen koddur ("AR").
+export type HepsiburadaCargoCompanyOption = {
+  Id?: number;
+  Name?: string;
+  ShortName?: string;
+  LogoUrl?: string;
+  IsActive?: boolean;
+  MinDeci?: number;
+  MaxDeci?: number;
+};
+
+export async function getChangeableCargoCompanies(packageNumber: string) {
+  return hepsiburadaRequest<HepsiburadaCargoCompanyOption[]>(
+    "orders",
+    "GET",
+    `${packagesPath()}/packagenumber/${encodeURIComponent(packageNumber)}/changablecargocompanies`,
+  );
+}
+
+// Paketin kargo firmasını değiştirir — CANLI YAZMA (asla yeniden denenmez). 204 döner.
+export async function changePackageCargoCompany(packageNumber: string, shortName: string) {
+  return hepsiburadaRequest<unknown>(
+    "orders",
+    "PUT",
+    `${packagesPath()}/packagenumber/${encodeURIComponent(packageNumber)}/changecargocompany`,
+    { body: { CargoCompanyShortName: shortName } },
+  );
+}
+
 export async function getPackageCargoInfo(packageNumber: string) {
   return hepsiburadaRequest<HepsiburadaPackageCargoInfo[]>(
     "orders",

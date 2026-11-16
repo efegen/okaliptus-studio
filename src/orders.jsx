@@ -20,18 +20,20 @@ import React from 'react';
 import ReactDOM from 'react-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import JsBarcode from 'jsbarcode';
-import { changeOrderCargoProvider, getSettings } from './api';
+import { getSettings } from './api';
 import { queryKeys } from './hooks/queryKeys';
 import { useCargoChangeWatcher } from './hooks/useCargoChangeWatcher';
+import { useCargoOptions } from './hooks/useCargoOptions';
 import { useMarketplaceOrders } from './hooks/useMarketplaceOrders';
 import {
-  CARGO_PROVIDERS,
+  canChangeCargo,
   cargoCode,
-  cargoProviderCodeFromName,
+  channelText,
   fmtClock,
   getCargoLogo,
   markCargoChangeRequested,
   recheckCargoChange,
+  requestCargoChange,
 } from './marketplaceOrders';
 
 // ─── Biçimlendiriciler ───────────────────────────────────────────────────────
@@ -179,7 +181,7 @@ function BarcodeModal({ order, onClose }) {
             <div className="oo-cargo-note oo-cargo-note-warn" role="alert">
               {I.warn(15)}
               <span>
-                <b>{order.cargoChange.toName}</b> geçişi Trendyol'da henüz onaylanmadı; bu barkod önceki
+                <b>{order.cargoChange.toName}</b> geçişi {channelText(order.channel).da} henüz onaylanmadı; bu barkod önceki
                 firmaya ait olabilir. Onaylandıktan sonra yazdırın.
               </span>
             </div>
@@ -202,14 +204,16 @@ function BarcodeModal({ order, onClose }) {
   );
 }
 
-// "Kargo Firması Değiştir" modalı — CANLI TY yazması (paketin kargo firmasını
-// değiştirir). Operatör yeni firmayı seçer → onaylar → POST /trendyol/orders/cargo-provider.
-// TY değişikliği ASENKRON uygular: başarı "Trendyol'a iletildi" demektir; onSubmitted
-// siparişi "onay bekleniyor"a çeker, Kargo kolonu süreci gösterir. Trendyol bir isteği
-// reddederse (ör. kendi sıklık kuralı) hatası burada gösterilir.
+// "Kargo Firması Değiştir" modalı — CANLI pazaryeri yazması (paketin kargo firmasını
+// değiştirir). Operatör yeni firmayı seçer → onaylar → kanalın ucuna gider (Trendyol:
+// sabit firma listesi; Hepsiburada: HB'nin o paket için verdiği liste — useCargoOptions).
+// Pazaryeri değişikliği ASENKRON uygulayabilir: başarı "…'a iletildi" demektir;
+// onSubmitted siparişi "onay bekleniyor"a çeker, Kargo kolonu süreci gösterir.
+// Pazaryeri isteği reddederse hatası burada gösterilir.
 // marketplaceFulfillmentEnabled kapalıysa gönderim engellenir + Ayarlar'a yönlendirir.
 function CargoProviderModal({ order, fulfillmentEnabled, onClose, onSubmitted }) {
-  const currentCode = cargoProviderCodeFromName(order ? order.cargoProvider : null);
+  const { options, currentCode, isLoading: optionsLoading, error: optionsError } = useCargoOptions(order);
+  const t = channelText(order?.channel);
   const [selected, setSelected] = React.useState(null);
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState(null);
@@ -236,12 +240,8 @@ function CargoProviderModal({ order, fulfillmentEnabled, onClose, onSubmitted })
     setSubmitting(true);
     setError(null);
     try {
-      const result = await changeOrderCargoProvider({
-        packageId: order.packageId,
-        cargoProvider: selected,
-        orderNumber: order.orderNumber,
-      });
-      setDone(true);
+      const result = await requestCargoChange(order, selected);
+      setDone(result?.change?.status === 'applied' ? 'applied' : 'pending');
       if (onSubmitted) onSubmitted(result);
       closeTimer.current = setTimeout(onClose, 900);
     } catch (err) {
@@ -286,12 +286,14 @@ function CargoProviderModal({ order, fulfillmentEnabled, onClose, onSubmitted })
           {!done && fulfillmentEnabled && hasPackage && (
             <div className="oo-cargo-note">
               {I.info(14)}
-              <span>Trendyol değişikliği birkaç dakika içinde işler. Onaylanana dek Kargo kolonunda <b>onay bekleniyor</b> görünür.</span>
+              <span>{t.name} değişikliği birkaç dakika içinde işler. Onaylanana dek Kargo kolonunda <b>onay bekleniyor</b> görünür.</span>
             </div>
           )}
+          {optionsLoading && <div className="oo-cargo-note">{I.info(14)}<span>Kargo firmaları yükleniyor…</span></div>}
+          {optionsError && <div className="oo-cargo-err">{I.warn(14)} {optionsError.message || 'Kargo firmaları alınamadı.'}</div>}
 
           <div className="oo-cargo-list" role="radiogroup" aria-label="Kargo firması seç">
-            {CARGO_PROVIDERS.map(p => {
+            {options.map(p => {
               const isCurrent = p.code === currentCode;
               const isRequested = !isCurrent && change && change.status === 'pending' && change.toCode === p.code;
               const isSel = p.code === selected;
@@ -320,7 +322,9 @@ function CargoProviderModal({ order, fulfillmentEnabled, onClose, onSubmitted })
 
         <footer className="oo-cargo-actions">
           {done ? (
-            <span className="oo-cargo-success" role="status">{I.check(15)} Trendyol'a iletildi — onay bekleniyor</span>
+            <span className="oo-cargo-success" role="status">
+              {I.check(15)} {done === 'applied' ? 'Kargo firması güncellendi' : `${t.a} iletildi — onay bekleniyor`}
+            </span>
           ) : (
             <>
               <button type="button" className="oo-btn oo-btn-ghost" onClick={onClose} disabled={submitting}>Vazgeç</button>
@@ -496,12 +500,7 @@ function ActionsMenu({ order, onChangeCargo }) {
           role="menu"
           style={{ top: pos.top, right: pos.right }}
         >
-          {order.tab !== 'teslim' && order.channel === 'hepsiburada' ? (
-            // Hepsiburada kargo firması değiştirme henüz bağlanmadı (sıradaki adım).
-            <button type="button" className="oo-actions-item" role="menuitem" disabled title="Yakında">
-              {I.truck(13)} Kargo Firması Değiştir <span className="oo-soon">Yakında</span>
-            </button>
-          ) : order.tab !== 'teslim' ? (
+          {canChangeCargo(order) ? (
             <button
               type="button"
               className="oo-actions-item"
@@ -526,9 +525,10 @@ function ActionsMenu({ order, onChangeCargo }) {
 function CargoChangeChip({ order, checking, onRecheck }) {
   const change = order.cargoChange;
   if (!change) return null;
+  const t = channelText(order.channel);
   if (change.status === 'pending') {
     return (
-      <div className="oo-cchg oo-cchg-pending" role="status" title={`İstek saati ${fmtClock(change.requestedAt)} — Trendyol onaylayınca kendiliğinden güncellenir`}>
+      <div className="oo-cchg oo-cchg-pending" role="status" title={`İstek saati ${fmtClock(change.requestedAt)} — ${t.name} onaylayınca kendiliğinden güncellenir`}>
         <span className="oo-cchg-spin" aria-hidden="true" />
         <span className="oo-cchg-txt">{change.toName} · onay bekleniyor</span>
       </div>
@@ -549,11 +549,11 @@ function CargoChangeChip({ order, checking, onRecheck }) {
       type="button"
       className="oo-cchg oo-cchg-warn"
       disabled={checking}
-      onClick={() => onRecheck && onRecheck(order.packageId)}
+      onClick={() => onRecheck && onRecheck(order.packageId, order.channel || 'trendyol')}
       title={
-        `${change.toName} isteği (${fmtClock(change.requestedAt)}) Trendyol'a henüz yansımadı.` +
+        `${change.toName} isteği (${fmtClock(change.requestedAt)}) ${t.a} henüz yansımadı.` +
         (change.toCode === 'TEXMP' ? ' Trendyol Express kotanız dolmuş olabilir.' : '') +
-        ' Trendyol satıcı panelinden kontrol edin; tıklayarak tekrar kontrol edebilirsiniz.'
+        ` ${t.name} satıcı panelinden kontrol edin; tıklayarak tekrar kontrol edebilirsiniz.`
       }
     >
       {I.warn(11)}
@@ -713,11 +713,11 @@ export function OrdersPage({ onNavigate }) {
   // Onayı beklenen kargo firması değişikliklerini yokla (Kargo kolonu kendiliğinden güncellenir).
   useCargoChangeWatcher(allOrders);
 
-  async function recheckCargo(packageId) {
+  async function recheckCargo(packageId, channel = 'trendyol') {
     if (!packageId || cargoCheckingId) return;
     setCargoCheckingId(packageId);
     try {
-      await recheckCargoChange(queryClient, packageId);
+      await recheckCargoChange(queryClient, packageId, channel);
     } catch (err) {
       console.error('[orders] kargo değişikliği kontrol edilemedi:', err);
     } finally {
@@ -938,7 +938,7 @@ export function OrdersPage({ onNavigate }) {
           onClose={() => setCargoOrder(null)}
           // TY async uygular: sipariş "onay bekleniyor"a geçer, watcher yoklar. Tam liste
           // yenilemesi (refreshNow) bilinçli olarak YOK: TY henüz yansıtmamış eski veriyi getirirdi.
-          onSubmitted={(result) => markCargoChangeRequested(queryClient, cargoOrder, result.change)}
+          onSubmitted={(result) => markCargoChangeRequested(queryClient, cargoOrder, result.change, result.order || null)}
         />
       )}
     </div>

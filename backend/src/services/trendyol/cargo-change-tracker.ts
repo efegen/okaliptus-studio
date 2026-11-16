@@ -15,6 +15,10 @@
 // Kasıtlı olarak DB'ye yazılmaz (orders.service snapshot önbelleği gibi tek, uzun
 // ömürlü Railway sürecine dayanır). Yeniden başlatmada kayıtlar düşer → ekran TY'nin
 // döndürdüğünü gösterir (yanlış değil; yalnız "bekleniyor" bilgisi kaybolur).
+//
+// Kayıt deposu CargoChangeTracker sınıfıdır; yalnız "yeni firma yansıdı mı?" kuralı
+// kanala özeldir. Bu dosyanın düz fonksiyonları Trendyol örneğidir; Hepsiburada kendi
+// örneğini kendi kuralıyla açar (hepsiburada/cargo-change.ts).
 
 import type { DisplayOrder } from "./orders.service.js";
 import { cargoProviderCodeFromName, foldCargoName } from "./cargo-providers.js";
@@ -54,39 +58,97 @@ export type CargoChangeEntry = {
   checking: Promise<void> | null; // eşzamanlı TY kontrollerini tekilleştirir
 };
 
-const entries = new Map<string, CargoChangeEntry>(); // packageId → kayıt
+export type CargoChangeInput = Omit<CargoChangeEntry, "requestedAt" | "appliedAt" | "lastCheckedAt" | "checking">;
 
-function prune(now: number): void {
-  for (const [id, e] of entries) {
-    const expired = now - e.requestedAt > RETENTION_MS;
-    const settled = e.appliedAt !== null && now - e.appliedAt > APPLIED_VISIBLE_MS;
-    if (expired || settled) entries.delete(id);
+// Paketteki güncel firma adı, kaydın hedefine geçildiğini gösteriyor mu? (kanala özel)
+export type CargoAppliedRule = (entry: Pick<CargoChangeEntry, "toCode" | "toName" | "fromName">, currentName: string | null | undefined) => boolean;
+
+// Kanal başına bir örnek: packageId → kayıt. Durum her okumada türetilir (bkz. dosya başı).
+export class CargoChangeTracker {
+  private readonly entries = new Map<string, CargoChangeEntry>();
+
+  constructor(private readonly isApplied: CargoAppliedRule) {}
+
+  private prune(now: number): void {
+    for (const [id, e] of this.entries) {
+      const expired = now - e.requestedAt > RETENTION_MS;
+      const settled = e.appliedAt !== null && now - e.appliedAt > APPLIED_VISIBLE_MS;
+      if (expired || settled) this.entries.delete(id);
+    }
+  }
+
+  register(input: CargoChangeInput, now = Date.now()): CargoChangeEntry {
+    const entry: CargoChangeEntry = { ...input, requestedAt: now, appliedAt: null, lastCheckedAt: null, checking: null };
+    this.entries.set(input.packageId, entry);
+    return entry;
+  }
+
+  get(packageId: string, now = Date.now()): CargoChangeEntry | null {
+    this.prune(now);
+    return this.entries.get(packageId) ?? null;
+  }
+
+  hasAny(now = Date.now()): boolean {
+    this.prune(now);
+    return this.entries.size > 0;
+  }
+
+  // Kaydın güncel görünümü. Uygulandığı İLK görüldüğünde appliedAt damgalanır ve
+  // yapışır: sonradan gelen bayat bir okuma durumu geri "pending"e çeviremez.
+  resolve(entry: CargoChangeEntry, currentName: string | null | undefined, now = Date.now()): CargoChangeView {
+    if (entry.appliedAt === null && this.isApplied(entry, currentName)) {
+      entry.appliedAt = now;
+    }
+    const confirmDeadline = entry.requestedAt + CARGO_CHANGE_CONFIRM_TIMEOUT_MS;
+    const status: CargoChangeStatus =
+      entry.appliedAt !== null ? "applied" : now >= confirmDeadline ? "unconfirmed" : "pending";
+    return {
+      status,
+      toCode: entry.toCode,
+      toName: entry.toName,
+      fromName: entry.fromName,
+      fromTrackingNumber: entry.fromTrackingNumber,
+      requestedAt: entry.requestedAt,
+      appliedAt: entry.appliedAt,
+      confirmDeadline,
+    };
+  }
+
+  // Listedeki bir siparişin kaydı. Önce packageId; pazaryeri değişiklikte paketi yeniden
+  // numaralandırırsa (eski packageId listede yoksa) aynı sipariş numarasına düşer.
+  findForOrder(
+    order: Pick<DisplayOrder, "packageId" | "orderNumber">,
+    presentPackageIds: ReadonlySet<string>,
+    now = Date.now(),
+  ): CargoChangeEntry | null {
+    this.prune(now);
+    if (order.packageId) {
+      const direct = this.entries.get(order.packageId);
+      if (direct) return direct;
+    }
+    for (const e of this.entries.values()) {
+      if (e.orderNumber === order.orderNumber && !presentPackageIds.has(e.packageId)) return e;
+    }
+    return null;
+  }
+
+  clear(): void {
+    this.entries.clear();
   }
 }
 
-export function registerCargoChange(
-  input: Omit<CargoChangeEntry, "requestedAt" | "appliedAt" | "lastCheckedAt" | "checking">,
-  now = Date.now(),
-): CargoChangeEntry {
-  const entry: CargoChangeEntry = {
-    ...input,
-    requestedAt: now,
-    appliedAt: null,
-    lastCheckedAt: null,
-    checking: null,
-  };
-  entries.set(input.packageId, entry);
-  return entry;
+// ── Trendyol örneği (mevcut düz API) ─────────────────────────────────────────
+
+export function registerCargoChange(input: CargoChangeInput, now = Date.now()): CargoChangeEntry {
+  return trendyolTracker.register(input, now);
 }
 
 export function getCargoChange(packageId: string, now = Date.now()): CargoChangeEntry | null {
-  prune(now);
-  return entries.get(packageId) ?? null;
+  return trendyolTracker.get(packageId, now);
 }
 
 export function hasTrackedCargoChanges(now = Date.now()): boolean {
-  prune(now);
-  return entries.size > 0;
+  return trendyolTracker.hasAny(now);
 }
 
 // TY'nin döndürdüğü firma adı hedefe geçildiğini gösteriyor mu? Ad tanınıyorsa KOD
@@ -102,47 +164,22 @@ export function isCargoChangeApplied(
   return entry.fromName !== null && foldCargoName(currentName) !== foldCargoName(entry.fromName);
 }
 
-// Kaydın güncel görünümü. Uygulandığı İLK görüldüğünde appliedAt damgalanır ve
-// yapışır: sonradan gelen bayat bir okuma durumu geri "pending"e çeviremez.
+const trendyolTracker = new CargoChangeTracker(isCargoChangeApplied);
+
 export function resolveCargoChange(
   entry: CargoChangeEntry,
   currentName: string | null | undefined,
   now = Date.now(),
 ): CargoChangeView {
-  if (entry.appliedAt === null && isCargoChangeApplied(entry, currentName)) {
-    entry.appliedAt = now;
-  }
-  const confirmDeadline = entry.requestedAt + CARGO_CHANGE_CONFIRM_TIMEOUT_MS;
-  const status: CargoChangeStatus =
-    entry.appliedAt !== null ? "applied" : now >= confirmDeadline ? "unconfirmed" : "pending";
-  return {
-    status,
-    toCode: entry.toCode,
-    toName: entry.toName,
-    fromName: entry.fromName,
-    fromTrackingNumber: entry.fromTrackingNumber,
-    requestedAt: entry.requestedAt,
-    appliedAt: entry.appliedAt,
-    confirmDeadline,
-  };
+  return trendyolTracker.resolve(entry, currentName, now);
 }
 
-// Listedeki bir siparişin kaydı. Önce packageId; TY değişiklikte paketi yeniden
-// numaralandırırsa (eski packageId listede yoksa) aynı sipariş numarasına düşer.
 export function findCargoChangeForOrder(
   order: Pick<DisplayOrder, "packageId" | "orderNumber">,
   presentPackageIds: ReadonlySet<string>,
   now = Date.now(),
 ): CargoChangeEntry | null {
-  prune(now);
-  if (order.packageId) {
-    const direct = entries.get(order.packageId);
-    if (direct) return direct;
-  }
-  for (const e of entries.values()) {
-    if (e.orderNumber === order.orderNumber && !presentPackageIds.has(e.packageId)) return e;
-  }
-  return null;
+  return trendyolTracker.findForOrder(order, presentPackageIds, now);
 }
 
 // Bekleyen kayıt için TY'ye iki hedefli kontrol arasındaki asgari süre: ilk dakikada
@@ -155,5 +192,5 @@ export function cargoCheckInterval(entry: CargoChangeEntry, now = Date.now()): n
 }
 
 export function clearTrackedCargoChanges(): void {
-  entries.clear();
+  trendyolTracker.clear();
 }

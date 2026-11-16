@@ -7,15 +7,55 @@
 // `cargoChange` iliştirir (backend cargo-change-tracker.ts): pending → applied |
 // unconfirmed. Ekranlar useCargoChangeWatcher ile bekleyenleri yoklar; dönen durum +
 // taze paket verisi buradaki applyCargoChangeStatuses ile sipariş önbelleğine yamanır →
-// liste ve detay aynı anda, sayfa yenilemeden güncellenir.
+// liste ve detay aynı anda, sayfa yenilemeden güncellenir. Hepsiburada aynı süreci
+// kendi uçlarıyla (/hepsiburada/orders/cargo-*) ve kendi önbellek anahtarıyla izler;
+// kanal siparişin `channel` alanından seçilir (yoksa Trendyol).
 
-import { getCargoChangeStatuses } from './api';
+import {
+  changeHepsiburadaCargoCompany,
+  changeOrderCargoProvider,
+  getCargoChangeStatuses,
+  getHepsiburadaCargoChangeStatuses,
+} from './api';
 import { queryKeys } from './hooks/queryKeys';
 
 // Trendyol API yalnız son ~3 ayı döndürür; web + mobil varsayılan pencere.
 export const ORDERS_WINDOW_DAYS = 90;
 
 export const CHANNEL_LABELS = { trendyol: 'Trendyol', hepsiburada: 'Hepsiburada' };
+
+// Kanal adı + Türkçe ekleri ("Trendyol'a" / "Hepsiburada'ya").
+const CHANNEL_TEXT = {
+  trendyol: { name: 'Trendyol', da: "Trendyol'da", a: "Trendyol'a" },
+  hepsiburada: { name: 'Hepsiburada', da: "Hepsiburada'da", a: "Hepsiburada'ya" },
+};
+export function channelText(channel) {
+  return CHANNEL_TEXT[channel] || CHANNEL_TEXT.trendyol;
+}
+
+const channelOf = (order) => (order && order.channel) || 'trendyol';
+
+// Kargo firması değiştirilebilir mi? Trendyol: teslim edilmemiş paket. Hepsiburada:
+// yalnız paketlenmiş ama henüz kargoya verilmemiş paket (Yeni sekmesi) — HB değişikliği
+// yalnız bu durumda kabul eder.
+export function canChangeCargo(order) {
+  if (!order) return false;
+  if (channelOf(order) === 'hepsiburada') return order.tab === 'yeni' && !!order.packageId;
+  return order.tab !== 'teslim';
+}
+
+// Seçilen firmaya geçiş isteği (CANLI pazaryeri yazması) — kanalın kendi ucuna gider.
+// → { packageId, cargoProvider, name, change, order? }
+export function requestCargoChange(order, code) {
+  if (channelOf(order) === 'hepsiburada') {
+    return changeHepsiburadaCargoCompany({ packageId: order.packageId, cargoCompany: code, orderNumber: order.orderNumber });
+  }
+  return changeOrderCargoProvider({ packageId: order.packageId, cargoProvider: code, orderNumber: order.orderNumber });
+}
+
+function ordersKeyFor(channel) {
+  return channel === 'hepsiburada' ? queryKeys.hepsiburadaOrders() : queryKeys.trendyolOrders();
+}
 
 // Trendyol + Hepsiburada listelerini tek listeye birleştirir (saf): siparişler sipariş
 // tarihine göre yeniden eskiye (eşitlerde gelen sıra korunur), sekme sayıları toplanır.
@@ -103,10 +143,11 @@ export function fmtClock(ms) {
 // aralığıyla gider; bu yoklama ucuzdur, TY'ye her seferinde çıkmaz).
 export const CARGO_WATCH_INTERVAL_MS = 3000;
 
-// Onayı beklenen paketlerin numaraları (sıralı, tekil).
-export function pendingCargoPackageIds(orders) {
+// Onayı beklenen paketlerin numaraları (sıralı, tekil). channel verilirse yalnız o kanal.
+export function pendingCargoPackageIds(orders, channel) {
   const ids = new Set();
   for (const o of orders || []) {
+    if (channel && channelOf(o) !== channel) continue;
     if (o && o.packageId && o.cargoChange && o.cargoChange.status === 'pending') ids.add(o.packageId);
   }
   return [...ids].sort();
@@ -155,12 +196,12 @@ export function patchOrdersList(data, statuses) {
   return orders === data.orders ? data : { ...data, orders, tabCounts };
 }
 
-// Tüm sipariş önbelleklerine (web dönemleri + mobil pencere) durum yanıtlarını yamar.
-// Listenin "Son güncelleme" zamanı korunur (tek paket yaması tüm listeyi taze yapmaz).
-// Paket hiçbir önbellekte yoksa false döner.
-export function applyCargoChangeStatuses(queryClient, statuses) {
+// Kanalın tüm sipariş önbelleklerine (web dönemleri + mobil pencere) durum yanıtlarını
+// yamar. Listenin "Son güncelleme" zamanı korunur (tek paket yaması tüm listeyi taze
+// yapmaz). Paket hiçbir önbellekte yoksa false döner.
+export function applyCargoChangeStatuses(queryClient, statuses, channel = 'trendyol') {
   let found = false;
-  for (const [key, data] of queryClient.getQueriesData({ queryKey: queryKeys.trendyolOrders() })) {
+  for (const [key, data] of queryClient.getQueriesData({ queryKey: ordersKeyFor(channel) })) {
     if (!data || !Array.isArray(data.orders)) continue;
     if (statuses.some(s => s && data.orders.some(o => o.packageId === s.packageId))) found = true;
     const next = patchOrdersList(data, statuses);
@@ -172,18 +213,22 @@ export function applyCargoChangeStatuses(queryClient, statuses) {
 }
 
 // Başarılı "Kargo Firması Değiştir" sonrası: siparişi hemen "onay bekleniyor"a çeker
-// (watcher yoklamayı başlatır). Paket önbellekte yoksa listeyi sunucudan tazeler —
-// sunucu yanıtı zaten cargoChange taşır.
-export function markCargoChangeRequested(queryClient, order, change) {
+// (watcher yoklamayı başlatır). Sunucu taze paketi de döndürdüyse (Hepsiburada) o
+// yerleştirilir. Paket önbellekte yoksa listeyi sunucudan tazeler — sunucu yanıtı
+// zaten cargoChange taşır.
+export function markCargoChangeRequested(queryClient, order, change, freshOrder = null) {
   if (!order || !order.packageId || !change) return;
-  const found = applyCargoChangeStatuses(queryClient, [{ packageId: order.packageId, change, order: null }]);
-  if (!found) queryClient.invalidateQueries({ queryKey: queryKeys.trendyolOrders() });
+  const channel = channelOf(order);
+  const found = applyCargoChangeStatuses(queryClient, [{ packageId: order.packageId, change, order: freshOrder }], channel);
+  if (!found) queryClient.invalidateQueries({ queryKey: ordersKeyFor(channel) });
 }
 
-// "Tekrar kontrol et": sunucuya TY'den hemen hedefli kontrol yaptırır ve sonucu yamar.
-export async function recheckCargoChange(queryClient, packageId) {
-  const statuses = await getCargoChangeStatuses([packageId], { check: true });
-  applyCargoChangeStatuses(queryClient, statuses);
+// "Tekrar kontrol et": sunucuya pazaryerinden hemen hedefli kontrol yaptırır ve sonucu yamar.
+export async function recheckCargoChange(queryClient, packageId, channel = 'trendyol') {
+  const statuses = channel === 'hepsiburada'
+    ? await getHepsiburadaCargoChangeStatuses([packageId], { check: true })
+    : await getCargoChangeStatuses([packageId], { check: true });
+  applyCargoChangeStatuses(queryClient, statuses, channel);
   const hit = statuses.find(s => s.packageId === packageId);
   return hit ? hit.change : null;
 }

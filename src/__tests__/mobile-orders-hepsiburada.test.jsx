@@ -18,6 +18,9 @@ vi.mock('../api', () => ({
   getTrendyolInsights: vi.fn(async () => null),
   getCargoChangeStatuses: vi.fn(async () => []),
   changeOrderCargoProvider: vi.fn(),
+  getHepsiburadaCargoOptions: vi.fn(),
+  changeHepsiburadaCargoCompany: vi.fn(),
+  getHepsiburadaCargoChangeStatuses: vi.fn(async () => []),
 }));
 
 function tyOrder(overrides) {
@@ -96,7 +99,7 @@ describe('MobileOrders — Hepsiburada', () => {
 });
 
 describe('MobileOrderDetail — Hepsiburada', () => {
-  it('iade notu, kanal adıyla kargo kodu; kargo değiştirme henüz kapalı', async () => {
+  it('iade notu, kanal adıyla kargo kodu; kargoya verilmiş pakette firma değiştirilemez', async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const order = hbOrder();
     client.setQueryData(queryKeys.hepsiburadaOrders({ windowDays: 90 }), { orders: [order], tabCounts: { tum: 1 }, total: 1 });
@@ -110,5 +113,35 @@ describe('MobileOrderDetail — Hepsiburada', () => {
     fireEvent.click(screen.getByRole('button', { name: 'İşlemler' }));
     const sheet = screen.getByRole('dialog', { name: 'İşlemler' });
     expect(within(sheet).getByText('Kargo Firması Değiştir').closest('button')).toBeDisabled();
+  });
+
+  it('kargoya hazır pakette firma Hepsiburada seçeneklerinden değiştirilir, onay beklenir', async () => {
+    const order = hbOrder({ id: 'hb:H2::5000000002', orderNumber: 'H2', packageId: '5000000002', tab: 'yeni', status: 'Open',
+      returnRequested: false, cargoProvider: 'Yurtiçi Kargo', cargoTrackingNumber: '6210001', invoiced: false });
+    api.getHepsiburadaCargoOptions.mockResolvedValue({
+      packageId: '5000000002', currentCode: 'YK',
+      options: [{ code: 'YK', name: 'Yurtiçi Kargo', logoUrl: null }, { code: 'AR', name: 'Aras Kargo', logoUrl: null }],
+    });
+    const change = { status: 'pending', toCode: 'AR', toName: 'Aras Kargo', fromName: 'Yurtiçi Kargo', fromTrackingNumber: '6210001',
+      requestedAt: Date.now(), appliedAt: null, confirmDeadline: Date.now() + 600_000 };
+    api.changeHepsiburadaCargoCompany.mockResolvedValue({ packageId: '5000000002', cargoProvider: 'AR', name: 'Aras Kargo', change, order: { ...order, cargoChange: change } });
+    api.getHepsiburadaCargoChangeStatuses.mockResolvedValue([{ packageId: '5000000002', change, order: { ...order, cargoChange: change } }]);
+
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(queryKeys.hepsiburadaOrders({ windowDays: 90 }), { orders: [order], tabCounts: { tum: 1 }, total: 1 });
+    render(wrap(<MobileOrderDetail order={order} onBack={() => {}} />, client));
+
+    fireEvent.click(screen.getByRole('button', { name: 'İşlemler' }));
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'İşlemler' })).getByText('Kargo Firması Değiştir'));
+    const modal = await screen.findByRole('dialog', { name: 'Kargo Firması Değiştir' });
+    const aras = await within(modal).findByRole('radio', { name: /Aras Kargo/ });
+    expect(within(modal).getByRole('radio', { name: /Yurtiçi Kargo/ })).toBeDisabled();
+    fireEvent.click(aras);
+    fireEvent.click(within(modal).getByRole('button', { name: 'Değiştir' }));
+
+    await waitFor(() => expect(api.changeHepsiburadaCargoCompany).toHaveBeenCalledWith({ packageId: '5000000002', cargoCompany: 'AR', orderNumber: 'H2' }));
+    expect(api.changeOrderCargoProvider).not.toHaveBeenCalled();
+    expect(await screen.findByText("Hepsiburada'ya iletildi — onay bekleniyor", { exact: false })).toBeTruthy();
+    expect(await screen.findByText(/için Hepsiburada onayı bekleniyor/)).toBeTruthy();
   });
 });

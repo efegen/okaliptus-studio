@@ -53,6 +53,7 @@ import {
   type HepsiburadaPackageEventKind,
   type HepsiburadaProperty,
 } from "./client.js";
+import { hbCargoTracker } from "./cargo-change.js";
 
 export type HbOrdersListResult = OrdersListResult & {
   // false → HB kimliği yok; liste boş döner (ekran Trendyol'la çalışmaya devam eder).
@@ -626,7 +627,8 @@ async function fetchLive(params: HbListParams, source: HbOrderSource, useCache: 
 }
 
 // ── Liste snapshot'ı (stale-while-revalidate) — Trendyol görünümüyle aynı model ─
-type Snapshot = { result: OrdersListResult; fetchedAt: number; refreshing: boolean };
+// startedAt = canlı çekimin BAŞLADIĞI an (veri en az bu kadar taze).
+type Snapshot = { result: OrdersListResult; fetchedAt: number; startedAt: number; refreshing: boolean };
 const snapshots = new Map<string, Snapshot>();
 const SNAPSHOT_STALE_MS = 90_000;
 const SNAPSHOT_MAX_KEYS = 24;
@@ -636,8 +638,81 @@ function cacheKey(p: HbListParams): string {
   return `win:${p.windowDays && p.windowDays > 0 ? p.windowDays : 90}`;
 }
 
-function storeSnapshot(key: string, result: OrdersListResult): void {
-  snapshots.set(key, { result, fetchedAt: Date.now(), refreshing: false });
+// ── Hedefli paket tazelemeleri (kargo firması değişikliği) ───────────────────
+// Bir paketin kargo bilgisi ayrıca okunduğunda (order-cargo.service) sonuç burada
+// tutulur ve TÜM snapshot'lara yamanır → liste yeniden çekilmeden yeni firma ve
+// barkod görünür. Tazelemeden ÖNCE başlamış bir liste çekimi sonradan biterse
+// storeSnapshot yamayı yeniden uygular (bayat veri taze firmayı ezmez).
+export type HbPackageCargo = { cargoCompany: string | null; barcode: string | null; trackingInfoUrl: string | null };
+type PackageRefresh = { cargo: HbPackageCargo; startedAt: number };
+const packageRefreshes = new Map<string, PackageRefresh>(); // packageNumber → son tazeleme
+const PACKAGE_REFRESH_TTL_MS = 15 * 60_000;
+
+function patchPackage(result: OrdersListResult, packageNumber: string, cargo: HbPackageCargo): OrdersListResult {
+  let touched = false;
+  const orders = result.orders.map(o => {
+    if (o.channel !== "hepsiburada" || o.packageId !== packageNumber) return o;
+    touched = true;
+    return {
+      ...o,
+      cargoProvider: cargo.cargoCompany ?? o.cargoProvider,
+      cargoTrackingNumber: cargo.barcode ?? o.cargoTrackingNumber,
+      cargoTrackingLink: cargo.trackingInfoUrl ?? o.cargoTrackingLink,
+    };
+  });
+  return touched ? { ...result, orders } : result;
+}
+
+function applyNewerRefreshes(result: OrdersListResult, startedAt: number): OrdersListResult {
+  const now = Date.now();
+  let out = result;
+  for (const [packageNumber, r] of packageRefreshes) {
+    if (now - r.startedAt > PACKAGE_REFRESH_TTL_MS) packageRefreshes.delete(packageNumber);
+    else if (r.startedAt > startedAt) out = patchPackage(out, packageNumber, r.cargo);
+  }
+  return out;
+}
+
+// Paketin taze kargo bilgisini kaydeder ve kendisinden önce başlamış snapshot'lara yamar.
+export function recordPackageCargo(packageNumber: string, cargo: HbPackageCargo, startedAt = Date.now()): void {
+  packageRefreshes.set(packageNumber, { cargo, startedAt });
+  for (const snap of snapshots.values()) {
+    if (snap.startedAt < startedAt) snap.result = patchPackage(snap.result, packageNumber, cargo);
+  }
+}
+
+// Elimizdeki en taze HB verisinden bir paketi bulur (ağ yok). Paket yeniden
+// numaralandıysa ve siparişin tek paketi varsa ona düşer.
+export function findKnownHbOrder(ref: { packageId: string; orderNumber?: string | null }): DisplayOrder | null {
+  const sorted = [...snapshots.values()].sort((a, b) => b.startedAt - a.startedAt);
+  for (const s of sorted) {
+    const direct = s.result.orders.find(o => o.packageId === ref.packageId);
+    if (direct) return direct;
+    if (ref.orderNumber) {
+      const same = s.result.orders.filter(o => o.orderNumber === ref.orderNumber);
+      if (same.length === 1) return same[0];
+    }
+  }
+  return null;
+}
+
+// Takip edilen kargo değişikliklerini siparişlere iliştirir (yeni nesnelerle).
+function annotateCargoChanges(result: OrdersListResult, now = Date.now()): OrdersListResult {
+  if (!hbCargoTracker.hasAny(now)) return result;
+  const present = new Set(result.orders.map(o => o.packageId).filter((id): id is string => !!id));
+  let touched = false;
+  const orders = result.orders.map(o => {
+    const entry = hbCargoTracker.findForOrder(o, present, now);
+    if (!entry) return o;
+    touched = true;
+    return { ...o, cargoChange: hbCargoTracker.resolve(entry, o.cargoProvider, now) };
+  });
+  return touched ? { ...result, orders } : result;
+}
+
+function storeSnapshot(key: string, result: OrdersListResult, startedAt: number): OrdersListResult {
+  const merged = applyNewerRefreshes(result, startedAt);
+  snapshots.set(key, { result: merged, fetchedAt: Date.now(), startedAt, refreshing: false });
   if (snapshots.size > SNAPSHOT_MAX_KEYS) {
     let oldest: string | null = null;
     let oldestAt = Infinity;
@@ -649,6 +724,7 @@ function storeSnapshot(key: string, result: OrdersListResult): void {
     }
     if (oldest && oldest !== key) snapshots.delete(oldest);
   }
+  return merged;
 }
 
 // "Yeni sipariş" bildirimini besler (notification-scheduler checkNewChannelOrders).
@@ -683,8 +759,9 @@ async function revalidate(key: string, params: HbListParams): Promise<void> {
   if (cur?.refreshing) return;
   if (cur) cur.refreshing = true;
   try {
+    const startedAt = Date.now();
     const fresh = await fetchLive(params, defaultHbOrderSource, true);
-    storeSnapshot(key, fresh);
+    storeSnapshot(key, fresh, startedAt);
     void recordOrderSightings(fresh);
   } catch (err) {
     if (cur) cur.refreshing = false;
@@ -701,19 +778,26 @@ function emptyResult(): HbOrdersListResult {
   return { orders: [], tabCounts: countTabs([]), total: 0, configured: false };
 }
 
-export type HbListDeps = { source?: HbOrderSource };
+export type HbListDeps = {
+  source?: HbOrderSource;
+  // Yalnız smoke: enjekte kaynağın sonucunu snapshot'a da yaz (kargo değişikliği testi).
+  storeSnapshot?: boolean;
+};
 
 // Görünüm akışı (Trendyol'la aynı): snapshot varsa anında döner (bayatsa arka planda
 // tazeler); force → canlı bekler, başarısızsa snapshot'a düşer; snapshot yoksa canlı.
 // Enjekte kaynak (smoke) → önbelleksiz, deterministik. HB kimliği yoksa boş liste.
+// Her yoldan dönen siparişlere takip edilen kargo değişikliği iliştirilir.
 export async function listHepsiburadaOrders(params: HbListParams = {}, deps: HbListDeps = {}): Promise<HbOrdersListResult> {
   const settings = await getSettings();
   if (!settings.marketplaceSyncEnabled) throw new MarketplaceSyncDisabledError();
 
   if (deps.source) {
-    const result = await fetchLive(params, deps.source, false);
+    const startedAt = Date.now();
+    let result = await fetchLive(params, deps.source, false);
+    if (deps.storeSnapshot) result = storeSnapshot(cacheKey(params), result, startedAt);
     await recordOrderSightings(result); // test yolu: kayıt bitmeden dönme (deterministik)
-    return { ...result, configured: true };
+    return { ...annotateCargoChanges(result), configured: true };
   }
   if (!isHepsiburadaConfigured()) return emptyResult();
 
@@ -721,15 +805,16 @@ export async function listHepsiburadaOrders(params: HbListParams = {}, deps: HbL
   const cached = snapshots.get(key);
   if (!params.force && cached) {
     if (Date.now() - cached.fetchedAt > SNAPSHOT_STALE_MS) void revalidate(key, params);
-    return { ...cached.result, configured: true };
+    return { ...annotateCargoChanges(cached.result), configured: true };
   }
   try {
+    const startedAt = Date.now();
     const fresh = await fetchLive(params, defaultHbOrderSource, true);
-    storeSnapshot(key, fresh);
+    const stored = storeSnapshot(key, fresh, startedAt);
     void recordOrderSightings(fresh);
-    return { ...fresh, configured: true };
+    return { ...annotateCargoChanges(stored), configured: true };
   } catch (err) {
-    if (cached) return { ...cached.result, configured: true };
+    if (cached) return { ...annotateCargoChanges(cached.result), configured: true };
     throw err;
   }
 }

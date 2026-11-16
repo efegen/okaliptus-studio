@@ -1,6 +1,6 @@
 import React from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { getCargoChangeStatuses } from '../api';
+import { getCargoChangeStatuses, getHepsiburadaCargoChangeStatuses } from '../api';
 import { queryKeys } from './queryKeys';
 import {
   applyCargoChangeStatuses,
@@ -8,19 +8,19 @@ import {
   pendingCargoPackageIds,
 } from '../marketplaceOrders';
 
-// Verilen siparişlerde Trendyol onayı bekleyen bir kargo firması değişikliği varsa
+// Verilen siparişlerde pazaryeri onayı bekleyen bir kargo firması değişikliği varsa
 // sunucuyu kısa aralıkla yoklar ve dönen durum + taze paket verisini sipariş
-// önbelleğine yamar (bkz. marketplaceOrders.js). Böylece liste ve detay ekranı, TY
-// değişikliği yansıttığı anda sayfa yenilenmeden güncellenir. Bekleyen kalmayınca
+// önbelleğine yamar (bkz. marketplaceOrders.js). Böylece liste ve detay ekranı,
+// pazaryeri değişikliği yansıttığı anda sayfa yenilenmeden güncellenir. Trendyol ve
+// Hepsiburada ayrı uçlardan, ayrı önbelleklere yoklanır. Bekleyen kalmayınca
 // (applied / unconfirmed) yoklama kendiliğinden durur; sekme arka plandayken durur.
-export function useCargoChangeWatcher(orders) {
+function useChannelWatcher(orders, channel, queryKey, fetchStatuses) {
   const queryClient = useQueryClient();
-  const ids = pendingCargoPackageIds(orders);
-  const idsKey = ids.join(',');
+  const idsKey = pendingCargoPackageIds(orders, channel).join(',');
 
   const statusQuery = useQuery({
-    queryKey: queryKeys.trendyolCargoChanges(idsKey),
-    queryFn: () => getCargoChangeStatuses(idsKey.split(',')),
+    queryKey: queryKey(idsKey),
+    queryFn: () => fetchStatuses(idsKey.split(',')),
     enabled: idsKey !== '',
     refetchInterval: CARGO_WATCH_INTERVAL_MS,
     staleTime: 0,
@@ -29,6 +29,11 @@ export function useCargoChangeWatcher(orders) {
   });
 
   React.useEffect(() => {
-    if (statusQuery.data) applyCargoChangeStatuses(queryClient, statusQuery.data);
-  }, [queryClient, statusQuery.data]);
+    if (statusQuery.data) applyCargoChangeStatuses(queryClient, statusQuery.data, channel);
+  }, [queryClient, statusQuery.data, channel]);
+}
+
+export function useCargoChangeWatcher(orders) {
+  useChannelWatcher(orders, 'trendyol', queryKeys.trendyolCargoChanges, (ids) => getCargoChangeStatuses(ids));
+  useChannelWatcher(orders, 'hepsiburada', queryKeys.hepsiburadaCargoChanges, (ids) => getHepsiburadaCargoChangeStatuses(ids));
 }
