@@ -222,9 +222,13 @@ export type DisplayLine = {
   productUrl: string | null;   // channel_products.product_url (TY ürün sayfası)
 };
 
+// Siparişler ekranı Trendyol ve Hepsiburada siparişlerini AYNI biçimde gösterir;
+// HB görünümü (services/hepsiburada/orders.service.ts) bu tipleri kullanır.
+export type MarketplaceChannel = "trendyol" | "hepsiburada";
+
 export type DisplayOrder = {
-  id: string;          // orderNumber[::packageId] — UI anahtarı
-  channel: "trendyol";
+  id: string;          // orderNumber[::packageId] — UI anahtarı (HB: "hb:" önekli)
+  channel: MarketplaceChannel;
   orderNumber: string;
   packageId: string | null;
   status: string | null;
@@ -258,7 +262,7 @@ export type DisplayMatchMap = Map<string, { productId: string; internalName: str
 export type ChannelInfoMap = Map<string, { imageUrl: string | null; title: string | null; productUrl: string | null }>;
 
 // 'tum' + her sekmenin paket sayısı.
-function countTabs(orders: DisplayOrder[]): Record<string, number> {
+export function countTabs(orders: DisplayOrder[]): Record<string, number> {
   const tabCounts: Record<string, number> = {
     tum: 0, yeni: 0, isleme: 0, tasima: 0, teslim: 0, yeniden: 0, aski: 0, diger: 0,
   };

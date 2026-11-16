@@ -76,6 +76,9 @@ export const env = {
   hepsiburadaMerchantId: (process.env.HEPSIBURADA_MERCHANT_ID ?? "").trim(),
   hepsiburadaSecretKey: (process.env.HEPSIBURADA_SECRET_KEY ?? "").trim(),
   hepsiburadaUserAgent: (process.env.HEPSIBURADA_USER_AGENT ?? "").trim(),
+  // Siparişler ekranının HB listesini arka planda tazeleme aralığı (ms). 0 → kapalı
+  // (ekran yine açılışta canlı çeker). Salt-okuma; HB'ye yazmaz.
+  hepsiburadaOrderPollMs: Math.max(0, Number.parseInt(process.env.HEPSIBURADA_ORDER_POLL_MS ?? "180000", 10) || 0),
 
   // Etap 4 — bildirim zamanlayıcısı (ders hatırlatma + durum dürtmesi + yeni
   // sipariş). 0 → zamanlayıcı hiç başlamaz. VAPID anahtarları yoksa da başlamaz

@@ -16,6 +16,7 @@ import {
 import { productsRouter, serveProductImageHandler } from "./routes/products.router.js";
 import { channelsRouter } from "./routes/channels.router.js";
 import { trendyolRouter } from "./routes/trendyol.router.js";
+import { hepsiburadaRouter } from "./routes/hepsiburada.router.js";
 import { mappingRouter } from "./routes/mapping.router.js";
 import { kpiRouter } from "./routes/kpi.router.js";
 import { settingsRouter } from "./routes/settings.router.js";
@@ -132,6 +133,7 @@ export function createApp() {
   // Pazaryeri — asistana tamamen kapalı (okuma dahil). Mount-seviyesi kapı.
   app.use("/channels", requireCan("marketplace.manage"), channelsRouter);
   app.use("/trendyol", requireCan("marketplace.manage"), trendyolRouter);
+  app.use("/hepsiburada", requireCan("marketplace.manage"), hepsiburadaRouter);
   app.use("/mapping", requireCan("marketplace.manage"), mappingRouter);
   // Web sitesi mağazası ayarları (hangi ürün sitede, hangi köşede).
   app.use("/site-products", requireCan("marketplace.manage"), siteProductsRouter);

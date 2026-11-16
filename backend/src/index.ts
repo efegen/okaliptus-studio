@@ -4,6 +4,7 @@ import { env } from "./config/env.js";
 import { closeDatabaseConnection, verifyDatabaseConnection } from "./db/connection.js";
 import { createApp } from "./server/app.js";
 import { startOrderPoller, stopOrderPoller } from "./services/trendyol/order-poller.js";
+import { startHepsiburadaOrderPoller, stopHepsiburadaOrderPoller } from "./services/hepsiburada/order-poller.js";
 import { startNotificationScheduler, stopNotificationScheduler } from "./services/notification-scheduler.js";
 import { startSiteRefreshScheduler, stopSiteRefreshScheduler } from "./services/site-refresh.service.js";
 import { closeAllStreams } from "./services/live-sync.service.js";
@@ -25,6 +26,9 @@ async function main(): Promise<void> {
   // içinde kontrol edilir; gerekmiyorsa sessizce başlamaz).
   startOrderPoller();
 
+  // Hepsiburada sipariş listesi ısıtıcısı (salt-okuma; kimlik yoksa başlamaz).
+  startHepsiburadaOrderPoller();
+
   // Etap 4: bildirim zamanlayıcısı (ders hatırlatma + durum dürtmesi + yeni
   // sipariş). VAPID + interval kendi içinde kontrol edilir.
   startNotificationScheduler();
@@ -37,6 +41,7 @@ async function main(): Promise<void> {
     console.log(`${signal} received, shutting down.`);
 
     stopOrderPoller();
+    stopHepsiburadaOrderPoller();
     stopNotificationScheduler();
     stopSiteRefreshScheduler();
     // Açık SSE akışları bitmeden server.close() tamamlanmaz; önce kapat ki

@@ -430,27 +430,118 @@ export type HepsiburadaPaged<T> = {
   pageCount?: number;
 };
 
+// Ürün özelliği (ör. { name: "Renk", value: "Kırmızı" }).
+export type HepsiburadaProperty = { name?: string; value?: string; displayName?: string };
+
+// Paketlenmiş (kargoya hazır) paket — GET /packages. Tarihler saat dilimsiz
+// İstanbul saatidir ("2026-11-16T14:56:30.4"). Tutarlar { currency, amount }.
 export type HepsiburadaPackage = {
   id?: string;
   packageNumber?: string;
-  barcode?: string;
-  status?: string;
-  cargoCompany?: string;
+  barcode?: string;           // kargo barkodu (etikette basılan)
+  status?: string;            // ör. "Open"
+  cargoCompany?: string;      // firma ADI ("Yurtiçi Kargo")
   orderDate?: string;
+  dueDate?: string;           // kargoya teslim son tarihi
   customerName?: string;
   recipientName?: string;
   shippingCity?: string;
+  shippingTown?: string;      // ilçe
+  shippingDistrict?: string;  // mahalle/semt (HB'de ilçe "town")
   totalPrice?: HepsiburadaMoney;
+  isCargoChangable?: boolean;
   items?: Array<{
     orderNumber?: string;
+    orderDate?: string;
     orderLineId?: string;
     lineItemId?: string;
     sku?: string;
+    hbSku?: string;
     merchantSku?: string;
     productName?: string;
     name?: string;
     quantity?: number;
+    price?: HepsiburadaMoney;
+    totalPrice?: HepsiburadaMoney;
+    totalMerchantDiscount?: HepsiburadaMoney;
+    commissionRate?: number;
+    vatRate?: number;
+    productBarcode?: string;
+    productImageUrlFormat?: string; // "{size}" yer tutucusu içerir
+    properties?: HepsiburadaProperty[] | null;
   }>;
+};
+
+// Kargoya verilen / teslim edilen / teslim edilemeyen paket listeleri İNCE kayıt
+// döner (PascalCase): ürün, müşteri, tutar YOK → sipariş detayından tamamlanır.
+export type HepsiburadaPackageEvent = {
+  Id?: string;
+  Barcode?: string;
+  PackageNumber?: string;
+  OrderNumber?: string;
+  OrderNumbers?: string[];
+  ShippedDate?: string;
+  DeliveredDate?: string;
+  UndeliveredDate?: string;
+  UndeliveredReason?: string;
+  HasInvoice?: boolean;
+};
+
+export type HepsiburadaPackageEventKind = "shipped" | "delivered" | "undelivered";
+
+export type HepsiburadaAddress = {
+  name?: string;
+  city?: string;
+  town?: string;
+  district?: string;
+};
+
+// Sipariş detayı — GET /orders/.../ordernumber/{n}. Her kalem kendi paket no,
+// durum ve kargo firmasını taşır (bir sipariş birden çok pakete bölünebilir).
+export type HepsiburadaOrderDetail = {
+  orderNumber?: string;
+  orderDate?: string;
+  customer?: { customerId?: string; name?: string };
+  deliveryAddress?: HepsiburadaAddress;
+  items?: Array<{
+    id?: string;
+    orderNumber?: string;
+    orderDate?: string;
+    dueDate?: string;
+    lastStatusUpdateDate?: string;
+    name?: string;
+    sku?: string;
+    merchantSKU?: string;
+    quantity?: number;
+    unitPrice?: HepsiburadaMoney;
+    totalPrice?: HepsiburadaMoney;
+    merchantDiscount?: { totalPrice?: HepsiburadaMoney; unitPrice?: HepsiburadaMoney };
+    commissionRate?: number;
+    vatRate?: number;
+    customerName?: string;
+    status?: string;            // "InTransit", "Delivered", …
+    cargoCompany?: string;
+    cargoCompanyModel?: { id?: number; name?: string; shortName?: string; logoUrl?: string } | null;
+    isCargoChangable?: boolean;
+    packageNumber?: string;
+    barcode?: string;
+    hasInvoice?: boolean;
+    productBarcode?: string;
+    productImageUrlFormat?: string;
+    properties?: HepsiburadaProperty[] | null;
+    shippingAddress?: HepsiburadaAddress;
+  }>;
+};
+
+// Paketin kargo bilgisi — GET /packages/.../packagenumber/{n} (dizi döner).
+export type HepsiburadaPackageCargoInfo = {
+  packageNumber?: string;
+  status?: string;
+  cargoCompany?: string;
+  trackingInfoCode?: string;  // kargo firmasının takip no'su (ör. PTT "KP…")
+  trackingInfoUrl?: string;
+  barcode?: string;
+  estimatedArrivalDate?: string;
 };
 
 const ordersPath = () => `/orders/merchantid/${merchantPath()}`;
@@ -517,7 +608,41 @@ export async function getCancelledOrders(params: { offset?: number; limit?: numb
 }
 
 export async function getOrderDetail(orderNumber: string) {
-  return hepsiburadaRequest<unknown>("orders", "GET", `${ordersPath()}/ordernumber/${encodeURIComponent(orderNumber)}`);
+  return hepsiburadaRequest<HepsiburadaOrderDetail>(
+    "orders",
+    "GET",
+    `${ordersPath()}/ordernumber/${encodeURIComponent(orderNumber)}`,
+  );
+}
+
+// HB tarih sorguları "yyyy-MM-dd HH:mm" ister (İstanbul saati; başka biçim →
+// 400 WrongDateFormat). Türkiye 2016'dan beri sabit UTC+3.
+export function hepsiburadaQueryDate(ms: number): string {
+  return new Date(ms + 3 * 3_600_000).toISOString().slice(0, 16).replace("T", " ");
+}
+
+// Kargoya verilen / teslim edilen / teslim edilemeyen paketler (ince kayıt).
+// limit en fazla 50; tarih aralığı olay (kargoya verilme/teslim) tarihine göredir.
+export async function getPackageEvents(
+  kind: HepsiburadaPackageEventKind,
+  params: { beginMs: number; endMs: number; offset?: number; limit?: number },
+) {
+  return hepsiburadaRequest<HepsiburadaPaged<HepsiburadaPackageEvent>>("orders", "GET", `${packagesPath()}/${kind}`, {
+    query: {
+      begindate: hepsiburadaQueryDate(params.beginMs),
+      enddate: hepsiburadaQueryDate(params.endMs),
+      offset: params.offset ?? 0,
+      limit: params.limit ?? 50,
+    },
+  });
+}
+
+export async function getPackageCargoInfo(packageNumber: string) {
+  return hepsiburadaRequest<HepsiburadaPackageCargoInfo[]>(
+    "orders",
+    "GET",
+    `${packagesPath()}/packagenumber/${encodeURIComponent(packageNumber)}`,
+  );
 }
 
 export async function getPackageableWith(lineItemId: string) {
@@ -538,10 +663,11 @@ export async function packLineItems(
   });
 }
 
-// Paketlenmiş siparişler (otomatik paketleme açıkken ana okuma ucu).
+// Paketlenmiş siparişler (otomatik paketleme açıkken ana okuma ucu). HB belgesi
+// limit'i en fazla 10 olarak verir; tüm liste için Offset ile sayfalanır.
 export async function getPackages(params: { offset?: number; limit?: number } = {}) {
   return hepsiburadaRequest<HepsiburadaPackage[]>("orders", "GET", packagesPath(), {
-    query: { Offset: params.offset ?? 0, limit: params.limit ?? 50 },
+    query: { Offset: params.offset ?? 0, limit: params.limit ?? 10 },
   });
 }
 
