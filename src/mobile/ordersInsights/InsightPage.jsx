@@ -1,12 +1,14 @@
-// Trendyol özeti detay ekranları (Siparişler ekranı içinde tam ekran katman).
+// Pazaryeri özeti detay ekranları (Siparişler ekranı içinde tam ekran katman).
 // view: 'kalan' (nereye gitti) · 'cok' (en çok satanlar) · 'satis' (gün gün) · 'odeme'
 // Tasarım: "Siparişler mini dashboard" tuvalindeki Kalan / CokSatan / Satis / Odemeler.
+// channels: özetteki kanallar (Trendyol, Hepsiburada ya da ikisi). İkisi birlikteyse
+// byChannel kanal başına özetleri taşır (kanallara göre döküm).
 
 import React from 'react';
-import { ProductThumb, SegmentBar } from './InsightsStrip';
+import { ChannelTag, ProductThumb, SegmentBar } from './InsightsStrip';
 import {
-  SEGMENT_COLORS, approxTL, breakdownRows, dayKeyToMs, dayNumber, deltaLong, fmtDayMonth,
-  fmtPct, fmtTL, fmtWeekdayDate, isEstimated, periodLabel, rangeLabel,
+  CHANNEL_NAMES, SEGMENT_COLORS, approxTL, breakdownRows, channelList, dayKeyToMs, dayNumber, deltaLong,
+  fmtDayMonth, fmtPct, fmtTL, fmtWeekdayDate, isEstimated, periodLabel, rangeLabel, scopeLabel,
 } from './insightsFormat';
 
 const TITLES = {
@@ -20,30 +22,119 @@ const chevDown = (open) => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={'moi-chev' + (open ? ' open' : '')}><path d="m6 9 6 6 6-6" /></svg>
 );
 
+// Tek kanal → 'trendyol' | 'hepsiburada'; birden çok → null.
+function onlyChannel(channels) {
+  return channels?.length === 1 ? channels[0] : null;
+}
+
+// Kanal adı (tek kanal) ya da genel "Pazaryeri".
+function sellerName(channels) {
+  const ch = onlyChannel(channels);
+  return ch ? CHANNEL_NAMES[ch] : 'Pazaryeri';
+}
+
 // ── Sana kalan: nereye gitti? ────────────────────────────────────────────────
-const ROW_SUB = {
-  komisyon: (b) => (b.avgCommissionRate != null ? `Ortalama ${fmtPct(b.avgCommissionRate)}` : 'Satırdaki orandan'),
-  kargo: (b) => (b.cargoPackages > 0
-    ? `${b.cargoPackages} paket${b.avgCargo != null ? `, paket başı ${fmtTL(b.avgCargo)}` : ''}`
-    : 'Paket yok'),
-  kdv: () => 'Devlete ödenecek',
-  diger: () => 'Trendyol faturaları',
-  stopaj: () => 'Vergiden düşülür',
-};
+function rowSub(key, b, channels) {
+  const ch = onlyChannel(channels);
+  switch (key) {
+    case 'komisyon':
+      if (!ch) return 'Kanal ve kategori oranlarına göre';
+      if (b.avgCommissionRate == null) return 'Satırdaki orandan';
+      return `Ortalama ${fmtPct(b.avgCommissionRate)}${b.commissionVatAdded ? ' + KDV' : ''}`;
+    case 'kargo':
+      return b.cargoPackages > 0
+        ? `${b.cargoPackages} paket${b.avgCargo != null ? `, paket başı ${fmtTL(b.avgCargo)}` : ''}`
+        : 'Paket yok';
+    case 'kdv': return 'Devlete ödenecek';
+    case 'diger':
+      return ch === 'hepsiburada' ? 'İşlem ve ödeme hizmet bedeli' : `${sellerName(channels)} faturaları`;
+    case 'stopaj': return 'Vergiden düşülür';
+    default: return '';
+  }
+}
 
-const ROW_DETAIL = {
-  komisyon: (b) => `Komisyon ürün kategorisine göre değişiyor. Teslim edilen ${b.settledOrders} siparişte Trendyol'un ekstreye yazdığı tutar, kalan ${b.estimatedOrders} siparişte sipariş anındaki orandan tahmin.`,
-  kargo: () => 'Trendyol\'un kestiği kargo faturasından, paket paket. Faturası henüz kesilmemiş paketler için bilinen paketlerin ortalaması kullanılır.',
-  kdv: (b) => `Satışlardaki KDV ${fmtTL(b.vat.sales)}. Komisyon, kargo ve hizmet faturalarındaki ${fmtTL(b.vat.deductible)} KDV'yi bundan düşebilirsin. Trendyol bunu kesmez: hesabına yatan paranın içindedir, beyannamede ödenir.`,
-  diger: () => 'Bu dönemde kesilen platform hizmet bedeli, reklam gibi kargo dışı Trendyol faturaları.',
-  stopaj: () => 'E-ticaret stopajı (KDV hariç tutarın %1\'i). Trendyol ödemeden keser; yıllık gelir vergisinden mahsup edilir.',
-};
+function rowDetail(key, b, channels) {
+  const ch = onlyChannel(channels);
+  const seller = sellerName(channels);
+  switch (key) {
+    case 'komisyon':
+      if (ch === 'trendyol') {
+        return `Komisyon ürün kategorisine göre değişiyor. Teslim edilen ${b.settledOrders} siparişte Trendyol'un ekstreye yazdığı tutar, kalan ${b.estimatedOrders} siparişte sipariş anındaki orandan tahmin.`;
+      }
+      if (ch === 'hepsiburada') {
+        return `Komisyon ürün kategorisine göre değişiyor; oran KDV hariç, Hepsiburada faturaya KDV ekler. Kaydı gelen ${b.settledOrders} siparişte Hepsiburada'nın yazdığı tutar, kalan ${b.estimatedOrders} siparişte satırdaki orandan tahmin.`;
+      }
+      return `Komisyon kanala ve ürün kategorisine göre değişiyor. Kesinleşen ${b.settledOrders} siparişte pazaryerinin yazdığı tutar, kalan ${b.estimatedOrders} siparişte sipariş anındaki orandan tahmin.`;
+    case 'kargo':
+      if (ch === 'trendyol') {
+        return 'Trendyol\'un kestiği kargo faturasından, paket paket. Faturası henüz kesilmemiş paketler için bilinen paketlerin ortalaması kullanılır.';
+      }
+      if (ch === 'hepsiburada') {
+        return 'Hepsiburada\'nın kestiği kargo katılım payından, sipariş sipariş. Henüz kesilmemiş olanlar için bilinen siparişlerin ortalaması kullanılır.';
+      }
+      return 'Pazaryerlerinin kestiği kargo bedelinden, paket paket. Henüz kesilmemiş olanlar için bilinen paketlerin ortalaması kullanılır.';
+    case 'kdv':
+      return `Satışlardaki KDV ${fmtTL(b.vat.sales)}. Komisyon, kargo ve hizmet faturalarındaki ${fmtTL(b.vat.deductible)} KDV'yi bundan düşebilirsin. ${seller} bunu kesmez: hesabına yatan paranın içindedir, beyannamede ödenir.`;
+    case 'diger':
+      if (ch === 'trendyol') return 'Bu dönemde kesilen platform hizmet bedeli, reklam gibi kargo dışı Trendyol faturaları.';
+      if (ch === 'hepsiburada') {
+        return 'Sipariş başına kesilen işlem bedeli ve ödeme hizmet bedeli, ayrıca bu dönemde kesilen siparişe bağlı olmayan Hepsiburada faturaları.';
+      }
+      return 'Trendyol\'un hizmet bedeli, reklam gibi kargo dışı faturaları ile Hepsiburada\'nın işlem ve ödeme hizmet bedelleri.';
+    case 'stopaj':
+      return `E-ticaret stopajı (KDV hariç tutarın %1'i). ${seller} ödemeden keser; yıllık gelir vergisinden mahsup edilir.`;
+    default:
+      return '';
+  }
+}
 
-function KalanView({ data }) {
+function FinanceNotes({ b }) {
+  const missing = b.financeMissing ?? [];
+  if (missing.length > 0 || !b.financeAvailable) {
+    const who = missing.length > 0 ? channelList(missing) : 'Pazaryeri';
+    return (
+      <section className="moi-note moi-note-warn" role="status">
+        <b>{who} kesinti kayıtları şu an alınamadı.</b> Komisyon satırdaki orandan tahmin; kargo ve diğer kesintiler eksik olabilir.
+      </section>
+    );
+  }
+  if (b.estimatedOrders > 0) {
+    return (
+      <section className="moi-note" role="status">
+        <b>{b.estimatedOrders} siparişin kesintileri henüz kesinleşmedi.</b> Pazaryeri komisyonu ve kargoyu teslimattan sonra yazıyor; şimdilik tahmin. Teslim edildikçe rakam kesinleşir.
+      </section>
+    );
+  }
+  return null;
+}
+
+function ByChannel({ byChannel, channels }) {
+  const rows = channels.map(ch => ({ ch, d: byChannel?.[ch] })).filter(r => r.d);
+  if (rows.length < 2) return null;
+  return (
+    <section className="moi-sect moi-list">
+      <h2 className="moi-h2">Kanallara göre</h2>
+      {rows.map(({ ch, d }) => (
+        <div key={ch} className="moi-kv">
+          <span className="moi-kv-main">
+            <ChannelTag channel={ch} />
+            <span className="moi-xrow-sub">{fmtTL(d.breakdown.sales)} satış · {d.sales.orders} sipariş</span>
+          </span>
+          <span className="moi-xrow-amt">
+            <span className="moi-green">{approxTL(d.breakdown.remaining, isEstimated(d))}</span>
+            <span className="moi-xrow-sub">{fmtPct(d.breakdown.remainingPct)}</span>
+          </span>
+        </div>
+      ))}
+    </section>
+  );
+}
+
+function KalanView({ data, channels, byChannel }) {
   const [open, setOpen] = React.useState(null);
   const b = data.breakdown;
   const estimated = isEstimated(data);
-  const rows = breakdownRows(b);
+  const rows = breakdownRows(b, channels);
   const per100 = b.remainingPct != null ? b.remainingPct : null;
   return (
     <>
@@ -54,15 +145,7 @@ function KalanView({ data }) {
         <SegmentBar breakdown={b} className="moi-bar-lg" />
       </section>
 
-      {!b.financeAvailable ? (
-        <section className="moi-note moi-note-warn" role="status">
-          <b>Trendyol cari hesap ekstresi şu an alınamadı.</b> Komisyon satırdaki orandan tahmin; kargo ve diğer kesintiler eksik olabilir.
-        </section>
-      ) : b.estimatedOrders > 0 ? (
-        <section className="moi-note" role="status">
-          <b>{b.estimatedOrders} sipariş henüz teslim edilmedi.</b> Trendyol bunların komisyonunu ve kargosunu teslimattan sonra yazıyor; şimdilik tahmin. Teslim edildikçe rakam kesinleşir.
-        </section>
-      ) : null}
+      <FinanceNotes b={b} />
 
       <section className="moi-sect">
         <h2 className="moi-h2">Nereye gitti?</h2>
@@ -74,7 +157,7 @@ function KalanView({ data }) {
                 <span className="moi-dot" style={{ background: SEGMENT_COLORS[r.key] }} />
                 <span className="moi-xrow-main">
                   <span className="moi-xrow-label">{r.label}</span>
-                  <span className="moi-xrow-sub">{ROW_SUB[r.key](b)}</span>
+                  <span className="moi-xrow-sub">{rowSub(r.key, b, channels)}</span>
                 </span>
                 <span className="moi-xrow-amt">
                   <span>{r.amount > 0 ? `−${fmtTL(r.amount)}` : fmtTL(0)}</span>
@@ -82,7 +165,7 @@ function KalanView({ data }) {
                 </span>
                 {chevDown(isOpen)}
               </button>
-              {isOpen && <p className="moi-xrow-detail">{ROW_DETAIL[r.key](b)}</p>}
+              {isOpen && <p className="moi-xrow-detail">{rowDetail(r.key, b, channels)}</p>}
             </div>
           );
         })}
@@ -95,6 +178,8 @@ function KalanView({ data }) {
           </span>
         </div>
       </section>
+
+      <ByChannel byChannel={byChannel} channels={channels} />
 
       <p className="moi-foot">Ürünlerin alış maliyeti bu hesapta yok; bu tutar kâr değil, satıştan sonra elinde kalan.</p>
     </>
@@ -150,7 +235,7 @@ function CokView({ data }) {
 }
 
 // ── Satış: gün gün ───────────────────────────────────────────────────────────
-function SatisView({ data, period }) {
+function SatisView({ data, period, channels, byChannel }) {
   const daily = data.sales.daily ?? [];
   const lastKey = daily.length > 0 ? daily[daily.length - 1].date : null;
   const [sel, setSel] = React.useState(lastKey);
@@ -159,6 +244,7 @@ function SatisView({ data, period }) {
   const s = data.sales;
   const todayIsLast = !data.range.complete;
   const dense = daily.length > 16;
+  const perChannel = channels.map(ch => ({ ch, d: byChannel?.[ch] })).filter(r => r.d);
   return (
     <>
       <section className="moi-sect moi-hero">
@@ -203,6 +289,12 @@ function SatisView({ data, period }) {
       )}
 
       <section className="moi-sect moi-list">
+        {perChannel.length > 1 && perChannel.map(({ ch, d }) => (
+          <div key={ch} className="moi-kv">
+            <ChannelTag channel={ch} />
+            <span><b>{fmtTL(d.sales.total)}</b> · {d.sales.orders} sipariş</span>
+          </div>
+        ))}
         <div className="moi-kv"><span>Ortalama sipariş</span><b>{fmtTL(s.avgOrder)}</b></div>
         <div className="moi-kv"><span>Satılan ürün</span><b>{s.units} adet</b></div>
         <div className="moi-kv"><span>İptal edilen</span><span>{s.cancelled.orders} sipariş{s.cancelled.orders > 0 && <> · <b className="moi-down">{fmtTL(s.cancelled.total)}</b></>}</span></div>
@@ -215,16 +307,40 @@ function SatisView({ data, period }) {
 }
 
 // ── Ödemeler ─────────────────────────────────────────────────────────────────
-function OdemeView({ data }) {
+const PAY_FOOT = {
+  trendyol: 'Trendyol genelde çarşamba öder. Sıradaki ödeme, teslim edilmiş siparişlerin hakedişinden bilinen kargo bedeli düşülerek hesaplanır. KDV Trendyol\'dan kesilmez: yatan paranın içindedir, beyannamede ödenir.',
+  hepsiburada: 'Hepsiburada her salı öder: vadesi gelen satışlardan komisyon, kargo, işlem bedeli ve stopaj düşülür; toplam eksiye düşerse ödeme sonraki salıya kalır. KDV kesilmez: yatan paranın içindedir, beyannamede ödenir.',
+  all: 'Trendyol genelde çarşamba, Hepsiburada salı öder. Tutarlar teslim edilmiş siparişlerin hakedişinden bilinen kesintiler düşülerek hesaplanır. KDV kesilmez: yatan paranın içindedir, beyannamede ödenir.',
+};
+
+function QueueRow({ item, multi }) {
+  const name = CHANNEL_NAMES[item.channel] ?? 'Pazaryeri';
+  const label = item.kind === 'later'
+    ? (multi ? `${name}, sonraki ödeme günleri` : 'Sonraki ödeme günleri')
+    : `${name} ödemesi`;
+  const when = item.kind === 'later' ? `${fmtDayMonth(item.date)} ve sonrası` : fmtWeekdayDate(item.date);
+  return (
+    <div className="moi-kv">
+      <span className="moi-kv-main"><span>{label}</span><span className="moi-xrow-sub">{item.orders} sipariş · {when}</span></span>
+      <b>{approxTL(item.amount, true)}</b>
+    </div>
+  );
+}
+
+function OdemeView({ data, channels }) {
   const p = data.payments;
-  const [open, setOpen] = React.useState(p.past[0]?.id ?? null);
+  const [open, setOpen] = React.useState(p.past[0] ? `${p.past[0].channel ?? ''}:${p.past[0].id}` : null);
+  const multi = channels.length > 1;
+  const missing = data.breakdown.financeMissing ?? [];
   if (!p.available) {
     return (
       <section className="moi-note moi-note-warn" role="status">
-        <b>Trendyol cari hesap ekstresi şu an alınamadı.</b> Ödemeler ekstreden okunuyor; biraz sonra tekrar dene.
+        <b>{multi ? 'Ödeme kayıtları' : `${sellerName(channels)} ödeme kayıtları`} şu an alınamadı.</b> Ödemeler pazaryerinin hesap kayıtlarından okunuyor; biraz sonra tekrar dene.
       </section>
     );
   }
+  const queue = p.queue ?? [p.next && { ...p.next, kind: 'next' }, p.later && { ...p.later, kind: 'later' }].filter(Boolean);
+  const waiting = queue.slice(1);
   return (
     <>
       <section className="moi-sect moi-hero">
@@ -233,6 +349,7 @@ function OdemeView({ data }) {
           <>
             <div className="moi-hero-value">{approxTL(p.next.amount, true)}</div>
             <div className="moi-hero-sub">{fmtWeekdayDate(p.next.date)} · {p.next.orders} sipariş</div>
+            {multi && p.next.channel && <div className="moi-hero-sub"><ChannelTag channel={p.next.channel} /></div>}
           </>
         ) : (
           <>
@@ -242,16 +359,17 @@ function OdemeView({ data }) {
         )}
       </section>
 
+      {missing.length > 0 && (
+        <section className="moi-note moi-note-warn" role="status">
+          <b>{channelList(missing)} ödeme kayıtları şu an alınamadı.</b> Aşağıdaki liste eksik olabilir.
+        </section>
+      )}
+
       <section className="moi-sect moi-list">
         <h2 className="moi-h2">Sırada bekleyen</h2>
-        {p.later && (
-          <div className="moi-kv">
-            <span className="moi-kv-main"><span>Sonraki ödeme günleri</span><span className="moi-xrow-sub">{p.later.orders} sipariş · {fmtDayMonth(p.later.date)} ve sonrası</span></span>
-            <b>{approxTL(p.later.amount, true)}</b>
-          </div>
-        )}
+        {waiting.map(item => <QueueRow key={`${item.channel}:${item.kind}:${item.date}`} item={item} multi={multi} />)}
         <div className="moi-kv">
-          <span className="moi-kv-main"><span>Henüz teslim edilmedi</span><span className="moi-xrow-sub">{p.notDelivered.orders} sipariş · tutar tahmini</span></span>
+          <span className="moi-kv-main"><span>Henüz ödemeye yansımadı</span><span className="moi-xrow-sub">{p.notDelivered.orders} sipariş · tutar tahmini</span></span>
           <b>{approxTL(p.notDelivered.amount, true)}</b>
         </div>
       </section>
@@ -260,22 +378,24 @@ function OdemeView({ data }) {
         <h2 className="moi-h2">Hesaba yatanlar</h2>
         {p.past.length === 0 && <p className="moi-xrow-sub">Son iki ayda ödeme kaydı yok.</p>}
         {p.past.map(x => {
-          const isOpen = open === x.id;
+          const key = `${x.channel ?? ''}:${x.id}`;
+          const isOpen = open === key;
           const hasBreakdown = x.sales != null;
+          const sub = [multi ? CHANNEL_NAMES[x.channel] : null, x.orders != null ? `${x.orders} sipariş` : null].filter(Boolean).join(' · ');
           return (
-            <div key={x.id || x.date} className="moi-xrow">
+            <div key={key || x.date} className="moi-xrow">
               <button
                 type="button"
                 className="moi-xrow-btn"
                 aria-expanded={hasBreakdown ? isOpen : undefined}
-                onClick={() => hasBreakdown && setOpen(isOpen ? null : x.id)}
+                onClick={() => hasBreakdown && setOpen(isOpen ? null : key)}
               >
                 <span className="moi-paid-ic" aria-hidden="true">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12l5 5 9-11" /></svg>
                 </span>
                 <span className="moi-xrow-main">
                   <span className="moi-xrow-label">{fmtWeekdayDate(x.date)}</span>
-                  {x.orders != null && <span className="moi-xrow-sub">{x.orders} sipariş</span>}
+                  {sub && <span className="moi-xrow-sub">{sub}</span>}
                 </span>
                 <span className="moi-xrow-amt"><span>{fmtTL(x.amount)}</span></span>
                 {hasBreakdown ? chevDown(isOpen) : <span className="moi-chev-space" />}
@@ -293,12 +413,12 @@ function OdemeView({ data }) {
         })}
       </section>
 
-      <p className="moi-foot">Trendyol genelde çarşamba öder. Sıradaki ödeme, teslim edilmiş siparişlerin hakedişinden bilinen kargo bedeli düşülerek hesaplanır. KDV Trendyol'dan kesilmez: yatan paranın içindedir, beyannamede ödenir.</p>
+      <p className="moi-foot">{PAY_FOOT[onlyChannel(channels) ?? 'all']}</p>
     </>
   );
 }
 
-export function InsightPage({ view, period, data, onBack }) {
+export function InsightPage({ view, period, data, channels = [], byChannel = null, onBack }) {
   const range = data ? rangeLabel(period, data.range) : '';
   return (
     <div className="moi-page" role="dialog" aria-modal="true" aria-label={TITLES[view]}>
@@ -308,16 +428,16 @@ export function InsightPage({ view, period, data, onBack }) {
         </button>
         <div className="mo-top-title">
           <h1>{TITLES[view]}</h1>
-          <p>Trendyol · {view === 'odeme' ? 'Hesaba yatan' : `${periodLabel(period)}${range ? `, ${range}` : ''}`}</p>
+          <p>{scopeLabel(channels)} · {view === 'odeme' ? 'Hesaba yatan' : `${periodLabel(period)}${range ? `, ${range}` : ''}`}</p>
         </div>
       </header>
       <div className="moi-page-scroll">
         {!data ? (
           <p className="moi-foot">Yükleniyor…</p>
-        ) : view === 'kalan' ? <KalanView data={data} />
+        ) : view === 'kalan' ? <KalanView data={data} channels={channels} byChannel={byChannel} />
           : view === 'cok' ? <CokView data={data} />
-            : view === 'satis' ? <SatisView data={data} period={period} />
-              : <OdemeView data={data} />}
+            : view === 'satis' ? <SatisView data={data} period={period} channels={channels} byChannel={byChannel} />
+              : <OdemeView data={data} channels={channels} />}
       </div>
     </div>
   );

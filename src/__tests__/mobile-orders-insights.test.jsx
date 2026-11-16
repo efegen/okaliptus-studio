@@ -8,13 +8,13 @@ import { CurrentUserProvider } from '../currentUser';
 import { MobileOrders } from '../mobile/MobileOrders';
 import { InsightsStrip } from '../mobile/ordersInsights/InsightsStrip';
 import {
-  approxTL, barSegments, fmtTL, fmtWeekdayDate, rangeLabel,
+  approxTL, barSegments, fmtTL, fmtWeekdayDate, rangeLabel, scopeInsights, scopeLabel,
 } from '../mobile/ordersInsights/insightsFormat';
 
 vi.mock('../api', () => ({
   getTrendyolOrdersList: vi.fn(),
   getHepsiburadaOrdersList: vi.fn(async () => ({ orders: [], tabCounts: {}, total: 0, configured: false })),
-  getTrendyolInsights: vi.fn(),
+  getMarketplaceInsights: vi.fn(),
   getCargoChangeStatuses: vi.fn(async () => []),
 }));
 
@@ -51,13 +51,57 @@ function makeInsights(overrides = {}) {
     },
     payments: {
       available: true,
-      next: { date: TR(2026, 11, 18), amount: 4210, orders: 16 },
-      later: { date: TR(2026, 11, 25), amount: 3120, orders: 12 },
+      next: { date: TR(2026, 11, 18), amount: 4210, orders: 16, channel: 'trendyol' },
+      later: { date: TR(2026, 11, 25), amount: 3120, orders: 12, channel: 'trendyol' },
       notDelivered: { amount: 4040, orders: 14 },
-      past: [{ id: 'PO1', date: TR(2026, 11, 11), amount: 3880, orders: 14, sales: 5364, commission: 697, deductions: 787 }],
+      past: [{ id: 'PO1', date: TR(2026, 11, 11), amount: 3880, orders: 14, sales: 5364, commission: 697, deductions: 787, channel: 'trendyol' }],
     },
     ...overrides,
   };
+}
+
+// GET /channels/insights yanıtı: yalnız Trendyol bağlı.
+function makeResponse(overrides = {}) {
+  const ty = makeInsights();
+  return { ...ty, channels: ['trendyol'], failed: [], byChannel: { trendyol: ty }, ...overrides };
+}
+
+// İki kanal: Trendyol + Hepsiburada (HB'nin ödemesi daha erken, salı).
+function makeCombined() {
+  const ty = makeInsights();
+  const hb = makeInsights({
+    sales: { ...ty.sales, total: 3629, orders: 11, avgOrder: 329.91, deltaPct: 73 },
+    breakdown: {
+      ...ty.breakdown, sales: 3629, commission: 958, cargo: 1237, otherFees: 175, stoppage: 30,
+      vat: { sales: 605, deductible: 395, net: 210 }, remaining: 1019, remainingPct: 28,
+      avgCommissionRate: 22, commissionVatAdded: true, settledOrders: 6, estimatedOrders: 5,
+    },
+    payments: {
+      available: true,
+      next: { date: TR(2026, 11, 17), amount: 125, orders: 1, channel: 'hepsiburada' },
+      later: { date: TR(2026, 11, 24), amount: 2399, orders: 15, channel: 'hepsiburada' },
+      notDelivered: { amount: 229, orders: 2 },
+      past: [{ id: 'HB1', date: TR(2026, 11, 10), amount: 250, orders: 2, sales: 698, commission: 184, deductions: 264, channel: 'hepsiburada' }],
+    },
+  });
+  const combined = makeInsights({
+    sales: { ...ty.sales, total: 22078, orders: 53 },
+    breakdown: { ...ty.breakdown, sales: 22078, remaining: 12386, remainingPct: 56, financeMissing: [] },
+    payments: {
+      available: true,
+      next: hb.payments.next,
+      later: { date: TR(2026, 11, 18), amount: 9729, orders: 43, channel: null },
+      notDelivered: { amount: 4269, orders: 16 },
+      past: [hb.payments.past[0], ty.payments.past[0]],
+      queue: [
+        { ...hb.payments.next, kind: 'next' },
+        { ...ty.payments.next, kind: 'next' },
+        { ...hb.payments.later, kind: 'later' },
+        { ...ty.payments.later, kind: 'later' },
+      ],
+    },
+  });
+  return { ...combined, channels: ['trendyol', 'hepsiburada'], failed: [], byChannel: { trendyol: ty, hepsiburada: hb } };
 }
 
 function makeOrder() {
@@ -83,7 +127,7 @@ function renderOrders(role) {
 beforeEach(() => {
   vi.clearAllMocks();
   api.getTrendyolOrdersList.mockResolvedValue({ orders: [makeOrder()], tabCounts: { tum: 1, yeni: 1 }, total: 1 });
-  api.getTrendyolInsights.mockResolvedValue(makeInsights());
+  api.getMarketplaceInsights.mockResolvedValue(makeResponse());
 });
 
 describe('insightsFormat', () => {
@@ -101,6 +145,16 @@ describe('insightsFormat', () => {
     expect(rangeLabel('gecen', { start: TR(2026, 10, 1), end: TR(2026, 11, 1) })).toBe('Ekim');
     expect(rangeLabel('hafta', { start: TR(2026, 10, 26), end: TR(2026, 11, 1, 9) })).toBe('26 Eki – 1 Kas');
     expect(fmtWeekdayDate(TR(2026, 11, 18))).toBe('Çarşamba, 18 Kasım');
+  });
+
+  it('özet kanal filtresine göre daralır', () => {
+    const all = makeCombined();
+    expect(scopeInsights(all, 'all').data).toBe(all);
+    expect(scopeInsights(all, 'all').channels).toEqual(['trendyol', 'hepsiburada']);
+    expect(scopeInsights(all, 'hb').data).toBe(all.byChannel.hepsiburada);
+    expect(scopeInsights(makeResponse(), 'hb')).toEqual({ data: null, channels: ['hepsiburada'], missing: 'absent' });
+    expect(scopeInsights(makeResponse({ failed: ['hepsiburada'] }), 'hb').missing).toBe('failed');
+    expect(scopeLabel(['trendyol', 'hepsiburada'])).toBe('Trendyol + Hepsiburada');
   });
 
   it('çubuk parçaları kesintiler + kalan = %100', () => {
@@ -141,21 +195,22 @@ describe('InsightsStrip', () => {
   });
 });
 
-describe('MobileOrders — Trendyol özeti', () => {
+describe('MobileOrders — pazaryeri özeti', () => {
   it('yönetici özeti görür; sekmeler özetin altında; detay açılıp kapanır', async () => {
     renderOrders('owner');
     await screen.findByText('≈ ₺11.367');
-    expect(api.getTrendyolInsights).toHaveBeenCalledWith('ay');
+    expect(api.getMarketplaceInsights).toHaveBeenCalledWith('ay');
 
     // Sekmeler özet şeridinden SONRA gelir (listeye bitişik).
-    const strip = screen.getByLabelText('Trendyol özeti');
+    const strip = screen.getByLabelText('Pazaryeri özeti');
     const tabs = screen.getByRole('tablist', { name: 'Sipariş durumu' });
     expect(strip.compareDocumentPosition(tabs) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
     fireEvent.click(within(strip).getByText('Sana kalan').closest('button'));
     const page = await screen.findByRole('dialog', { name: 'Sana kalan' });
     expect(within(page).getByText('Nereye gitti?')).toBeTruthy();
-    expect(within(page).getByText('14 sipariş henüz teslim edilmedi.')).toBeTruthy();
+    expect(within(page).getByText('14 siparişin kesintileri henüz kesinleşmedi.')).toBeTruthy();
+    expect(within(page).getByText('Trendyol komisyonu')).toBeTruthy();
     fireEvent.click(within(page).getByText('KDV').closest('button'));
     expect(within(page).getByText(/Trendyol bunu kesmez/)).toBeTruthy();
 
@@ -167,13 +222,75 @@ describe('MobileOrders — Trendyol özeti', () => {
     renderOrders('admin');
     await screen.findByText('≈ ₺11.367');
     fireEvent.click(screen.getByRole('button', { name: 'Geçen ay' }));
-    await waitFor(() => expect(api.getTrendyolInsights).toHaveBeenCalledWith('gecen'));
+    await waitFor(() => expect(api.getMarketplaceInsights).toHaveBeenCalledWith('gecen'));
   });
 
   it('asistan özeti görmez ve finans ucu çağrılmaz', async () => {
     renderOrders('assistant');
     await screen.findByText('Ada K.');
-    expect(screen.queryByLabelText('Trendyol özeti')).toBeNull();
-    expect(api.getTrendyolInsights).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText('Pazaryeri özeti')).toBeNull();
+    expect(api.getMarketplaceInsights).not.toHaveBeenCalled();
+  });
+
+  it('iki kanal birlikte: toplam, ödemenin kanalı ve kanallara göre döküm', async () => {
+    api.getMarketplaceInsights.mockResolvedValue(makeCombined());
+    renderOrders('owner');
+    await screen.findByText('≈ ₺12.386');
+    const strip = screen.getByLabelText('Pazaryeri özeti');
+    expect(within(strip).getByText('₺22.078 satıştan')).toBeTruthy();
+    // Sıradaki ödeme HB'den (salı) — kart kanalı yazar.
+    expect(within(strip).getByText('≈ ₺125')).toBeTruthy();
+    expect(within(strip).getByText('Hepsiburada')).toBeTruthy();
+
+    fireEvent.click(within(strip).getByText('Sana kalan').closest('button'));
+    const page = await screen.findByRole('dialog', { name: 'Sana kalan' });
+    expect(within(page).getByText('Trendyol + Hepsiburada · Bu ay, 1–13 Kasım')).toBeTruthy();
+    expect(within(page).getByText('Komisyon')).toBeTruthy();
+    expect(within(page).getByText('Kanallara göre')).toBeTruthy();
+    expect(within(page).getByText('≈ ₺1.019')).toBeTruthy();
+    fireEvent.click(within(page).getByRole('button', { name: 'Siparişlere dön' }));
+
+    fireEvent.click(within(strip).getByText('Sıradaki ödeme').closest('button'));
+    const pay = await screen.findByRole('dialog', { name: 'Ödemeler' });
+    expect(within(pay).getByText('Trendyol ödemesi')).toBeTruthy();
+    expect(within(pay).getByText('Hepsiburada, sonraki ödeme günleri')).toBeTruthy();
+    expect(within(pay).getByText(/Trendyol genelde çarşamba, Hepsiburada salı öder/)).toBeTruthy();
+  });
+
+  it('kanal filtresi özeti de süzer; yeni istek atılmaz', async () => {
+    api.getMarketplaceInsights.mockResolvedValue(makeCombined());
+    renderOrders('owner');
+    await screen.findByText('≈ ₺12.386');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Kanal filtresi' }));
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'Hepsiburada' }));
+    const strip = screen.getByLabelText('Pazaryeri özeti');
+    expect(await within(strip).findByText('≈ ₺1.019')).toBeTruthy();
+    expect(within(strip).getByText('₺3.629 satıştan')).toBeTruthy();
+    expect(api.getMarketplaceInsights).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(within(strip).getByText('Sana kalan').closest('button'));
+    const page = await screen.findByRole('dialog', { name: 'Sana kalan' });
+    expect(within(page).getByText('Hepsiburada komisyonu')).toBeTruthy();
+    expect(within(page).getByText('Ortalama %22 + KDV')).toBeTruthy();
+    expect(within(page).queryByText('Kanallara göre')).toBeNull();
+  });
+
+  it('Hepsiburada bağlı değilse HB filtresinde özet yerine not', async () => {
+    renderOrders('owner');
+    await screen.findByText('≈ ₺11.367');
+    fireEvent.click(screen.getByRole('button', { name: 'Kanal filtresi' }));
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'Hepsiburada' }));
+    expect(await screen.findByText('Hepsiburada bağlı değil; özet yok.')).toBeTruthy();
+  });
+
+  it('bir kanal alınamazsa özet diğeriyle gelir ve not düşer', async () => {
+    const hbOnly = makeCombined().byChannel.hepsiburada;
+    api.getMarketplaceInsights.mockResolvedValue({
+      ...hbOnly, channels: ['hepsiburada'], failed: ['trendyol'], byChannel: { hepsiburada: hbOnly },
+    });
+    renderOrders('owner');
+    expect(await screen.findByText('Trendyol verisi şu an alınamadı; özet yalnız Hepsiburada.')).toBeTruthy();
+    expect(screen.getByText('≈ ₺1.019')).toBeTruthy();
   });
 });

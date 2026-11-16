@@ -1,13 +1,26 @@
-// Siparişler ekranının üstündeki Trendyol özeti (tasarım: "Siparişler mini dashboard"
+// Siparişler ekranının üstündeki pazaryeri özeti (tasarım: "Siparişler mini dashboard"
 // tuvali, C6). Dönem düğmeleri + yatay kaydırılan 4 kart:
 //   Sana kalan · En çok satanlar (ürün fotoğrafları) · Sipariş · Sıradaki ödeme
 // Kartlar ilgili detay ekranını açar (onOpen('kalan' | 'cok' | 'satis' | 'odeme')).
-// Veri: GET /trendyol/insights (MobileOrders sorgular, buraya prop olarak verir).
+// Veri: GET /channels/insights — Trendyol + Hepsiburada; MobileOrders listenin kanal
+// filtresine göre daraltıp (scopeInsights) buraya prop olarak verir.
 
 import React from 'react';
 import {
-  PERIODS, approxTL, barSegments, deltaShort, fmtTL, fmtWeekdayDate, isEstimated,
+  CHANNEL_NAMES, PERIODS, approxTL, barSegments, deltaShort, fmtTL, fmtWeekdayDate, isEstimated,
 } from './insightsFormat';
+
+const CHANNEL_DOT = { trendyol: 'ty', hepsiburada: 'hb' };
+
+export function ChannelTag({ channel, className = '' }) {
+  if (!CHANNEL_NAMES[channel]) return null;
+  return (
+    <span className={'moi-chan ' + className}>
+      <span className={'mo-fdot ' + CHANNEL_DOT[channel]} aria-hidden="true" />
+      {CHANNEL_NAMES[channel]}
+    </span>
+  );
+}
 
 const chevR = (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6" /></svg>
@@ -65,15 +78,21 @@ function SkeletonCards() {
   );
 }
 
-export function InsightsStrip({ period, onPeriodChange, data, isLoading, isError, onRetry, onOpen }) {
+// channels: özetteki kanallar (birden çoksa ödeme kartı kanalı yazar).
+// emptyNote: filtrelenen kanalın özeti yoksa kartların yerine çıkan yazı.
+// note: kartların altında küçük uyarı (ör. bir kanal alınamadı).
+export function InsightsStrip({
+  period, onPeriodChange, data, channels = [], emptyNote = null, note = null, isLoading, isError, onRetry, onOpen,
+}) {
   const estimated = isEstimated(data);
   const b = data?.breakdown;
   const sales = data?.sales;
   const top = data?.products?.top ?? [];
   const pay = data?.payments;
+  const multi = channels.length > 1;
 
   return (
-    <section className="moi-strip" aria-label="Trendyol özeti">
+    <section className="moi-strip" aria-label="Pazaryeri özeti">
       <div className="moi-periods" role="group" aria-label="Dönem">
         {PERIODS.map(p => (
           <button
@@ -91,10 +110,12 @@ export function InsightsStrip({ period, onPeriodChange, data, isLoading, isError
       <div className="moi-cards">
         {isLoading && !data ? <SkeletonCards /> : isError && !data ? (
           <div className="moi-card moi-card-error" role="status">
-            <span>Trendyol özeti alınamadı.</span>
+            <span>Pazaryeri özeti alınamadı.</span>
             <button type="button" className="moi-linkbtn" onClick={onRetry}>Tekrar dene</button>
           </div>
-        ) : (
+        ) : emptyNote ? (
+          <div className="moi-card moi-card-error" role="status"><span>{emptyNote}</span></div>
+        ) : !data ? null : (
           <>
             <Card label="Sana kalan" className="moi-card-kalan" onClick={() => onOpen('kalan')}>
               <span className="moi-card-value moi-green">{approxTL(b?.remaining, estimated)}</span>
@@ -140,18 +161,22 @@ export function InsightsStrip({ period, onPeriodChange, data, isLoading, isError
               {pay?.next ? (
                 <>
                   <span className="moi-card-value">{approxTL(pay.next.amount, true)}</span>
-                  <span className="moi-card-sub">{fmtWeekdayDate(pay.next.date)}</span>
+                  <span className="moi-card-foot">
+                    <span className="moi-card-sub">{fmtWeekdayDate(pay.next.date)}</span>
+                    {multi && pay.next.channel && <ChannelTag channel={pay.next.channel} className="moi-card-sub" />}
+                  </span>
                 </>
               ) : (
                 <>
                   <span className="moi-card-value">—</span>
-                  <span className="moi-card-sub">{pay?.available === false ? 'Ekstre alınamadı' : 'Bekleyen ödeme yok'}</span>
+                  <span className="moi-card-sub">{pay?.available === false ? 'Ödeme kayıtları alınamadı' : 'Bekleyen ödeme yok'}</span>
                 </>
               )}
             </Card>
           </>
         )}
       </div>
+      {note && <p className="moi-strip-note" role="status">{note}</p>}
     </section>
   );
 }

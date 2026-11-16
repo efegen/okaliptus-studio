@@ -3534,6 +3534,10 @@
   .moi-more { margin-left: 8px; }
   .moi-minibars { display: flex; align-items: flex-end; height: 22px; }
   .moi-minibars > span { flex: 1; min-width: 0; border-radius: 2px 2px 1px 1px; background: oklch(0.8 0.07 145); }
+  /* kanal adı + renk noktası (birleşik özette ödeme / kanal satırları) */
+  .moi-chan { display: inline-flex; align-items: center; gap: 5px; min-width: 0; white-space: nowrap; }
+  .moi-chan .mo-fdot { width: 7px; height: 7px; }
+  .moi-strip-note { margin: 8px 16px 0; font-size: 12px; line-height: 1.45; color: var(--warn-ink); }
 
   /* şerit gidince sekmelerin üstünde kalan tek satır */
   .moi-mini { display: flex; align-items: center; gap: 10px; height: 42px; padding: 0 10px 0 16px; background: var(--surface); border-top: 1px solid var(--line); }

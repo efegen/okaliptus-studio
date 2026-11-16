@@ -23,42 +23,43 @@ import {
   type TrendyolFinanceRecord,
   type TrendyolFinanceResponse,
 } from "./client.js";
-import { listTrendyolOrders, type DisplayOrder, type OrdersListResult } from "./orders.service.js";
+import { listTrendyolOrders, type DisplayOrder, type MarketplaceChannel, type OrdersListResult } from "./orders.service.js";
 import { ValidationError } from "../errors.js";
 
 export type InsightPeriod = "hafta" | "ay" | "gecen";
+export type { MarketplaceChannel };
 export const INSIGHT_PERIODS: readonly InsightPeriod[] = ["hafta", "ay", "gecen"];
 
-const DAY = 86_400_000;
+export const DAY = 86_400_000;
 // Europe/Istanbul = UTC+3 sabit (2016'dan beri yaz saati yok). Hafta Pazartesi 00:00.
 const TR_OFFSET = 3 * 3_600_000;
-const ORDERS_WINDOW_DAYS = 90;
-const DEFAULT_VAT_RATE = 20;     // satırda KDV oranı yoksa
-const SERVICE_VAT_RATE = 20;     // komisyon / kargo / hizmet faturalarındaki KDV
-const STOPPAGE_RATE = 0.01;      // e-ticaret stopajı (KDV hariç tutar üzerinden)
+export const ORDERS_WINDOW_DAYS = 90;
+export const DEFAULT_VAT_RATE = 20;     // satırda KDV oranı yoksa
+export const SERVICE_VAT_RATE = 20;     // komisyon / kargo / hizmet faturalarındaki KDV
+export const STOPPAGE_RATE = 0.01;      // e-ticaret stopajı (KDV hariç tutar üzerinden)
 const FINANCE_TTL_MS = 10 * 60_000;
 const FINANCE_CHUNK_MS = 15 * DAY - 60_000; // TY: aralık en fazla 15 gün
 const FINANCE_MAX_PAGES = 20;
 const FINANCE_CONCURRENCY = 3;
-const TOP_PRODUCTS_LIMIT = 20;
-const PAST_PAYMENTS_LIMIT = 6;
+export const TOP_PRODUCTS_LIMIT = 20;
+export const PAST_PAYMENTS_LIMIT = 6;
 
-const SALE_TABS = new Set(["yeni", "isleme", "tasima", "teslim", "yeniden"]);
-const NOT_DELIVERED_TABS = new Set(["yeni", "isleme", "tasima", "yeniden"]);
+export const SALE_TABS = new Set(["yeni", "isleme", "tasima", "teslim", "yeniden"]);
+export const NOT_DELIVERED_TABS = new Set(["yeni", "isleme", "tasima", "yeniden"]);
 
 // ── Tarih yardımcıları (İstanbul) ────────────────────────────────────────────
 
-function trDayStart(ms: number): number {
+export function trDayStart(ms: number): number {
   return Math.floor((ms + TR_OFFSET) / DAY) * DAY - TR_OFFSET;
 }
 
-function trParts(ms: number): { y: number; m: number; dow: number } {
+export function trParts(ms: number): { y: number; m: number; dow: number } {
   const d = new Date(ms + TR_OFFSET);
   return { y: d.getUTCFullYear(), m: d.getUTCMonth(), dow: d.getUTCDay() };
 }
 
 // Date.UTC ay taşmasını (m = -1, 12) kendisi düzeltir.
-function trMonthStart(y: number, m: number): number {
+export function trMonthStart(y: number, m: number): number {
   return Date.UTC(y, m, 1) - TR_OFFSET;
 }
 
@@ -92,15 +93,15 @@ export function periodRange(period: InsightPeriod, now: number): PeriodRange {
 
 // ── Sayı yardımcıları ────────────────────────────────────────────────────────
 
-function round2(n: number): number {
+export function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
-function num(v: unknown): number {
+export function num(v: unknown): number {
   return typeof v === "number" && Number.isFinite(v) ? v : 0;
 }
 
-function abs(v: unknown): number {
+export function abs(v: unknown): number {
   return Math.abs(num(v));
 }
 
@@ -116,13 +117,13 @@ function classifyOrder(o: DisplayOrder): OrderClass {
 }
 
 // Paketin müşteriye faturalanan tutarı (KDV dahil, satıcı indirimi düşülmüş).
-function packageAmount(o: DisplayOrder): number {
+export function packageAmount(o: DisplayOrder): number {
   if (typeof o.billable === "number") return o.billable;
   if (typeof o.saleAmount === "number") return o.saleAmount - num(o.discount);
   return o.lines.reduce((s, l) => s + num(l.unitPrice) * l.quantity, 0);
 }
 
-type LineShare = {
+export type LineShare = {
   key: string;
   barcode: string | null;
   name: string;
@@ -134,7 +135,7 @@ type LineShare = {
 };
 
 // Paket tutarını satırlara (birim fiyat × adet oranında) dağıtır → indirim satırlara yayılır.
-function lineShares(o: DisplayOrder, amount: number): LineShare[] {
+export function lineShares(o: DisplayOrder, amount: number): LineShare[] {
   const gross = o.lines.map(l => num(l.unitPrice) * l.quantity);
   const total = gross.reduce((s, g) => s + g, 0);
   return o.lines.map((l, i) => ({
@@ -149,7 +150,7 @@ function lineShares(o: DisplayOrder, amount: number): LineShare[] {
   }));
 }
 
-function inRange(ms: number | null, start: number, end: number): ms is number {
+export function inRange(ms: number | null, start: number, end: number): ms is number {
   return ms !== null && ms >= start && ms < end;
 }
 
@@ -191,7 +192,30 @@ function isCargoInvoice(r: TrendyolFinanceRecord): boolean {
 
 // ── Saf çekirdek ─────────────────────────────────────────────────────────────
 
-export type TrendyolInsights = {
+export type InsightProduct = {
+  key: string;
+  barcode: string | null;
+  name: string;
+  imageUrl: string | null;
+  quantity: number;
+  total: number;
+};
+
+export type InsightPayment = { date: number; amount: number; orders: number; channel?: MarketplaceChannel | null };
+
+export type InsightPastPayment = {
+  id: string;
+  date: number;
+  amount: number;
+  orders: number | null;
+  sales: number | null;
+  commission: number | null;
+  deductions: number | null;
+  channel?: MarketplaceChannel;
+};
+
+// Kanal özeti — Trendyol ve Hepsiburada aynı biçimi üretir (bkz. hepsiburada/insights.service).
+export type ChannelInsights = {
   period: InsightPeriod;
   range: { start: number; end: number; complete: boolean };
   generatedAt: number;
@@ -201,14 +225,15 @@ export type TrendyolInsights = {
     packages: number;
     units: number;
     avgOrder: number | null;
-    deltaPct: number | null; // önceki eşdeğer döneme göre % (veri yoksa null)
+    deltaPct: number | null;  // önceki eşdeğer döneme göre % (veri yoksa null)
+    prevTotal: number | null; // önceki eşdeğer dönemin satışı (veri kapsamıyorsa null)
     daily: Array<{ date: string; total: number; orders: number }>;
     cancelled: { orders: number; total: number };
     returned: { orders: number; total: number };
   };
   products: {
     count: number;
-    top: Array<{ key: string; barcode: string | null; name: string; imageUrl: string | null; quantity: number; total: number }>;
+    top: InsightProduct[];
   };
   breakdown: {
     sales: number;
@@ -220,6 +245,7 @@ export type TrendyolInsights = {
     remaining: number;
     remainingPct: number | null;
     avgCommissionRate: number | null;
+    commissionVatAdded?: boolean; // HB: oran KDV hariç, komisyon faturasına KDV eklenir
     cargoPackages: number;
     avgCargo: number | null;
     settledOrders: number;
@@ -228,28 +254,24 @@ export type TrendyolInsights = {
   };
   payments: {
     available: boolean;
-    next: { date: number; amount: number; orders: number } | null;
-    later: { date: number; amount: number; orders: number } | null;
+    next: InsightPayment | null;
+    later: InsightPayment | null;
     notDelivered: { amount: number; orders: number };
-    past: Array<{
-      id: string;
-      date: number;
-      amount: number;
-      orders: number | null;
-      sales: number | null;
-      commission: number | null;
-      deductions: number | null;
-    }>;
+    past: InsightPastPayment[];
   };
 };
+
+export type TrendyolInsights = ChannelInsights;
 
 export function buildTrendyolInsights(input: {
   period: InsightPeriod;
   now: number;
   orders: DisplayOrder[];
   finance: FinanceData;
+  topLimit?: number; // birleşik özet tüm listeyi ister (kanallar birleşince kesilir)
 }): TrendyolInsights {
   const { period, now, orders, finance } = input;
+  const topLimit = input.topLimit ?? TOP_PRODUCTS_LIMIT;
   const range = periodRange(period, now);
   const { start, end } = range;
 
@@ -382,14 +404,16 @@ export function buildTrendyolInsights(input: {
   // ── Karşılaştırma (önceki eşdeğer dönem; snapshot kapsıyorsa) ──
   const coverageStart = now - (ORDERS_WINDOW_DAYS - 1) * DAY;
   let deltaPct: number | null = null;
+  let prevTotal: number | null = null;
   if (range.prevStart >= coverageStart) {
     const prev = salesTotal(orders, range.prevStart, range.prevEnd);
+    prevTotal = round2(prev);
     if (prev > 0) deltaPct = Math.round(((total - prev) / prev) * 100);
   }
 
   const top = [...products.values()]
     .sort((a, b) => b.quantity - a.quantity || b.total - a.total)
-    .slice(0, TOP_PRODUCTS_LIMIT)
+    .slice(0, topLimit)
     .map(p => ({ ...p, total: round2(p.total) }));
 
   return {
@@ -403,6 +427,7 @@ export function buildTrendyolInsights(input: {
       units,
       avgOrder: orderNumbers.size > 0 ? round2(total / orderNumbers.size) : null,
       deltaPct,
+      prevTotal,
       daily: [...daily.entries()].map(([date, v]) => ({ date, total: round2(v.total), orders: v.orders.size })),
       cancelled: { orders: cancelled.size, total: round2(cancelledTotal) },
       returned: { orders: returned.size, total: round2(returnedTotal) },
@@ -454,13 +479,13 @@ function buildPayments(
   }
   const groups = [...upcoming.entries()].sort((a, b) => a[0] - b[0]);
   const [first, ...rest] = groups;
-  const next = first ? { date: first[0], amount: round2(first[1].amount), orders: first[1].orders.size } : null;
+  const next = first ? { date: first[0], amount: round2(first[1].amount), orders: first[1].orders.size, channel: "trendyol" as const } : null;
   let later: TrendyolInsights["payments"]["later"] = null;
   if (rest.length > 0) {
     const ords = new Set<string>();
     let amount = 0;
     for (const [, g] of rest) { amount += g.amount; for (const on of g.orders) ords.add(on); }
-    later = { date: rest[0][0], amount: round2(amount), orders: ords.size };
+    later = { date: rest[0][0], amount: round2(amount), orders: ords.size, channel: "trendyol" };
   }
 
   // Henüz teslim edilmemiş siparişler (ekstrede yok): tutar − tahmini komisyon − ort. kargo.
@@ -509,6 +534,7 @@ function buildPayments(
         sales: usable ? round2(g.sales) : null,
         commission: usable ? round2(g.commission) : null,
         deductions: usable ? round2(Math.max(0, g.sales - g.commission - amount)) : null,
+        channel: "trendyol" as const,
       };
     })
     .filter(p => p.date > 0 && p.amount > 0)
@@ -532,9 +558,10 @@ export type InsightsDeps = {
   fetchOtherFinancials?: (p: GetFinanceParams) => Promise<TrendyolFinanceResponse>;
   fetchCargoItems?: (serial: string, page?: number) => Promise<TrendyolCargoInvoiceResponse>;
   now?: number;
+  topLimit?: number;
 };
 
-async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+export async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const out: R[] = new Array(items.length);
   let next = 0;
   const workers = Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, async () => {
@@ -707,5 +734,5 @@ export async function getTrendyolInsights(
       return getFinanceCached(now);
     })(),
   ]);
-  return buildTrendyolInsights({ period, now, orders: list.orders, finance });
+  return buildTrendyolInsights({ period, now, orders: list.orders, finance, topLimit: deps.topLimit });
 }

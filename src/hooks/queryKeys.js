@@ -29,8 +29,9 @@ export const queryKeys = {
   trendyolCargoChanges:(ids)  => ['trendyolCargoChanges', ids],
   hepsiburadaCargoChanges:(ids) => ['hepsiburadaCargoChanges', ids],
   hepsiburadaCargoOptions:(packageId) => ['hepsiburadaCargoOptions', packageId],
-  // Siparişler ekranının özet şeridi (satış, sana kalan, çok satanlar, ödemeler).
-  trendyolInsights:   (period)=> period !== undefined ? ['trendyolInsights', period] : ['trendyolInsights'],
+  // Siparişler ekranının özet şeridi (satış, sana kalan, çok satanlar, ödemeler) —
+  // Trendyol + Hepsiburada birleşik, kanal başına özetler aynı yanıtta.
+  marketplaceInsights:(period)=> period !== undefined ? ['marketplaceInsights', period] : ['marketplaceInsights'],
   debtors:            ()      => ['debtors'],
   auditLogs:          (params)=> ['auditLogs', params],
   auditUsers:         ()      => ['auditUsers'],

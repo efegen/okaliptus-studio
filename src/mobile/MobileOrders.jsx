@@ -8,15 +8,16 @@
 // Hepsiburada) istemci tarafıdır. Ana sayfadaki "Siparişler" (V3·B) butonundan
 // açılır; geri tuşu → ana sayfa.
 //
-// Yapı: sabit koyu başlık + kayan gövde. Gövdenin başında Trendyol özeti (kart
-// şeridi, ordersInsights/ — tuval "Siparişler mini dashboard" C6) durur; durum
+// Yapı: sabit koyu başlık + kayan gövde. Gövdenin başında pazaryeri özeti (kart
+// şeridi, ordersInsights/ — tuval "Siparişler mini dashboard" C6; Trendyol +
+// Hepsiburada, kanal filtresi özeti de süzer) durur; durum
 // sekmeleri onun hemen altında, listeye bitişik ve kaydırınca tepede yapışık kalır
 // (şerit gidince sekmelerin üstüne tek satır özet gelir). Kartlar detay katmanını
 // (InsightPage) açar. Tüm görsel sınıflar `mo-*` / `moi-*` ad alanında.
 
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { getTrendyolInsights } from '../api';
+import { getMarketplaceInsights } from '../api';
 import { useCan } from '../currentUser';
 import { queryKeys } from '../hooks/queryKeys';
 import { useCargoChangeWatcher } from '../hooks/useCargoChangeWatcher';
@@ -24,6 +25,7 @@ import { useMarketplaceOrders } from '../hooks/useMarketplaceOrders';
 import { ORDERS_WINDOW_DAYS } from '../marketplaceOrders';
 import { InsightsMiniBar, InsightsStrip } from './ordersInsights/InsightsStrip';
 import { InsightPage } from './ordersInsights/InsightPage';
+import { CHANNEL_NAMES, channelList, scopeInsights } from './ordersInsights/insightsFormat';
 
 // ─── Biçimlendiriciler (web orders.jsx ile aynı davranış) ────────────────────
 function fmtTL(raw) {
@@ -256,7 +258,7 @@ export function MobileOrders({ onBack, onOpenDetail }) {
   // Web orders ekranıyla AYNI sorgu anahtarları → önbellek paylaşılır (viewport
   // değişince yeniden çekmez), salt-okunur 90 günlük pencere, iki kanal birleşik.
   const ordersQuery = useMarketplaceOrders({ windowDays: ORDERS_WINDOW_DAYS });
-  // ── Trendyol özeti (kart şeridi) — yalnız finansı görebilenler (asistan değil) ──
+  // ── Pazaryeri özeti (kart şeridi) — yalnız finansı görebilenler (asistan değil) ──
   const canSeeInsights = useCan('finance.read');
   const [period, setPeriod] = React.useState('ay');
   const [insightView, setInsightView] = React.useState(null); // 'kalan' | 'cok' | 'satis' | 'odeme'
@@ -264,11 +266,22 @@ export function MobileOrders({ onBack, onOpenDetail }) {
   const scrollRef = React.useRef(null);
   const stripRef = React.useRef(null);
   const insightsQuery = useQuery({
-    queryKey: queryKeys.trendyolInsights(period),
-    queryFn: () => getTrendyolInsights(period),
+    queryKey: queryKeys.marketplaceInsights(period),
+    queryFn: () => getMarketplaceInsights(period),
     enabled: canSeeInsights,
     staleTime: 60 * 1000,
   });
+  // Liste kanal filtresi özeti de süzer (yanıtta kanal başına özet hazır; yeni istek yok).
+  const insights = scopeInsights(insightsQuery.data, channel);
+  let insightsEmpty = null;
+  if (insights.missing) {
+    const name = CHANNEL_NAMES[insights.channels[0]];
+    insightsEmpty = insights.missing === 'failed' ? `${name} özeti şu an alınamadı.` : `${name} bağlı değil; özet yok.`;
+  }
+  const failedOthers = channel === 'all' ? (insightsQuery.data?.failed ?? []) : [];
+  const insightsNote = failedOthers.length > 0
+    ? `${channelList(failedOthers)} verisi şu an alınamadı; özet yalnız ${channelList(insights.channels)}.`
+    : null;
 
   // Şerit kaydırılıp tamamen gidince sekmelerin üstünde tek satır özet görünür.
   function onScroll(e) {
@@ -326,7 +339,10 @@ export function MobileOrders({ onBack, onOpenDetail }) {
             <InsightsStrip
               period={period}
               onPeriodChange={setPeriod}
-              data={insightsQuery.data}
+              data={insights.data}
+              channels={insights.channels}
+              emptyNote={insightsEmpty}
+              note={insightsNote}
               isLoading={insightsQuery.isLoading}
               isError={insightsQuery.isError}
               onRetry={() => insightsQuery.refetch()}
@@ -337,8 +353,8 @@ export function MobileOrders({ onBack, onOpenDetail }) {
 
         {/* Durum sekmeleri: listenin hemen üstünde; kaydırınca tepede yapışık kalır */}
         <div className="mo-sticky">
-          {canSeeInsights && collapsed && insightsQuery.data && (
-            <InsightsMiniBar period={period} data={insightsQuery.data} onExpand={expandSummary} />
+          {canSeeInsights && collapsed && insights.data && (
+            <InsightsMiniBar period={period} data={insights.data} onExpand={expandSummary} />
           )}
           <nav className="mo-tabs" role="tablist" aria-label="Sipariş durumu">
             {TABS.map(t => (
@@ -455,7 +471,9 @@ export function MobileOrders({ onBack, onOpenDetail }) {
         <InsightPage
           view={insightView}
           period={period}
-          data={insightsQuery.data}
+          data={insights.data}
+          channels={insights.channels}
+          byChannel={channel === 'all' ? insightsQuery.data?.byChannel : null}
           onBack={() => setInsightView(null)}
         />
       )}

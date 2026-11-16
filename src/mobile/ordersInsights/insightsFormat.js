@@ -1,8 +1,35 @@
-// Siparişler özeti (Trendyol insights) — ortak biçimlendiriciler ve türetilmiş değerler.
-// Tarihler Europe/Istanbul'a (UTC+3, yaz saati yok) göre biçimlenir; backend de aynı
-// sabit ofsetle gün/hafta/ay sınırlarını hesaplar.
+// Siparişler özeti (pazaryeri insights: Trendyol + Hepsiburada) — ortak biçimlendiriciler
+// ve türetilmiş değerler. Tarihler Europe/Istanbul'a (UTC+3, yaz saati yok) göre
+// biçimlenir; backend de aynı sabit ofsetle gün/hafta/ay sınırlarını hesaplar.
 
 const TR_OFFSET = 3 * 3_600_000;
+
+export const CHANNEL_NAMES = { trendyol: 'Trendyol', hepsiburada: 'Hepsiburada' };
+// Liste ekranındaki kanal filtresi anahtarı → özet kanalı.
+const FILTER_CHANNEL = { ty: 'trendyol', hb: 'hepsiburada' };
+
+// GET /channels/insights yanıtını ekrandaki kanal filtresine göre daraltır.
+// → { data, channels, missing } — missing: filtrelenen kanalın özeti yok
+// ('failed' alınamadı | 'absent' bağlı değil).
+export function scopeInsights(all, filterKey) {
+  if (!all) return { data: null, channels: [], missing: null };
+  const ch = FILTER_CHANNEL[filterKey];
+  if (!ch) return { data: all, channels: all.channels ?? [], missing: null };
+  const data = all.byChannel?.[ch] ?? null;
+  if (data) return { data, channels: [ch], missing: null };
+  return { data: null, channels: [ch], missing: (all.failed ?? []).includes(ch) ? 'failed' : 'absent' };
+}
+
+// "Trendyol + Hepsiburada" · "Trendyol"
+export function scopeLabel(channels) {
+  const names = (channels ?? []).map(c => CHANNEL_NAMES[c] ?? c);
+  return names.length > 0 ? names.join(' + ') : 'Pazaryeri';
+}
+
+export function channelList(channels) {
+  const names = (channels ?? []).map(c => CHANNEL_NAMES[c] ?? c);
+  return names.length > 1 ? `${names.slice(0, -1).join(', ')} ve ${names[names.length - 1]}` : names[0] ?? '';
+}
 
 export const PERIODS = [
   { key: 'hafta', label: 'Bu hafta' },
@@ -105,12 +132,14 @@ export const SEGMENT_COLORS = {
   kalan: 'var(--moi-kalan)',
 };
 
-export function breakdownRows(b) {
+// channels: özetteki kanallar — tek kanalsa komisyon satırı o kanalın adını taşır.
+export function breakdownRows(b, channels) {
   if (!b) return [];
   const sales = b.sales > 0 ? b.sales : 0;
   const pct = (v) => (sales > 0 ? (Math.max(0, v) / sales) * 100 : 0);
+  const only = channels?.length === 1 ? CHANNEL_NAMES[channels[0]] : null;
   return [
-    { key: 'komisyon', label: 'Trendyol komisyonu', amount: b.commission, pct: pct(b.commission) },
+    { key: 'komisyon', label: only ? `${only} komisyonu` : 'Komisyon', amount: b.commission, pct: pct(b.commission) },
     { key: 'kargo', label: 'Kargo', amount: b.cargo, pct: pct(b.cargo) },
     { key: 'kdv', label: 'KDV', amount: b.vat?.net ?? 0, pct: pct(b.vat?.net ?? 0) },
     { key: 'diger', label: 'Hizmet bedeli ve diğer', amount: b.otherFees, pct: pct(b.otherFees) },

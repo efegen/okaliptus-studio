@@ -964,12 +964,13 @@ export async function changeOrderCargoProvider({ packageId, cargoProvider, order
   return ensureMutationResult(payload, "Kargo firması değiştirilemedi.");
 }
 
-// Siparişler ekranının özeti: satış, sana kalan (komisyon/kargo/KDV/kesintiler), en çok
-// satanlar, ödemeler. period: 'hafta' | 'ay' | 'gecen'. Salt-okuma.
-export async function getTrendyolInsights(period = "ay") {
-  const payload = await apiGet(`/trendyol/insights?period=${encodeURIComponent(period)}`);
+// Siparişler ekranının özeti (Trendyol + Hepsiburada): satış, sana kalan (komisyon/
+// kargo/KDV/kesintiler), en çok satanlar, ödemeler. Birleşik özet + kanal başına
+// özet (byChannel) tek yanıtta. period: 'hafta' | 'ay' | 'gecen'. Salt-okuma.
+export async function getMarketplaceInsights(period = "ay") {
+  const payload = await apiGet(`/channels/insights?period=${encodeURIComponent(period)}`);
   if (typeof payload?.data !== "object" || payload.data === null || Array.isArray(payload.data)) {
-    throw new Error("Trendyol özeti alınamadı.");
+    throw new Error("Pazaryeri özeti alınamadı.");
   }
   return payload.data;
 }

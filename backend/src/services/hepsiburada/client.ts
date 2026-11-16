@@ -742,6 +742,48 @@ export async function sendInvoiceLink(packageNumber: string, invoiceLink: string
 // Kayıt bazlı muhasebe: komisyon, ödeme, kargo katkı payı, stopaj vb. Kayıtlar
 // sipariş TESLİM EDİLDİKTEN sonra oluşur. 4 tarih aralığından biri ya da
 // orderNumber/packageNumber/sku/referenceDocument zorunlu; Limit ≤ 100.
+// RecordDateStart–End aralığı en fazla 1 ay (yoksa 400).
+//
+// Canlı veriden (2026-11-17) gözlenen kayıt türleri — tutar işaretli, KDV dahil:
+//   Payment (+satış) · Return (−satış) · Commission (−) / CommissionInvoiceRefund (+)
+//   ShipmentCostSharingExpense (−kargo katılım payı) · ProcessingFeeExpense (−işlem
+//   bedeli) · PaymentServiceCostReflection (−ödeme hizmet bedeli) / …Refund (+)
+//   Stoppage (−%1, KDV hariç tutardan) / StoppageRefund (+)
+//   TotalPayment (siparişsiz; hesaba yatan ödeme, tutar işareti NEGATİF gelir)
+//   EInvoiceSales vb. (siparişsiz sözleşme/özel faturalar)
+// status: WillBePaid (dueDate'te ödenecek) | Paid (paymentDate'te ödendi). Tarihler
+// saat dilimsiz İstanbul günü ("2026-10-16T00:00:00"); "1900-01-01" boş demektir.
+export type HepsiburadaMoneyValue = { value?: number; currencyCode?: string };
+
+export type HepsiburadaFinanceTransaction = {
+  id?: string;
+  transactionType?: string;
+  transactionTypeCategory?: string;
+  status?: string;
+  sku?: string;
+  packageNumber?: string;
+  orderNumber?: string;
+  invoiceNumber?: string;
+  orderItemNumber?: string;
+  quantity?: number;
+  amount?: HepsiburadaMoneyValue;
+  taxAmount?: HepsiburadaMoneyValue;
+  netAmount?: HepsiburadaMoneyValue;
+  orderDate?: string;
+  invoiceDate?: string;
+  dueDate?: string;
+  paymentDate?: string | null;
+  invoiceExplanation?: string | null;
+  isInvoice?: boolean;
+  isIncome?: boolean;
+  productName?: string;
+};
+
+export type HepsiburadaTransactionsResponse = {
+  count?: number;
+  items?: HepsiburadaFinanceTransaction[];
+};
+
 export type HepsiburadaTransactionsQuery = {
   offset?: number;
   limit?: number;
@@ -753,7 +795,7 @@ export type HepsiburadaTransactionsQuery = {
 };
 
 export async function getFinanceTransactions(q: HepsiburadaTransactionsQuery) {
-  return hepsiburadaRequest<unknown>("finance", "GET", `/transactions/merchantid/${merchantPath()}`, {
+  return hepsiburadaRequest<HepsiburadaTransactionsResponse>("finance", "GET", `/transactions/merchantid/${merchantPath()}`, {
     query: {
       Offset: q.offset ?? 0,
       Limit: q.limit ?? 100,
