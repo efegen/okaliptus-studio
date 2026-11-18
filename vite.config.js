@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+import { legacyCssPlugin } from './scripts/legacy-css.mjs'
 
 export default defineConfig({
   plugins: [
@@ -33,6 +34,10 @@ export default defineConfig({
         // Mevcut precache/runtimeCaching kurulumu değişmez.
         importScripts: ['push-sw.js'],
         navigateFallback: '/index.html',
+        // Eski tarayıcı CSS kopyası (scripts/legacy-css.mjs) ön belleğe
+        // alınmaz: yeni cihazlar onu hiç indirmesin. Yalnız onu isteyen eski
+        // tarayıcıda aşağıdaki çalışma zamanı önbelleğine düşer.
+        globIgnores: ['**/node_modules/**/*', '**/*.legacy-*.css'],
         runtimeCaching: [
           {
             urlPattern: ({ url, request }) =>
@@ -75,9 +80,19 @@ export default defineConfig({
               },
             },
           },
+          {
+            urlPattern: ({ url }) => /\.legacy-[\w-]+\.css$/.test(url.pathname),
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'legacy-css',
+              expiration: { maxEntries: 4 },
+            },
+          },
         ],
       },
     }),
+    // oklch()/color-mix() tanımayan tarayıcılar (iOS < 16.2 vb.) için ayrı CSS.
+    legacyCssPlugin(),
   ],
   server: {
     // Windows'ta "localhost" IPv4 (127.0.0.1) ve IPv6 (::1) arasında kararsız

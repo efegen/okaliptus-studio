@@ -17,6 +17,7 @@ Tek eğitmenli bir yoga stüdyosu için operasyon ve finans dashboard'u. Spec **
 
 - Kök = frontend, `backend/` = backend. **Monorepo değil**: her biri kendi `npm install`'ını ister.
 - `scripts/` (kök) → asset üretimi (`generate-icons.mjs` vb.).
+- `scripts/legacy-css.mjs` → build eklentisi: oklch/color-mix tanımayan tarayıcılar (iOS < 16.2, Chrome < 111) için her CSS'in yanına `.legacy-<hash>.css` üretir; `index.html`'deki küçük kontrol yalnız o tarayıcıda bağlantıyı kopyaya çevirir (ana CSS değişmez, kopya precache dışında). Renkler build'de hesaplanır, değişkenli `color-mix` kapsam başına `--legacy-mix-N` olur. Kaynak CSS'te ek iş yok. Test: `legacy-css.test.js`.
 - `backend/scripts/smoke/` → numaralı smoke test dosyaları.
 - `backend/migrations/*.sql` → şema kaynağı (tek doğruluk noktası).
 
