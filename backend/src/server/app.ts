@@ -34,6 +34,7 @@ import { notesRouter } from "./routes/notes.router.js";
 import { siteFeedHandler, siteFeedLimiter, siteProductsRouter } from "./routes/site.router.js";
 import { publicFormsRouter, siteInquiriesRouter } from "./routes/site-inquiries.router.js";
 import { requireAuth } from "./middleware/requireAuth.js";
+import { cloudflareClientIp } from "./middleware/clientIp.js";
 import { publishWrites } from "./middleware/publishWrites.js";
 import { liveStreamHandler } from "./routes/live.router.js";
 import { requireCan } from "./middleware/requireRole.js";
@@ -48,6 +49,11 @@ export function createApp() {
   // door to header spoofing (trust proxy: true would let any client forge it).
   app.set("trust proxy", 1);
   app.disable("x-powered-by");
+
+  // api, Cloudflare'de turuncu bulut (proxied) olursa req.ip Cloudflare'in kenar
+  // IP'si olur; bu katman onu CF-Connecting-IP'deki gerçek ziyaretçiyle değiştirir
+  // (yalnız istek gerçekten Cloudflare aralığından geliyorsa). Bkz. clientIp.ts.
+  app.use(cloudflareClientIp);
 
   // Web sitesi formları (oturumsuz, çerezsiz). Panelin CORS/CSRF katmanından
   // ÖNCE: kendi Origin listesi, kendi gövde sınırı ve istek sınırları var.

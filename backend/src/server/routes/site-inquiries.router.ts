@@ -15,10 +15,10 @@
 //     7. Günlük tavanlar ve isteğe bağlı Turnstile (servis).
 //   Yanıt her başarılı yolda aynıdır (201 {received:true}): şüpheli de olsa,
 //   tekrar da olsa. Bot neye takıldığını öğrenmez.
-//   IP: app.ts'teki "trust proxy 1" (Railway'in kenar proxy'si). API'nin önüne
-//   Cloudflare proxy'si eklenirse araya bir hop daha girer; o zaman IP
-//   CF-Connecting-IP'den okunmalı, yoksa tüm ziyaretçiler Cloudflare'in birkaç
-//   IP'sini paylaşır ve sınırlar gerçek kişileri şüpheliye düşürür.
+//   IP: app.ts'teki "trust proxy 1" (Railway'in kenar proxy'si) + clientIp.ts.
+//   API Cloudflare'de turuncu bulut olursa req.ip, istek Cloudflare aralığından
+//   geldiği için CF-Connecting-IP'deki gerçek ziyaretçiyle değiştirilir; sınırlar
+//   yine kişi başı çalışır.
 //
 // GET/PATCH /site-inquiries — panelin "Talepler" ekranı (requireAuth +
 //   inquiries.manage, app.ts'te bağlanır).
