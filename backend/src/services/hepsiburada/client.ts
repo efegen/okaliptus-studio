@@ -695,9 +695,20 @@ export async function packLineItems(
 
 // Paketlenmiş siparişler (otomatik paketleme açıkken ana okuma ucu). HB belgesi
 // limit'i en fazla 10 olarak verir; tüm liste için Offset ile sayfalanır.
-export async function getPackages(params: { offset?: number; limit?: number } = {}) {
+//
+// timespan (SAAT) ŞART: verilmezse HB yalnız son ~24 saatte paketlenenleri döner →
+// dünden kalan, henüz kargoya verilmemiş paketler listeden düşer (canlıda
+// 2026-11-22: 4 açık paketten 2'si). Yalnız açık (kargoya verilmemiş) paketler
+// döndüğü için geniş pencere zararsız; canlıda 100000'e kadar kabul edildi.
+const PACKAGES_TIMESPAN_HOURS = 90 * 24;
+
+export async function getPackages(params: { offset?: number; limit?: number; timespanHours?: number } = {}) {
   return hepsiburadaRequest<HepsiburadaPackage[]>("orders", "GET", packagesPath(), {
-    query: { Offset: params.offset ?? 0, limit: params.limit ?? 10 },
+    query: {
+      timespan: params.timespanHours ?? PACKAGES_TIMESPAN_HOURS,
+      Offset: params.offset ?? 0,
+      limit: params.limit ?? 10,
+    },
   });
 }
 
