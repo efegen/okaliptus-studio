@@ -382,6 +382,11 @@ export function inquirySummary(kind: string, details: Record<string, unknown>, m
 }
 
 // ─── Panel: liste / detay / güncelleme ───────────────────────────────────────
+// Aynı kişinin 24 saat içindeki tekrar gönderimleri (duplicate_of dolu) listede
+// ayrı satır olmaz: ilk gönderim "baş" satırdır, tekrarlar onun altında sayılır.
+// Baş satır EN SON gönderimin bilgilerini gösterir (kişi formu düzeltip yeniden
+// göndermiş olabilir); kimlik, durum ve geliş zamanı baş satırınkidir.
+// Sayaçlar ve kutular yalnız baş satırları sayar.
 export const INQUIRY_BOXES = ["new", "contacted", "done", "suspect", "spam", "all"] as const;
 export type InquiryBox = (typeof INQUIRY_BOXES)[number];
 
@@ -415,6 +420,11 @@ type InquiryRow = {
   updated_at: string;
   student_id: string | null;
   student_name: string | null;
+  last_details: Record<string, unknown> | null;
+  last_message: string | null;
+  last_email: string | null;
+  last_at: string | null;
+  duplicate_count: string | null;
 };
 
 export type SiteInquiry = {
@@ -431,6 +441,9 @@ export type SiteInquiry = {
   page: string | null;
   duplicateOf: string | null;
   createdAt: string;
+  // Tekrarlar dahil gönderim sayısı ve en son gönderimin zamanı.
+  submissionCount: number;
+  lastSubmittedAt: string;
   notifiedAt: string | null;
   handledBy: { id: string; name: string } | null;
   handledAt: string | null;
@@ -444,9 +457,21 @@ const SELECT_INQUIRY = `
   SELECT i.id, i.kind, i.status, i.suspect_reason, i.full_name, i.phone, i.email, i.message,
          i.details, i.page, i.duplicate_of, i.created_at::text, i.notified_at::text,
          i.handled_by, u.display_name AS handled_by_name, i.handled_at::text, i.note,
-         i.updated_at::text, st.id AS student_id, st.full_name AS student_name
+         i.updated_at::text, st.id AS student_id, st.full_name AS student_name,
+         last.details AS last_details, last.message AS last_message, last.email AS last_email,
+         last.created_at::text AS last_at, dup.n AS duplicate_count
     FROM site_inquiries i
     LEFT JOIN users u ON u.id = i.handled_by
+    LEFT JOIN LATERAL (
+      SELECT d.details, d.message, d.email, d.created_at
+        FROM site_inquiries d
+       WHERE d.duplicate_of = i.id
+       ORDER BY d.id DESC
+       LIMIT 1
+    ) last ON true
+    LEFT JOIN LATERAL (
+      SELECT count(*)::text AS n FROM site_inquiries d WHERE d.duplicate_of = i.id
+    ) dup ON true
     LEFT JOIN LATERAL (
       SELECT s.id, s.full_name
         FROM students s
@@ -458,7 +483,9 @@ const SELECT_INQUIRY = `
     ) st ON true`;
 
 function toInquiry(r: InquiryRow): SiteInquiry {
-  const details = r.details ?? {};
+  const hasLater = r.last_at !== null;
+  const details = (hasLater ? r.last_details : r.details) ?? {};
+  const message = hasLater ? r.last_message : r.message;
   return {
     id: r.id,
     kind: r.kind,
@@ -466,13 +493,15 @@ function toInquiry(r: InquiryRow): SiteInquiry {
     suspectReason: r.suspect_reason,
     fullName: r.full_name,
     phone: r.phone,
-    email: r.email,
-    message: r.message,
+    email: (hasLater ? r.last_email : null) ?? r.email,
+    message,
     details,
-    summary: inquirySummary(r.kind, details, r.message),
+    summary: inquirySummary(r.kind, details, message),
     page: r.page,
     duplicateOf: r.duplicate_of,
     createdAt: r.created_at,
+    submissionCount: 1 + Number(r.duplicate_count ?? 0),
+    lastSubmittedAt: r.last_at ?? r.created_at,
     notifiedAt: r.notified_at,
     handledBy: r.handled_by ? { id: r.handled_by, name: r.handled_by_name ?? "" } : null,
     handledAt: r.handled_at,
@@ -489,7 +518,8 @@ export async function inquiryCounts(): Promise<InquiryCounts> {
     `SELECT count(*) FILTER (WHERE status = 'new' AND suspect_reason IS NULL)     AS new,
             count(*) FILTER (WHERE status = 'contacted')                         AS contacted,
             count(*) FILTER (WHERE status = 'new' AND suspect_reason IS NOT NULL) AS suspect
-       FROM site_inquiries`,
+       FROM site_inquiries
+      WHERE duplicate_of IS NULL`,
   );
   return {
     new: Number(rows[0]?.new ?? 0),
@@ -507,7 +537,7 @@ export async function listSiteInquiries(query: {
   const box: InquiryBox = (INQUIRY_BOXES as readonly string[]).includes(String(query.box ?? ""))
     ? (query.box as InquiryBox)
     : "new";
-  const where = [BOX_WHERE[box]];
+  const where = [BOX_WHERE[box], `i.duplicate_of IS NULL`];
   const values: unknown[] = [];
   if (query.kind !== undefined && query.kind !== "") {
     if (!(INQUIRY_KINDS as readonly string[]).includes(String(query.kind))) {
@@ -547,20 +577,61 @@ export class SiteInquiryNotFoundError extends AppError {
   }
 }
 
-/** Talep + aynı telefondan gelen diğer talepler (en yeni 20). */
-export async function getSiteInquiry(id: string): Promise<SiteInquiry & { related: SiteInquiry[] }> {
+export type InquirySubmission = {
+  id: string;
+  createdAt: string;
+  summary: string;
+  message: string | null;
+  details: Record<string, unknown>;
+};
+
+export type SiteInquiryDetail = SiteInquiry & {
+  // Bu talebin kendi gönderimleri (ilk + tekrarlar), eskiden yeniye.
+  submissions: InquirySubmission[];
+  // Aynı telefondan gelen DİĞER talepler (başka form ya da 24 saatten eski), en yeni 20.
+  related: SiteInquiry[];
+};
+
+export async function getSiteInquiry(id: string): Promise<SiteInquiryDetail> {
   const { rows } = await pool.query<InquiryRow>(`${SELECT_INQUIRY} WHERE i.id = $1`, [id]);
   const row = rows[0];
   if (!row) throw new SiteInquiryNotFoundError();
+  const head = row.duplicate_of ?? row.id;
+
+  const thread = await pool.query<{
+    id: string;
+    kind: string;
+    created_at: string;
+    details: Record<string, unknown>;
+    message: string | null;
+  }>(
+    `SELECT id, kind, created_at::text, details, message
+       FROM site_inquiries
+      WHERE id = $1 OR duplicate_of = $1
+      ORDER BY id`,
+    [head],
+  );
   const related = await pool.query<InquiryRow>(
     `${SELECT_INQUIRY}
       WHERE i.phone_key = (SELECT phone_key FROM site_inquiries WHERE id = $1)
         AND i.id <> $1
+        AND i.duplicate_of IS NULL
       ORDER BY i.id DESC
       LIMIT 20`,
-    [id],
+    [head],
   );
-  return { ...toInquiry(row), related: related.rows.map(toInquiry) };
+
+  return {
+    ...toInquiry(row),
+    submissions: thread.rows.map((t) => ({
+      id: t.id,
+      createdAt: t.created_at,
+      summary: inquirySummary(t.kind, t.details ?? {}, t.message),
+      message: t.message,
+      details: t.details ?? {},
+    })),
+    related: related.rows.map(toInquiry),
+  };
 }
 
 /**
@@ -571,7 +642,7 @@ export async function updateSiteInquiry(
   id: string,
   patch: Record<string, unknown>,
   userId: string,
-): Promise<SiteInquiry & { related: SiteInquiry[] }> {
+): Promise<SiteInquiryDetail> {
   const sets: string[] = [];
   const values: unknown[] = [];
 

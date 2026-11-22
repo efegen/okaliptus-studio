@@ -38,7 +38,7 @@ import type { AddressInfo } from "node:net";
 import { createApp } from "../../src/server/app.js";
 import { login, logout } from "../../src/services/auth.service.js";
 import { cleanText, inquirySummary, phoneKeyOf } from "../../src/services/site-inquiries.service.js";
-import { checkNewSiteInquiries } from "../../src/services/notification-scheduler.js";
+import { checkNewSiteInquiries, INQUIRY_LIST_URL, inquiryUrl } from "../../src/services/notification-scheduler.js";
 import { listNotificationSettings, loadNotificationConfig } from "../../src/services/notification-settings.service.js";
 import { signalCapability } from "../../src/services/live-sync.service.js";
 import { pool } from "../../src/db/connection.js";
@@ -380,7 +380,12 @@ async function run(): Promise<void> {
       assert(items.every((i: any) => i.status === "new" && i.suspectReason === null), "yeni kutusunda yalnız temiz yeni talepler");
       const top = items.find((i: any) => i.id === String(firstRow.id));
       assert(top !== undefined, "ilk ön kayıt yeni kutusunda");
-      assertEqual(top.summary, "Pamukkale Yoga Kampı, 20 kişi, 2 ya da 3 kişilik oda", "özet");
+      const dupIds = (await pool.query(`SELECT id::text FROM site_inquiries WHERE duplicate_of = $1`, [firstRow.id])).rows.map((r) => r.id);
+      assert(dupIds.length === 1, "bir tekrar gönderim var");
+      assert(!items.some((i: any) => dupIds.includes(i.id)), "tekrar gönderim listede ayrı satır değil");
+      assertEqual(top.submissionCount, 2, "baş satır iki gönderimi sayar");
+      assertEqual(top.summary, "Pamukkale Yoga Kampı, 2 kişi, 2 ya da 3 kişilik oda", "özet en son gönderimden");
+      assert(top.lastSubmittedAt >= top.createdAt, "son gönderim zamanı");
       assertEqual(top.student?.fullName, `${P} Kayıtlı Öğrenci`, "telefon kayıtlı öğrenciyle eşleşti");
       assert(typeof inbox.json.data.counts.new === "number", "sayaçlar döner");
 
@@ -405,7 +410,14 @@ async function run(): Promise<void> {
     {
       const detail = await panel("GET", `/site-inquiries/${firstRow.id}`);
       assertEqual(detail.status, 200, "detay 200");
-      assert(detail.json.data.related.length >= 1, "aynı telefondan diğer talepler");
+      assertEqual(detail.json.data.submissions.length, 2, "iki gönderim, eskiden yeniye");
+      assertEqual(detail.json.data.submissions[0].id, String(firstRow.id), "ilk gönderim önce");
+      assertEqual(detail.json.data.submissions[0].details.people, 20, "ilk gönderimin bilgileri korunur");
+      assert(detail.json.data.related.length >= 1, "aynı telefondan başka talep (başka etkinlik)");
+      assert(
+        detail.json.data.related.every((r: any) => r.duplicateOf === null && r.id !== String(firstRow.id)),
+        "ilgili talepler yalnız başka baş satırlar",
+      );
 
       const upd = await panel("PATCH", `/site-inquiries/${firstRow.id}`, { status: "contacted", note: "  Aradım, cuma girişi.  " });
       assertEqual(upd.status, 200, "güncelleme 200");
@@ -456,6 +468,8 @@ async function run(): Promise<void> {
       assertEqual(signalCapability("POST", "/site-inquiries"), "inquiries.manage", "yeni talep sinyali yetkiye bağlı");
       assertEqual(signalCapability("PATCH", "/site-inquiries/5"), "inquiries.manage", "güncelleme sinyali yetkiye bağlı");
       assertEqual(signalCapability("GET", "/site-inquiries"), undefined, "okuma sinyal üretmez");
+      assertEqual(inquiryUrl("42"), "/?talep=42", "bildirim talebin kendisini açar");
+      assertEqual(INQUIRY_LIST_URL, "/?talepler=1", "özet bildirimi listeyi açar");
     }
   } finally {
     for (const k of ENV_KEYS) {

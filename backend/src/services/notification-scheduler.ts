@@ -357,6 +357,13 @@ export function notifyNewChannelOrdersNow(): void {
 // birden yağmaz. Aynı anda 3'ten fazla talep varsa tek özet bildirim gider.
 const INQUIRY_BATCH_MAX = 3;
 
+// Bildirime dokununca panelin açacağı adres (public/push-sw.js açık pencereye
+// iletir; mobil kabuk ?talep= / ?talepler= parametresini okur).
+export const INQUIRY_LIST_URL = "/?talepler=1";
+export function inquiryUrl(id: string | number): string {
+  return `/?talep=${encodeURIComponent(String(id))}`;
+}
+
 type ClaimedInquiry = {
   id: string;
   kind: InquiryKind;
@@ -394,7 +401,7 @@ export async function checkNewSiteInquiries(preloaded?: LoadedNotificationConfig
       payloads = [{
         title: `${claimed.length} yeni talep`,
         body: `${names} ve ${claimed.length - INQUIRY_BATCH_MAX} kişi daha`,
-        url: "/",
+        url: INQUIRY_LIST_URL,
       }];
     } else {
       payloads = claimed.map((r) => {
@@ -407,7 +414,7 @@ export async function checkNewSiteInquiries(preloaded?: LoadedNotificationConfig
         return {
           title: renderTemplate(si.titleTemplate, vars),
           body: renderTemplate(si.bodyTemplate, vars),
-          url: "/",
+          url: inquiryUrl(r.id),
         };
       });
     }
@@ -473,7 +480,7 @@ export function alertSiteFormsBusy(): void {
       const payload: PushPayload = {
         title: "Site formları durdu",
         body: "Bugünkü form sınırı doldu; yeni gönderimler yarına kadar alınmıyor. Olağandışı bir yoğunluk ya da saldırı olabilir.",
-        url: "/",
+        url: INQUIRY_LIST_URL,
       };
       for (const userId of recipients) {
         await trySend(userId, payload, "form tavanı uyarısı");
