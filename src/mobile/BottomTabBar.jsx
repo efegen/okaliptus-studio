@@ -16,7 +16,7 @@ import { Icon } from '../layout';
  */
 
 const TABS = [
-  { id: 'home',     label: 'Ana',        icon: Icon.Home,  matches: ['home'] },
+  { id: 'home',     label: 'Ana',        icon: Icon.Home,  matches: ['home', 'inquiries'] },
   { id: 'students', label: 'Öğrenciler', icon: Icon.Users, matches: ['students'] },
   { id: 'calendar', label: 'Takvim',     icon: Icon.Calendar, matches: ['calendar'] },
   { id: 'menu',     label: 'Menü',       icon: Icon.Menu,  matches: ['menu', 'settings', 'catalog', 'products', 'movements', 'finance', 'users'] },

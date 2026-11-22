@@ -34,12 +34,15 @@ import { MobileEventSettings } from './events/MobileEventSettings';
 import { MobileEventActivity } from './events/MobileEventActivity';
 import { MobileEventDay } from './events/MobileEventDay';
 import { MobileEventDayBreakfast } from './events/MobileEventDayBreakfast';
+import { MobileInquiries } from './inquiries/MobileInquiries';
+import { MobileInquiryDetail } from './inquiries/MobileInquiryDetail';
+import { MobileInquirySuspects } from './inquiries/MobileInquirySuspects';
 import { SettingsPage } from '../settings';
 import { CatalogPage } from '../catalog';
 import { queryKeys } from '../hooks/queryKeys';
 import { fmtTL } from '../data';
 import { Icon } from '../layout';
-import { canSeePage } from '../permissions';
+import { can, canSeePage } from '../permissions';
 
 // Mobile shell: header (when shown) + page body + fixed bottom tab bar. The
 // center "+" FAB opens the QuickAdd action sheet (Ödeme al · Ürün sat · Ders
@@ -98,8 +101,12 @@ export function MobileApp({
     page === 'event-activity' ||
     page === 'event-day' ||
     page === 'event-day-breakfast';
+  // Web sitesi talepleri: liste (alt sekme çubuğu görünür), detay ve şüpheliler
+  // (tam ekran). Hepsinin kendi başlığı var.
+  const onInquiryPage = page === 'inquiries' || page === 'inquiry-detail' || page === 'inquiry-suspects';
   const showBack = (onStudentsPage && !!studentDetailId) || onMenuChild;
   const hideHeader =
+    onInquiryPage ||
     page === 'home' ||
     page === 'calendar' ||
     page === 'students' ||
@@ -159,6 +166,63 @@ export function MobileApp({
   // Not içindeki öğrenci etiketi profile götürür; profil geri tuşu öğrenci
   // listesine değil, okunan not akışına dönsün.
   const [studentProfileReturnPage, setStudentProfileReturnPage] = React.useState(null);
+  // Talepler: açık talep, listede seçili sekme ve tür (detaydan dönünce aynı
+  // yerde kalsın diye burada tutulur).
+  const [inquiryId, setInquiryId] = React.useState(null);
+  const [inquiryTab, setInquiryTab] = React.useState('new');
+  const [inquiryKind, setInquiryKind] = React.useState('all');
+  const canSeeInquiries = can(currentUser?.role, 'inquiries.manage');
+
+  function openInquiry(id) {
+    setInquiryId(String(id));
+    setStudentDetailId(null);
+    setPage('inquiry-detail');
+  }
+
+  function openInquiries() {
+    setStudentDetailId(null);
+    setPage('inquiries');
+  }
+
+  // Bildirimden açılış: push-sw.js yeni pencereyi /?talep=<id> ile açar ya da
+  // açık pencereye { type: 'push:open', url } mesajı yollar. Adres okunduktan
+  // sonra temizlenir (yenilemede tekrar açılmasın).
+  React.useEffect(() => {
+    if (!canSeeInquiries) return undefined;
+    function openFromUrl(raw) {
+      let url;
+      try {
+        url = new URL(raw, window.location.origin);
+      } catch {
+        return false;
+      }
+      const id = url.searchParams.get('talep');
+      if (id && /^\d+$/.test(id)) {
+        openInquiry(id);
+        return true;
+      }
+      if (url.searchParams.has('talepler')) {
+        setInquiryTab('new');
+        openInquiries();
+        return true;
+      }
+      return false;
+    }
+    if (openFromUrl(window.location.href)) {
+      const params = new URLSearchParams(window.location.search);
+      params.delete('talep');
+      params.delete('talepler');
+      const query = params.toString();
+      window.history.replaceState(null, '', `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`);
+    }
+    if (typeof navigator === 'undefined' || !navigator.serviceWorker) return undefined;
+    function onSwMessage(e) {
+      if (e.data?.type === 'push:open' && typeof e.data.url === 'string') openFromUrl(e.data.url);
+    }
+    navigator.serviceWorker.addEventListener('message', onSwMessage);
+    return () => navigator.serviceWorker.removeEventListener('message', onSwMessage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canSeeInquiries]);
 
   function openFinance(from) {
     setFinanceFrom(from);
@@ -335,9 +399,14 @@ export function MobileApp({
     }
     if (page === 'event-participant' && !eventParticipantId) {
       setPage('event-detail');
+      return;
+    }
+    // Talep detayı da kimliksiz açılırsa (yenileme) listeye düşer.
+    if (page === 'inquiry-detail' && !inquiryId) {
+      setPage('inquiries');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, eventDetailId, eventParticipantId]);
+  }, [page, eventDetailId, eventParticipantId, inquiryId]);
 
   // Track the iOS soft-keyboard inset on :root as `--mobile-kb-h`. iOS Safari
   // does not shrink dvh/100vh when the keyboard opens, so bottom-anchored
@@ -378,8 +447,37 @@ export function MobileApp({
           setNotesFocus(focus?.noteId ? focus : null);
           setPage('notes');
         }}
+        onOpenInquiries={openInquiries}
       />
     );
+  } else if (page === 'inquiries') {
+    body = (
+      <MobileInquiries
+        tab={inquiryTab}
+        kind={inquiryKind}
+        onChangeTab={setInquiryTab}
+        onChangeKind={setInquiryKind}
+        onBack={() => setPage('home')}
+        onOpen={openInquiry}
+        onOpenSuspects={() => setPage('inquiry-suspects')}
+      />
+    );
+  } else if (page === 'inquiry-detail') {
+    body = (
+      <MobileInquiryDetail
+        key={inquiryId}
+        inquiryId={inquiryId}
+        onBack={() => setPage('inquiries')}
+        onOpenInquiry={openInquiry}
+        onOpenStudent={(studentId) => {
+          setStudentProfileReturnPage('inquiry-detail');
+          setStudentDetailId(String(studentId));
+          setPage('students');
+        }}
+      />
+    );
+  } else if (page === 'inquiry-suspects') {
+    body = <MobileInquirySuspects onBack={() => setPage('inquiries')} />;
   } else if (page === 'events') {
     body = (
       <MobileEvents
@@ -620,7 +718,7 @@ export function MobileApp({
       <main className="mobile-main" data-screen-label={page}>
         {body}
       </main>
-      {page !== 'order-detail' && page !== 'collect-payment' && page !== 'notes' && !onEventSubPage && (
+      {page !== 'order-detail' && page !== 'collect-payment' && page !== 'notes' && page !== 'inquiry-detail' && page !== 'inquiry-suspects' && !onEventSubPage && (
         <BottomTabBar
           page={page}
           onNavigate={handleNavigate}

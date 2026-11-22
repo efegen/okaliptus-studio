@@ -60,8 +60,14 @@ const NOTIF_META = {
     kind: 'event',
     hideRecipients: true,
   },
+  site_inquiry: {
+    title: 'Yeni site talebi',
+    desc: 'Web sitesindeki bir form (ön kayıt, ders talebi, mesaj) gönderildiğinde. Şüpheli gönderimler ve aynı kişinin 24 saat içindeki tekrarı bildirim göndermez; aynı anda 3’ten fazla talep gelirse tek özet gider. {title} türe göre “Yeni ön kayıt”, “Yeni ders talebi” ya da “Yeni mesaj” olur.',
+    vars: ['{title}', '{name}', '{summary}', '{message}'],
+    kind: 'event',
+  },
 };
-const ORDER = ['lesson_reminder', 'stale_lesson', 'new_order', 'note_reminder', 'note_added', 'note_reply', 'note_mention'];
+const ORDER = ['lesson_reminder', 'stale_lesson', 'new_order', 'site_inquiry', 'note_reminder', 'note_added', 'note_reply', 'note_mention'];
 
 function slotOr(s, d) {
   const o = s || {};
@@ -94,6 +100,12 @@ function normalizeCfg(key, config) {
       allUsers: typeof c.allUsers === 'boolean' ? c.allUsers : true,
       titleTemplate: c.titleTemplate ?? '{author} yeni not ekledi',
       bodyTemplate: c.bodyTemplate ?? '{note}',
+    };
+  }
+  if (key === 'site_inquiry') {
+    return {
+      titleTemplate: c.titleTemplate ?? '{title}',
+      bodyTemplate: c.bodyTemplate ?? '{name}: {summary}',
     };
   }
   return {

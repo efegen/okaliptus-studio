@@ -54,6 +54,9 @@ self.addEventListener('notificationclick', (event) => {
       for (const client of windows) {
         if ('focus' in client) {
           await client.focus();
+          // Açık pencere yeniden yüklenmez; adres mesajla iletilir, uygulama
+          // ilgili ekranı açar (ör. /?talep=12 → o talebin detayı).
+          if (url !== '/') client.postMessage({ type: 'push:open', url });
           return;
         }
       }

@@ -3,6 +3,7 @@ import { Avatar, Icon } from '../../layout';
 import { fmtTL } from '../../data';
 import { NoteDeck } from './NoteDeck';
 import { earnedPaidRate, percentSuffix } from '../../earnedPaid';
+import { InquiryInboxButton } from '../inquiries/InquiryInboxButton';
 
 function EyeIcon({ open }) {
   return open
@@ -76,6 +77,10 @@ export function MobileHomeView({
   ordersPending = 0, ordersUrgent = 0, notesHasNew = false,
   notesLoading = false, deckNotes = [], lastNote = null, onDeckSeen,
   canSeeFinance = true, canSeeOrders = true,
+  // Web sitesi talepleri: görebilen rolde sağ üstte profil harfinin yerine
+  // gelen kutusu düğmesi (rozet = yeni talep sayısı). Göremeyen rolde (asistan)
+  // profil menüsü yerinde kalır.
+  canSeeInquiries = false, inquiriesNew = 0, onOpenInquiries,
 }) {
   const managerLayout = canSeeFinance && canSeeOrders;
   const hasDeck = deckNotes.length > 0;
@@ -209,7 +214,9 @@ export function MobileHomeView({
             )}
           </div>
         </div>
-        <ProfileMenu user={user} onLogout={onLogout} />
+        {canSeeInquiries
+          ? <InquiryInboxButton count={inquiriesNew} onClick={onOpenInquiries} />
+          : <ProfileMenu user={user} onLogout={onLogout} />}
       </div>
 
       {managerLayout ? (

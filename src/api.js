@@ -1599,3 +1599,41 @@ export async function getNoteImage(noteId, version) {
   if (!(blob instanceof Blob)) throw new Error('Not fotoğrafı alınamadı.');
   return blob;
 }
+
+// ─── Talepler (web sitesi formları) ─────────────────────────────────────────
+// Sitenin üç formu (Bize ulaşın, ders talebi, etkinlik ön kaydı) backend'de
+// site_inquiries'e düşer (bkz. backend/src/services/site-inquiries.service.ts).
+// Yetki: inquiries.manage (owner/admin/instructor).
+
+// box: new | contacted | done | suspect | spam | all; kind: contact | lesson | camp
+// → { items, counts: { new, contacted, suspect }, nextBefore }
+export async function getSiteInquiries({ box = 'new', kind = '', limit = 50, before = '' } = {}) {
+  const params = new URLSearchParams({ box, limit: String(limit) });
+  if (kind) params.set('kind', kind);
+  if (before) params.set('before', String(before));
+  const payload = await apiGet(`/site-inquiries?${params}`);
+  if (!Array.isArray(payload?.data?.items)) throw new Error('Talepler alınamadı.');
+  return payload.data;
+}
+
+// Rozetler için: { new, contacted, suspect }
+export async function getSiteInquiryCounts() {
+  const payload = await apiGet('/site-inquiries/counts');
+  if (typeof payload?.data?.new !== 'number') throw new Error('Talep sayısı alınamadı.');
+  return payload.data;
+}
+
+// Talep + gönderimleri (submissions) + aynı numaradan diğer talepler (related).
+export async function getSiteInquiry(id) {
+  const payload = await apiGet(`/site-inquiries/${encodeURIComponent(id)}`);
+  return ensureMutationResult(payload, 'Talep alınamadı.');
+}
+
+// patch: { status?, note?, suspect?: false }
+export async function updateSiteInquiry(id, patch) {
+  const payload = await apiRequest(`/site-inquiries/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(patch),
+  });
+  return ensureMutationResult(payload, 'Talep güncellenemedi.');
+}

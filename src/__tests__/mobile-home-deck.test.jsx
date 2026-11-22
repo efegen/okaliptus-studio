@@ -12,6 +12,8 @@ vi.mock('../api', () => ({
   getNotes: vi.fn(),
   markNotesSeen: vi.fn(async () => {}),
   getNoteImage: vi.fn(),
+  // Ana sayfanın talepler rozeti (yetkili rolde istenir).
+  getSiteInquiryCounts: vi.fn(async () => ({ new: 0, contacted: 0, suspect: 0 })),
 }));
 
 vi.mock('../mobile/shared/useWeeklyKpi', () => ({

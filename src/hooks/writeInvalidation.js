@@ -45,6 +45,7 @@ export const SYNCED_QUERY_KEYS = [
   ['settings'],
   ['instructors'],
   ['lessonTypes'],
+  ['siteInquiries'],
 ];
 
 const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
@@ -130,6 +131,10 @@ export function queryKeysForWrite(method, path) {
       return PRODUCTS;
     case 'site-products':
       return [['siteProducts']];
+    case 'site-inquiries':
+      // Panel güncellemesi ya da sitenin yeni talep sinyali (backend
+      // site-inquiries.router.ts → publishWrite('POST', '/site-inquiries')).
+      return [['siteInquiries']];
     case 'events':
       return EVENT_MONEY;
     default:

@@ -8,6 +8,7 @@ import { getSettings, getNotes, markNotesSeen } from '../api';
 import { queryKeys } from '../hooks/queryKeys';
 import { useMarketplaceOrders } from '../hooks/useMarketplaceOrders';
 import { can } from '../permissions';
+import { useInquiryCounts } from './inquiries/MobileInquiries';
 
 const ORDERS_WINDOW_DAYS = 90;
 const NOTES_REFRESH_MS = 30 * 1000;
@@ -124,11 +125,16 @@ function formatDateLabel(date) {
   return `${wd}, ${rest}`;
 }
 
-export function MobileHome({ user, onLogout, onOpenFinance, onOpenOccupancy, onOpenOrders, onOpenNotes }) {
+export function MobileHome({ user, onLogout, onOpenFinance, onOpenOccupancy, onOpenOrders, onOpenNotes, onOpenInquiries }) {
   // Rol-bazlı görünürlük: asistan finansal kartları (hero + bekleyen tahsilat)
   // ve pazaryeri siparişlerini görmez. Doluluk kartı herkese açık kalır.
   const canSeeFinance = can(user?.role, 'finance.read');
   const canSeeOrders = can(user?.role, 'marketplace.manage');
+  const canSeeInquiries = can(user?.role, 'inquiries.manage');
+
+  // Web sitesi talepleri rozeti. Yeni talep canlı senkronla (site-inquiries
+  // sinyali) anında tazelenir; asistanda uç 403 döneceği için hiç çalışmaz.
+  const { data: inquiryCounts } = useInquiryCounts(canSeeInquiries);
 
   const { data: kpi, isLoading: kpiLoading } = useWeeklyKpi();
   const { data: studioSettings } = useQuery({
@@ -257,6 +263,9 @@ export function MobileHome({ user, onLogout, onOpenFinance, onOpenOccupancy, onO
         onDeckSeen={markDeckNoteSeen}
         canSeeFinance={canSeeFinance}
         canSeeOrders={canSeeOrders}
+        canSeeInquiries={canSeeInquiries}
+        inquiriesNew={inquiryCounts?.new ?? 0}
+        onOpenInquiries={onOpenInquiries}
       />
       <MobileAgenda />
     </>

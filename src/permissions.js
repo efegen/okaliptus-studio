@@ -15,6 +15,7 @@ const CAPABILITIES = {
   'students.delete': ['owner', 'admin', 'instructor'],
   'audit.read': ['owner', 'admin', 'instructor'],
   'events.day.read': ['owner', 'admin', 'instructor'], // etkinlik günü (kapı) ekranı — asistan ön kaydı görür, kapıyı görmez
+  'inquiries.manage': ['owner', 'admin', 'instructor'], // web sitesi formlarından gelen talepler
 };
 
 // Rol verilen yetkiye sahip mi? Rol tanımsız/bilinmeyense false (en kısıtlı).
@@ -35,6 +36,9 @@ export const PAGE_CAPABILITY = {
   'order-detail': 'marketplace.manage',
   mapping: 'marketplace.manage',
   site: 'marketplace.manage', // web sitesi mağazası ayarları
+  inquiries: 'inquiries.manage', // mobil Talepler (web sitesi formları)
+  'inquiry-detail': 'inquiries.manage',
+  'inquiry-suspects': 'inquiries.manage',
 };
 
 // Rol verilen sayfayı görebilir mi? (haritada yoksa serbest)

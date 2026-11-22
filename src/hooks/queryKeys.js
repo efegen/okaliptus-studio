@@ -57,4 +57,9 @@ export const queryKeys = {
   eventDay:           (id)    => ['event', id, 'day'],
   eventDaySearch:     (id, q) => ['event', id, 'day', 'search', q],
   studentEventBalances:(id)   => ['student', id, 'events'],
+  // Web sitesi formlarından gelen talepler. Hepsi 'siteInquiries' öneki altında:
+  // tek bir yazma (PATCH ya da sitenin yeni talep sinyali) hepsini tazeler.
+  siteInquiries:      (box, kind) => box !== undefined ? ['siteInquiries', 'list', box, kind || 'all'] : ['siteInquiries'],
+  siteInquiryCounts:  ()      => ['siteInquiries', 'counts'],
+  siteInquiry:        (id)    => ['siteInquiries', 'item', String(id)],
 };
