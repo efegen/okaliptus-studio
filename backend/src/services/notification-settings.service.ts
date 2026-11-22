@@ -12,7 +12,7 @@ import { sendToUser, type PushPayload } from "./push.service.js";
 import { ValidationError } from "./errors.js";
 import { renderNoteBodyPlain } from "./note-text.js";
 
-export const NOTIFICATION_KEYS = ["lesson_reminder", "stale_lesson", "new_order", "note_reminder", "note_added", "note_reply", "note_mention"] as const;
+export const NOTIFICATION_KEYS = ["lesson_reminder", "stale_lesson", "new_order", "note_reminder", "note_added", "note_reply", "note_mention", "site_inquiry"] as const;
 export type NotificationKey = (typeof NOTIFICATION_KEYS)[number];
 
 // ─── Varsayılanlar (seed ile aynı; config eksik/bozuksa fallback) ────────────
@@ -56,6 +56,13 @@ const DEFAULT_NOTE_REPLY = {
 const DEFAULT_NOTE_MENTION = {
   titleTemplate: "{author} sizi bir notta etiketledi",
   bodyTemplate: "{note}",
+};
+// site_inquiry: web sitesi formundan yeni talep (migration 0296). {title} türe
+// göre "Yeni ön kayıt" / "Yeni ders talebi" / "Yeni mesaj"; {summary} tek satır
+// özet; {message} mesajın başı. Sessiz saatlerde ertelenir (yeni sipariş gibi).
+const DEFAULT_SITE_INQUIRY = {
+  titleTemplate: "{title}",
+  bodyTemplate: "{name}: {summary}",
 };
 const DEFAULT_QUIET = { quietHoursStart: "22:00", quietHoursEnd: "08:00" };
 
@@ -101,8 +108,9 @@ export async function listNotificationSettings(): Promise<NotificationSettingRow
         WHEN 'note_added' THEN 5
         WHEN 'note_reply' THEN 6
         WHEN 'note_mention' THEN 7
-        WHEN '_global' THEN 8
-        ELSE 9 END`,
+        WHEN 'site_inquiry' THEN 8
+        WHEN '_global' THEN 9
+        ELSE 10 END`,
   );
   return rows.map((r) => ({
     key: r.key,
@@ -152,6 +160,12 @@ export type LoadedNotificationConfig = {
   };
   noteReply: { enabled: boolean; titleTemplate: string; bodyTemplate: string };
   noteMention: { enabled: boolean; titleTemplate: string; bodyTemplate: string };
+  siteInquiry: {
+    enabled: boolean;
+    recipients: string[];
+    titleTemplate: string;
+    bodyTemplate: string;
+  };
   quietHours: { enabled: boolean; start: string; end: string };
 };
 
@@ -182,6 +196,8 @@ export async function loadNotificationConfig(): Promise<LoadedNotificationConfig
   const nrpCfg = asObj(nrp?.config);
   const nmn = byKey.get("note_mention");
   const nmnCfg = asObj(nmn?.config);
+  const si = byKey.get("site_inquiry");
+  const siCfg = asObj(si?.config);
   const gl = byKey.get("_global");
   const glCfg = asObj(gl?.config);
 
@@ -228,6 +244,12 @@ export async function loadNotificationConfig(): Promise<LoadedNotificationConfig
       enabled: nmn?.enabled ?? true,
       titleTemplate: strOr(nmnCfg.titleTemplate, DEFAULT_NOTE_MENTION.titleTemplate),
       bodyTemplate: strOr(nmnCfg.bodyTemplate, DEFAULT_NOTE_MENTION.bodyTemplate),
+    },
+    siteInquiry: {
+      enabled: si?.enabled ?? true,
+      recipients: si?.recipientUserIds ?? [],
+      titleTemplate: strOr(siCfg.titleTemplate, DEFAULT_SITE_INQUIRY.titleTemplate),
+      bodyTemplate: strOr(siCfg.bodyTemplate, DEFAULT_SITE_INQUIRY.bodyTemplate),
     },
     quietHours: {
       enabled: gl?.enabled ?? false,
@@ -333,7 +355,7 @@ function validateConfigForKey(key: string, raw: Record<string, unknown>): Record
       bodyTemplate: validateTemplateStr(raw.bodyTemplate, "Metin"),
     };
   }
-  if (key === "new_order" || key === "note_reminder" || key === "note_reply" || key === "note_mention") {
+  if (key === "new_order" || key === "note_reminder" || key === "note_reply" || key === "note_mention" || key === "site_inquiry") {
     return {
       titleTemplate: validateTemplateStr(raw.titleTemplate, "Başlık"),
       bodyTemplate: validateTemplateStr(raw.bodyTemplate, "Metin"),
@@ -435,6 +457,12 @@ const SAMPLE_VARS: Record<NotificationKey, Record<string, string | number>> = {
   note_added: { author: "Örnek Kullanıcı", note: "Salı günü matlar temizlenecek." },
   note_reply: { author: "Örnek Kullanıcı", note: "Tamam, ben hallederim." },
   note_mention: { author: "Örnek Kullanıcı", note: "@Sen matları kontrol eder misin?" },
+  site_inquiry: {
+    title: "Yeni ön kayıt",
+    name: "Örnek Kişi",
+    summary: "Pamukkale Yoga Kampı, 2 kişi, 2 ya da 3 kişilik oda",
+    message: "Merhaba, kamp için bilgi almak istiyorum.",
+  },
 };
 
 // Çağırana (owner) örnek değişkenlerle test push'u yollar; kaç cihaza gittiğini
@@ -455,6 +483,7 @@ export async function sendTestNotification(key: string, toUserId: string): Promi
     : key === "note_added" ? DEFAULT_NOTE_ADDED
     : key === "note_reply" ? DEFAULT_NOTE_REPLY
     : key === "note_mention" ? DEFAULT_NOTE_MENTION
+    : key === "site_inquiry" ? DEFAULT_SITE_INQUIRY
     : DEFAULT_NEW_ORDER;
   const vars = SAMPLE_VARS[key as NotificationKey];
   const payload: PushPayload = {

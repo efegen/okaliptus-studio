@@ -32,6 +32,7 @@ import { notificationSettingsRouter } from "./routes/notification-settings.route
 import { eventsRouter, listStudentEventBalancesHandler } from "./routes/events.router.js";
 import { notesRouter } from "./routes/notes.router.js";
 import { siteFeedHandler, siteFeedLimiter, siteProductsRouter } from "./routes/site.router.js";
+import { publicFormsRouter, siteInquiriesRouter } from "./routes/site-inquiries.router.js";
 import { requireAuth } from "./middleware/requireAuth.js";
 import { publishWrites } from "./middleware/publishWrites.js";
 import { liveStreamHandler } from "./routes/live.router.js";
@@ -47,6 +48,12 @@ export function createApp() {
   // door to header spoofing (trust proxy: true would let any client forge it).
   app.set("trust proxy", 1);
   app.disable("x-powered-by");
+
+  // Web sitesi formları (oturumsuz, çerezsiz). Panelin CORS/CSRF katmanından
+  // ÖNCE: kendi Origin listesi, kendi gövde sınırı ve istek sınırları var.
+  // Sitenin adresi ALLOWED_ORIGINS'e girmez (bkz. site-inquiries.router.ts).
+  app.use("/public", publicFormsRouter);
+
   app.use((req, res, next) => {
     const origin = req.headers.origin;
     if (origin && env.allowedOrigins.includes(origin)) {
@@ -137,6 +144,8 @@ export function createApp() {
   app.use("/mapping", requireCan("marketplace.manage"), mappingRouter);
   // Web sitesi mağazası ayarları (hangi ürün sitede, hangi köşede).
   app.use("/site-products", requireCan("marketplace.manage"), siteProductsRouter);
+  // Web sitesi formlarından gelen talepler ("Talepler" ekranı).
+  app.use("/site-inquiries", requireCan("inquiries.manage"), siteInquiriesRouter);
 
   // KPI — karışık: /weekly + /occupancy-flow rol-bazlı alan soyar,
   // /finance-flow router içinde requireCan ile sert bloklu (asistan finansal görmez).

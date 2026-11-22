@@ -16,6 +16,7 @@ import {
   isWithinQuietHours,
   type LoadedNotificationConfig,
 } from "./notification-settings.service.js";
+import { INQUIRY_TITLES, inquiryExcerpt, inquirySummary, type InquiryKind } from "./site-inquiries.service.js";
 
 let timer: ReturnType<typeof setInterval> | null = null;
 let running = false;
@@ -316,6 +317,7 @@ async function tick(): Promise<void> {
     await checkStaleLessonStatus(cfg);
     await checkNewChannelOrders(cfg);
     await checkNoteReminders(cfg);
+    await checkNewSiteInquiries(cfg);
   } catch (err) {
     console.error("[notif-scheduler] hata:", err instanceof Error ? err.message : err);
   } finally {
@@ -343,6 +345,141 @@ export function notifyNewChannelOrdersNow(): void {
       console.error("[notif-scheduler] anlık yeni sipariş bildirimi hatası:", err instanceof Error ? err.message : err);
     } finally {
       newOrderRun = null;
+    }
+  })();
+}
+
+// ─── Web sitesi talepleri (site_inquiry, migration 0296) ────────────────────
+// Claim deseni yeni siparişle aynı: notified_at IS NULL satırlar atomik olarak
+// damgalanır ve RETURNING ile gelir; tikle anlık gönderim yarışsa da talep bir
+// kez bildirilir. Şüpheli ve tekrar satırlar kayıtta damgalı gelir (bildirim yok).
+// Son 2 günle sınırlı: bildirim uzun süre kapalı kalıp açılırsa eski talepler
+// birden yağmaz. Aynı anda 3'ten fazla talep varsa tek özet bildirim gider.
+const INQUIRY_BATCH_MAX = 3;
+
+type ClaimedInquiry = {
+  id: string;
+  kind: InquiryKind;
+  full_name: string;
+  details: Record<string, unknown>;
+  message: string | null;
+};
+
+export async function checkNewSiteInquiries(preloaded?: LoadedNotificationConfig): Promise<void> {
+  try {
+    const cfg = preloaded ?? (await loadNotificationConfig());
+    const si = cfg.siteInquiry;
+    if (!si.enabled) return;
+
+    const { rows } = await pool.query<ClaimedInquiry>(
+      `UPDATE site_inquiries SET notified_at = now()
+        WHERE id IN (
+          SELECT id FROM site_inquiries
+           WHERE notified_at IS NULL
+             AND created_at > now() - interval '2 days'
+           ORDER BY id
+           LIMIT 50
+           FOR UPDATE SKIP LOCKED)
+        RETURNING id, kind, full_name, details, message`,
+    );
+    if (rows.length === 0) return;
+
+    const recipients = await resolveActiveRecipients(si.recipients);
+    if (recipients.length === 0) return;
+
+    const claimed = [...rows].sort((a, b) => Number(a.id) - Number(b.id));
+    let payloads: PushPayload[];
+    if (claimed.length > INQUIRY_BATCH_MAX) {
+      const names = claimed.slice(0, INQUIRY_BATCH_MAX).map((r) => r.full_name).join(", ");
+      payloads = [{
+        title: `${claimed.length} yeni talep`,
+        body: `${names} ve ${claimed.length - INQUIRY_BATCH_MAX} kişi daha`,
+        url: "/",
+      }];
+    } else {
+      payloads = claimed.map((r) => {
+        const vars = {
+          title: INQUIRY_TITLES[r.kind] ?? "Yeni talep",
+          name: r.full_name,
+          summary: inquirySummary(r.kind, r.details ?? {}, r.message),
+          message: inquiryExcerpt(r.message, 100),
+        };
+        return {
+          title: renderTemplate(si.titleTemplate, vars),
+          body: renderTemplate(si.bodyTemplate, vars),
+          url: "/",
+        };
+      });
+    }
+
+    for (const payload of payloads) {
+      for (const userId of recipients) {
+        await trySend(userId, payload, "site talebi");
+      }
+    }
+  } catch (err) {
+    console.error("[notif-scheduler] site talebi bildirimi hatası:", err instanceof Error ? err.message : err);
+  }
+}
+
+// Yeni talep kaydedilince çağrılır (site-inquiries.router.ts). Kurallar tikle
+// aynı (zamanlayıcı kapalıysa hiçbir şey yapmaz, sessiz saatlerde ertelenir).
+// Bir gönderim sürerken yeni talep gelirse bekletilmez: gönderim bitince bir
+// tur daha döner.
+let inquiryRun: Promise<void> | null = null;
+let inquiryAgain = false;
+export function notifySiteInquiriesNow(): void {
+  if (!timer) return;
+  if (inquiryRun) {
+    inquiryAgain = true;
+    return;
+  }
+  inquiryRun = (async () => {
+    try {
+      do {
+        inquiryAgain = false;
+        const cfg = await loadNotificationConfig();
+        if (cfg.quietHours.enabled && isWithinQuietHours(new Date(), cfg.quietHours.start, cfg.quietHours.end, env.timeZone)) {
+          return;
+        }
+        await checkNewSiteInquiries(cfg);
+      } while (inquiryAgain);
+    } catch (err) {
+      console.error("[notif-scheduler] anlık site talebi bildirimi hatası:", err instanceof Error ? err.message : err);
+    } finally {
+      inquiryRun = null;
+    }
+  })();
+}
+
+// Günlük form tavanı dolunca (bkz. site-inquiries.service.ts) talep
+// alıcılarına günde EN FAZLA BİR uyarı. Sessiz saatlerde gönderilmez ve gün
+// işaretlenmez: pencere bitince ilk reddedilen gönderim uyarıyı tetikler.
+let busyAlertDay: string | null = null;
+export function alertSiteFormsBusy(): void {
+  const day = new Intl.DateTimeFormat("en-CA", { timeZone: env.timeZone }).format(new Date());
+  if (busyAlertDay === day) return;
+  busyAlertDay = day;
+  void (async () => {
+    try {
+      if (!env.vapidPublicKey || !env.vapidPrivateKey) return;
+      const cfg = await loadNotificationConfig();
+      if (!cfg.siteInquiry.enabled) return;
+      if (cfg.quietHours.enabled && isWithinQuietHours(new Date(), cfg.quietHours.start, cfg.quietHours.end, env.timeZone)) {
+        busyAlertDay = null;
+        return;
+      }
+      const recipients = await resolveActiveRecipients(cfg.siteInquiry.recipients);
+      const payload: PushPayload = {
+        title: "Site formları durdu",
+        body: "Bugünkü form sınırı doldu; yeni gönderimler yarına kadar alınmıyor. Olağandışı bir yoğunluk ya da saldırı olabilir.",
+        url: "/",
+      };
+      for (const userId of recipients) {
+        await trySend(userId, payload, "form tavanı uyarısı");
+      }
+    } catch (err) {
+      console.error("[notif-scheduler] form tavanı uyarısı hatası:", err instanceof Error ? err.message : err);
     }
   })();
 }

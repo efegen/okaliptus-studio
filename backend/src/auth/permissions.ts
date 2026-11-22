@@ -26,6 +26,9 @@ const CAPABILITIES = {
   'students.delete': ['owner', 'admin', 'instructor'], // öğrenci kalıcı silme
   'audit.read': ['owner', 'admin', 'instructor'], // etkinlik/denetim kayıtları
   'events.day.read': ['owner', 'admin', 'instructor'], // etkinlik günü (kapı) ekranı — ön kayıt hariç
+  // Web sitesi formlarından gelen talepler (ad, telefon, e-posta). Asistana
+  // açmak ürün kararı; açılırsa buraya 'assistant' eklenir.
+  'inquiries.manage': ['owner', 'admin', 'instructor'],
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Capability = keyof typeof CAPABILITIES;

@@ -94,6 +94,10 @@ export function signalCapability(method: string, path: string): Capability | nul
       // Etkinlik günü (kapı) ekranı asistana kapalı.
       if (segments.includes("day") || segments[1] === "day-entries") return "events.day.read";
       return null;
+    case "site-inquiries":
+      // Panel güncellemeleri + sitenin oturumsuz formu (site-inquiries.router.ts
+      // yeni talepte publishWrite("POST", "/site-inquiries") çağırır).
+      return "inquiries.manage";
     default:
       return undefined;
   }
