@@ -31,6 +31,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { pool } from "../db/connection.js";
 import { env } from "../config/env.js";
 import { geoEdition, regionOfIp } from "./site-geo.service.js";
+import { purgeExpiredInquiries } from "./site-inquiries.service.js";
 import { ValidationError } from "./errors.js";
 
 // ─── Sabitler ────────────────────────────────────────────────────────────────
@@ -698,9 +699,13 @@ let flushTimer: NodeJS.Timeout | null = null;
 let maintenanceTimer: NodeJS.Timeout | null = null;
 
 export function startSiteStats(): void {
-  if (flushTimer || !siteStatsEnabled()) return;
-  flushTimer = setInterval(() => void flushSiteStats(), FLUSH_MS);
-  flushTimer.unref();
+  if (maintenanceTimer) return;
+  // Bakım (özet, eski ziyaretler, süresi dolan talepler) ölçüm kapalıyken de
+  // çalışır: taleplerin saklama süresi ölçüme bağlı değildir.
+  if (siteStatsEnabled()) {
+    flushTimer = setInterval(() => void flushSiteStats(), FLUSH_MS);
+    flushTimer.unref();
+  }
   const maintain = () => void runSiteStatsMaintenance().catch((err) => console.warn(`[site-stats] bakım başarısız: ${(err as Error).message}`));
   maintenanceTimer = setInterval(maintain, MAINTENANCE_MS);
   maintenanceTimer.unref();
@@ -765,6 +770,8 @@ export async function runSiteStatsMaintenance(): Promise<void> {
     [today],
   );
   await pool.query(`DELETE FROM site_visits WHERE day < $1::date - $2::int`, [today, RETENTION_DAYS]);
+  // Form talepleri: gizlilik sayfasında söz verilen süre (bkz. site-inquiries.service.ts).
+  await purgeExpiredInquiries();
 }
 
 // ─── Talebin geldiği ziyaret ─────────────────────────────────────────────────

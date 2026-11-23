@@ -19,7 +19,8 @@
  *      başkasının sayfa kimliğiyle gelen sinyal yok sayılır.
  *   7. Form: gönderilen talep, geldiği ziyaretin özetini taşır.
  *   8. Panel: oturumsuz 401, owner olmayan 403; özet ve canlı liste.
- *   9. Bakım: günlük özet yazılır, 90 günden eski ham satırlar silinir.
+ *   9. Bakım: günlük özet yazılır, 90 günden eski ham satırlar silinir;
+ *      1 yıldan eski talepler silinir.
  *
  * ÇALIŞTIRMA:
  *   cd backend && npx tsx scripts/smoke/56-site-stats.ts
@@ -473,6 +474,24 @@ async function run(): Promise<void> {
         [todayKey()],
       );
       assertEqual(again.rows[0].n, 1, "bakım tekrar çalışınca satır çoğalmaz");
+    }
+
+    step("Bakım: 1 yıldan eski talepler silinir, yenileri kalır");
+    {
+      const ins = (days: number) =>
+        pool.query<{ id: string }>(
+          `INSERT INTO site_inquiries (client_id, kind, full_name, phone, phone_key, created_at, notified_at)
+           VALUES ($1, 'contact', $2, '0532 556 00 09', '5325560009', now() - make_interval(days => $3), now())
+           RETURNING id`,
+          [randomUUID(), `${P} Eski ${days}`, days],
+        );
+      const expired = await ins(400);
+      const kept = await ins(300);
+      await runSiteStatsMaintenance();
+      const left = await pool.query(`SELECT id FROM site_inquiries WHERE id = ANY($1::bigint[])`, [[expired.rows[0].id, kept.rows[0].id]]);
+      assertEqual(left.rows.map((r) => String(r.id)).join(","), String(kept.rows[0].id), "400 günlük talep silindi, 300 günlük duruyor");
+      const fresh = await pool.query(`SELECT 1 FROM site_inquiries WHERE id = $1`, [inquiryId]);
+      assertEqual(fresh.rows.length, 1, "bugünkü talep duruyor");
     }
   } finally {
     for (const k of ENV_KEYS) {

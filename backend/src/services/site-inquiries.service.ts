@@ -686,3 +686,20 @@ export async function updateSiteInquiry(
   if (!rowCount) throw new SiteInquiryNotFoundError();
   return getSiteInquiry(id);
 }
+
+// ─── Saklama süresi ──────────────────────────────────────────────────────────
+// Sitenin gizlilik sayfası "talebinizden sonra en fazla 1 yıl tutulur" der
+// (okaliptusyoga.com/gizlilik; kullanıcı kararı, 2026-11-24). Bu süre
+// değişirse o sayfa da AYNI anda değişmeli. Kayda dönüşen kişi zaten öğrenci
+// ya da katılımcı olarak ayrı kayıtlıdır; burada silinen yalnız formun kendisi.
+export const INQUIRY_RETENTION_DAYS = 365;
+
+/** Süresi dolan talepleri kalıcı siler; silinen satır sayısını döner. */
+export async function purgeExpiredInquiries(): Promise<number> {
+  const { rowCount } = await pool.query(
+    `DELETE FROM site_inquiries WHERE created_at < now() - make_interval(days => $1)`,
+    [INQUIRY_RETENTION_DAYS],
+  );
+  if (rowCount) console.info(`[site-forms] saklama süresi dolan ${rowCount} talep silindi.`);
+  return rowCount ?? 0;
+}
