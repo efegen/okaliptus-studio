@@ -37,6 +37,8 @@ import { MobileEventDayBreakfast } from './events/MobileEventDayBreakfast';
 import { MobileInquiries } from './inquiries/MobileInquiries';
 import { MobileInquiryDetail } from './inquiries/MobileInquiryDetail';
 import { MobileInquirySuspects } from './inquiries/MobileInquirySuspects';
+import { MobileSiteStats } from './siteStats/MobileSiteStats';
+import { MobileSiteLive } from './siteStats/MobileSiteLive';
 import { SettingsPage } from '../settings';
 import { CatalogPage } from '../catalog';
 import { queryKeys } from '../hooks/queryKeys';
@@ -104,9 +106,13 @@ export function MobileApp({
   // Web sitesi talepleri: liste (alt sekme çubuğu görünür), detay ve şüpheliler
   // (tam ekran). Hepsinin kendi başlığı var.
   const onInquiryPage = page === 'inquiries' || page === 'inquiry-detail' || page === 'inquiry-suspects';
+  // Web sitesi ziyaret istatistikleri: özet (alt sekme çubuğu görünür) ve canlı
+  // liste (tam ekran). İkisinin de kendi başlığı var.
+  const onSiteStatsPage = page === 'site-stats' || page === 'site-live';
   const showBack = (onStudentsPage && !!studentDetailId) || onMenuChild;
   const hideHeader =
     onInquiryPage ||
+    onSiteStatsPage ||
     page === 'home' ||
     page === 'calendar' ||
     page === 'students' ||
@@ -171,6 +177,9 @@ export function MobileApp({
   const [inquiryId, setInquiryId] = React.useState(null);
   const [inquiryTab, setInquiryTab] = React.useState('new');
   const [inquiryKind, setInquiryKind] = React.useState('all');
+  // Site ekranı: seçili dönem ve bölüm, canlı listeye girip çıkınca korunur.
+  const [siteStatsPeriod, setSiteStatsPeriod] = React.useState('7d');
+  const [siteStatsSection, setSiteStatsSection] = React.useState('ozet');
   const canSeeInquiries = can(currentUser?.role, 'inquiries.manage');
 
   function openInquiry(id) {
@@ -478,6 +487,19 @@ export function MobileApp({
     );
   } else if (page === 'inquiry-suspects') {
     body = <MobileInquirySuspects onBack={() => setPage('inquiries')} />;
+  } else if (page === 'site-stats') {
+    body = (
+      <MobileSiteStats
+        period={siteStatsPeriod}
+        section={siteStatsSection}
+        onChangePeriod={setSiteStatsPeriod}
+        onChangeSection={setSiteStatsSection}
+        onBack={() => setPage('menu')}
+        onOpenLive={() => setPage('site-live')}
+      />
+    );
+  } else if (page === 'site-live') {
+    body = <MobileSiteLive onBack={() => setPage('site-stats')} />;
   } else if (page === 'events') {
     body = (
       <MobileEvents
@@ -718,7 +740,7 @@ export function MobileApp({
       <main className="mobile-main" data-screen-label={page}>
         {body}
       </main>
-      {page !== 'order-detail' && page !== 'collect-payment' && page !== 'notes' && page !== 'inquiry-detail' && page !== 'inquiry-suspects' && !onEventSubPage && (
+      {page !== 'order-detail' && page !== 'collect-payment' && page !== 'notes' && page !== 'inquiry-detail' && page !== 'inquiry-suspects' && page !== 'site-live' && !onEventSubPage && (
         <BottomTabBar
           page={page}
           onNavigate={handleNavigate}

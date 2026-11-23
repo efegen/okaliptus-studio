@@ -62,4 +62,8 @@ export const queryKeys = {
   siteInquiries:      (box, kind) => box !== undefined ? ['siteInquiries', 'list', box, kind || 'all'] : ['siteInquiries'],
   siteInquiryCounts:  ()      => ['siteInquiries', 'counts'],
   siteInquiry:        (id)    => ['siteInquiries', 'item', String(id)],
+  // Web sitesi ziyaret istatistikleri (Site ekranı). Yazma yok: canlı senkron
+  // dışında, kendi yenileme aralıklarıyla tazelenir.
+  siteStatsOverview:  (period) => ['siteStats', 'overview', period],
+  siteStatsLive:      ()      => ['siteStats', 'live'],
 };

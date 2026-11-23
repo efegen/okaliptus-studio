@@ -16,6 +16,7 @@ const CAPABILITIES = {
   'audit.read': ['owner', 'admin', 'instructor'],
   'events.day.read': ['owner', 'admin', 'instructor'], // etkinlik günü (kapı) ekranı — asistan ön kaydı görür, kapıyı görmez
   'inquiries.manage': ['owner', 'admin', 'instructor'], // web sitesi formlarından gelen talepler
+  'site.stats.read': ['owner'], // web sitesi ziyaret istatistikleri (Site ekranı)
 };
 
 // Rol verilen yetkiye sahip mi? Rol tanımsız/bilinmeyense false (en kısıtlı).
@@ -39,6 +40,8 @@ export const PAGE_CAPABILITY = {
   inquiries: 'inquiries.manage', // mobil Talepler (web sitesi formları)
   'inquiry-detail': 'inquiries.manage',
   'inquiry-suspects': 'inquiries.manage',
+  'site-stats': 'site.stats.read', // mobil Site (ziyaret istatistikleri)
+  'site-live': 'site.stats.read',
 };
 
 // Rol verilen sayfayı görebilir mi? (haritada yoksa serbest)

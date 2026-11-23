@@ -14,6 +14,7 @@ import { getSiteInquiry, updateSiteInquiry } from '../../api';
 import { queryKeys } from '../../hooks/queryKeys';
 import { useCurrentUser } from '../../currentUser';
 import { InqIcon } from './InquiryIcons';
+import { InquiryOriginCard } from '../siteStats/InquiryOriginCard';
 import {
   detailRows,
   handledText,
@@ -239,6 +240,8 @@ export function MobileInquiryDetail({ inquiryId, onBack, onOpenInquiry, onOpenSt
             <p className="inq-subnote">Yukarıdaki bilgiler son gönderimden. Bildirim yalnız ilkinde gitti.</p>
           </section>
         )}
+
+        <InquiryOriginCard origin={inquiry.origin} />
 
         {inquiry.student && (
           <section className="inq-card">

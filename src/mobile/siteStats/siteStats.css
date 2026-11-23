@@ -1,0 +1,232 @@
+/* Site ekranı (web sitesi ziyaret istatistikleri) — mobil. Tasarım kaynağı:
+   "Studio Site istatistikleri mobil" canvas'ı. Başlık, dönem seçici ve çipler
+   Talepler'in inq-* sınıflarını kullanır; buradaki sınıfların hepsi ss-*. */
+
+.ss-page { --ss-mid: oklch(0.72 0.06 145); }
+.ss-body { padding: 14px 16px 28px; display: flex; flex-direction: column; gap: 12px; transition: opacity 160ms ease; }
+.ss-body.is-stale { opacity: 0.6; }
+.ss-num { font-variant-numeric: tabular-nums; }
+.ss-sub { margin: 0; font-size: 12px; line-height: 1.45; color: var(--ink-3); }
+.ss-h2 { margin: 0; font-size: 15px; font-weight: 600; }
+.ss-empty { margin: 0; padding: 8px 0; font-size: 13.5px; color: var(--ink-3); }
+.ss-foot { margin: 4px 4px 0; font-size: 12px; line-height: 1.45; color: var(--ink-3); }
+.ss-foot a { color: inherit; text-decoration: underline; }
+
+/* ── Kartlar ── */
+.ss-card {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 20px;
+  padding: 16px; display: flex; flex-direction: column; gap: 14px;
+}
+.ss-card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.ss-card-titles { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.ss-card-head > .ss-sub { flex: none; }
+
+.ss-logo {
+  flex: none; display: grid; place-items: center;
+  background: #fff; border: 1px solid var(--line); color: var(--ink-2);
+}
+.ss-logo.is-plain { border-color: transparent; }
+
+.ss-bar { display: block; height: 6px; border-radius: 999px; background: var(--bg-2); overflow: hidden; }
+.ss-bar i { display: block; height: 100%; border-radius: 999px; background: var(--accent); }
+.ss-bar i.is-muted { background: var(--line-2); }
+
+/* ── Şu an sitede ── */
+.ss-live {
+  position: relative; overflow: hidden; width: 100%; box-sizing: border-box; text-align: left;
+  display: flex; flex-direction: column; gap: 14px;
+  padding: 18px 20px; border: 0; border-radius: 26px; color: var(--surface);
+  background: linear-gradient(155deg, var(--accent) 0%, oklch(0.41 0.07 148) 100%);
+  box-shadow: 0 12px 28px -10px oklch(0.5 0.08 145 / 0.5);
+  font: inherit; cursor: pointer;
+}
+.ss-live:active { transform: scale(0.99); }
+.ss-live-blob { position: absolute; right: -30px; top: -34px; width: 140px; height: 140px; border-radius: 999px; background: oklch(1 0 0 / 0.08); }
+.ss-live-top { position: relative; display: flex; justify-content: space-between; align-items: flex-start; }
+.ss-live-main { display: flex; flex-direction: column; gap: 8px; }
+.ss-live-label { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 500; }
+.ss-live-count { display: flex; align-items: baseline; gap: 8px; }
+.ss-live-count .ss-num { font-size: 44px; font-weight: 600; letter-spacing: -0.03em; line-height: 1; }
+.ss-live-count small { font-size: 16px; font-weight: 500; }
+.ss-live-pages { position: relative; display: flex; flex-direction: column; gap: 7px; padding-top: 12px; border-top: 1px solid oklch(1 0 0 / 0.22); }
+.ss-live-page { display: flex; justify-content: space-between; gap: 12px; font-size: 13.5px; }
+.ss-live-page .ss-num { font-weight: 600; }
+.ss-live-note { position: relative; font-size: 12px; }
+
+.ss-pulse { flex: none; width: 8px; height: 8px; border-radius: 999px; background: #fff; opacity: 0.6; }
+.ss-pulse.is-on { opacity: 1; animation: ss-pulse 2s infinite; }
+.ss-pulse.is-dark { background: var(--accent); }
+.ss-pulse.is-dark.is-on { animation-name: ss-pulse-dark; }
+@keyframes ss-pulse {
+  0% { box-shadow: 0 0 0 0 oklch(1 0 0 / 0.55); }
+  70% { box-shadow: 0 0 0 9px oklch(1 0 0 / 0); }
+  100% { box-shadow: 0 0 0 0 oklch(1 0 0 / 0); }
+}
+@keyframes ss-pulse-dark {
+  0% { box-shadow: 0 0 0 0 oklch(0.5 0.08 145 / 0.5); }
+  70% { box-shadow: 0 0 0 8px oklch(0.5 0.08 145 / 0); }
+  100% { box-shadow: 0 0 0 0 oklch(0.5 0.08 145 / 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ss-pulse.is-on { animation: none; }
+  .ss-body, .ss-live { transition: none; }
+}
+
+/* ── Ana sayılar ── */
+.ss-kpis { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.ss-kpi { background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 14px 15px; display: flex; flex-direction: column; gap: 6px; }
+.ss-kpi-label { margin: 0; font-size: 12px; font-weight: 500; color: var(--ink-3); }
+.ss-kpi-value { font-size: 24px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.1; }
+.ss-kpi-note { margin: 0; font-size: 12px; line-height: 1.4; color: var(--ink-3); }
+.ss-kpi-note.is-up { color: var(--accent-ink); font-weight: 600; }
+.ss-kpi-note.is-down { color: var(--warn-ink); font-weight: 600; }
+
+/* ── Günlük grafik ── */
+.ss-chart { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; height: 150px; }
+.ss-chart.is-dense { gap: 3px; height: 130px; }
+.ss-chart-col { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 5px; min-width: 0; height: 100%; }
+.ss-chart-value { font-size: 11.5px; color: var(--ink-2); }
+.ss-chart-area { flex: 1; min-height: 0; width: 100%; display: flex; align-items: flex-end; }
+.ss-chart-bar { width: 100%; min-height: 2px; border-radius: 8px 8px 3px 3px; background: var(--accent-2); }
+.ss-chart.is-dense .ss-chart-bar { border-radius: 4px 4px 2px 2px; }
+.ss-chart-label { height: 16px; font-size: 12px; color: var(--ink-3); white-space: nowrap; }
+.ss-chart.is-dense .ss-chart-label { font-size: 10.5px; }
+.ss-chart-col.is-today .ss-chart-bar { background: var(--accent); }
+.ss-chart-col.is-today .ss-chart-value,
+.ss-chart-col.is-today .ss-chart-label { color: var(--ink); font-weight: 600; }
+
+/* ── Satırlar ── */
+.ss-rows { display: flex; flex-direction: column; gap: 13px; }
+.ss-row { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.ss-row-top { display: flex; justify-content: space-between; gap: 10px; font-size: 14px; }
+.ss-row-top span { min-width: 0; font-weight: 500; overflow-wrap: anywhere; }
+.ss-row-top strong { flex: none; font-weight: 600; }
+
+.ss-grid-rows { display: flex; flex-direction: column; gap: 11px; }
+.ss-grid-row { display: grid; grid-template-columns: 96px minmax(0, 1fr) 38px; align-items: center; gap: 10px; font-size: 14px; }
+.ss-grid-rows.is-wide .ss-grid-row { grid-template-columns: 136px minmax(0, 1fr) 38px; }
+.ss-grid-row span:first-child { font-weight: 500; overflow-wrap: anywhere; }
+.ss-grid-row strong { font-weight: 600; text-align: right; }
+.ss-grid-row.is-muted { color: var(--ink-2); }
+
+/* ── Cihaz ── */
+.ss-split { display: flex; gap: 3px; height: 12px; }
+.ss-split span { border-radius: 999px; min-width: 6px; }
+.ss-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; }
+.ss-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.ss-legend i { width: 9px; height: 9px; border-radius: 3px; }
+.d-phone { background: var(--accent); }
+.d-desktop { background: var(--ss-mid); }
+.d-tablet { background: var(--line-2); }
+
+/* ── Form yolu ── */
+.ss-funnel { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 9px; }
+.ss-funnel li { display: grid; grid-template-columns: minmax(0, 1fr) 44px; align-items: center; gap: 10px; }
+.ss-funnel-track { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.ss-funnel-fill {
+  flex: none; height: 34px; box-sizing: border-box; border-radius: 10px;
+  display: flex; align-items: center; padding: 0 12px; overflow: hidden;
+  color: #fff; font-size: 13px; font-weight: 500; white-space: nowrap;
+}
+.ss-funnel-fill.tone-0 { background: var(--accent); }
+.ss-funnel-fill.tone-1 { background: oklch(0.58 0.075 145); }
+.ss-funnel-fill.tone-2 { background: var(--ss-mid); }
+.ss-funnel-fill.tone-3 { background: oklch(0.8 0.05 145); }
+.ss-funnel li.is-final .ss-funnel-fill { background: var(--ink); }
+.ss-funnel-out { font-size: 13px; font-weight: 500; white-space: nowrap; }
+.ss-funnel li.is-final .ss-funnel-out { font-weight: 600; }
+.ss-funnel-value { font-size: 14px; font-weight: 600; text-align: right; }
+
+/* ── Satır içi kartlar ── */
+.ss-inline { flex-direction: row; align-items: center; gap: 12px; }
+.ss-inline.is-accent { background: var(--accent-2); border-color: transparent; color: var(--accent-ink); }
+.ss-inline-text { min-width: 0; display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
+.ss-inline-text strong { font-size: 14px; font-weight: 600; }
+.ss-tile { flex: none; width: 40px; height: 40px; border-radius: 12px; background: var(--accent-2); color: var(--accent-ink); display: grid; place-items: center; }
+
+/* ── Kaynaklar ── */
+.ss-srcs { display: flex; flex-direction: column; gap: 16px; }
+.ss-src { display: flex; gap: 12px; align-items: flex-start; }
+
+/* ── Reklamlar ── */
+.ss-hero {
+  display: flex; flex-direction: column; gap: 14px; padding: 18px 20px; border-radius: 26px; color: var(--surface);
+  background: linear-gradient(155deg, var(--accent) 0%, oklch(0.41 0.07 148) 100%);
+  box-shadow: 0 12px 28px -10px oklch(0.5 0.08 145 / 0.5);
+}
+.ss-hero-head { display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 600; }
+.ss-hero-nums { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.ss-hero-nums div { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; }
+.ss-hero-nums strong { font-size: 34px; font-weight: 600; letter-spacing: -0.03em; line-height: 1; }
+.ss-hero-note { font-size: 12.5px; padding-top: 12px; border-top: 1px solid oklch(1 0 0 / 0.22); }
+
+.ss-ad-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.ss-ad-name { margin: 0; font-size: 17px; font-weight: 600; overflow-wrap: anywhere; }
+.ss-ad-count { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 1px; }
+.ss-ad-count strong { font-size: 22px; font-weight: 600; line-height: 1.1; }
+.ss-cells { display: grid; grid-template-columns: repeat(var(--ss-cols, 3), minmax(0, 1fr)); gap: 8px; }
+.ss-cells > div { background: var(--surface-2); border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 3px; }
+.ss-cells b { font-size: 18px; font-weight: 600; line-height: 1.1; }
+.ss-cells span { font-size: 11.5px; line-height: 1.3; color: var(--ink-3); }
+.ss-cells > div.is-final { background: var(--accent-2); }
+.ss-cells > div.is-final b, .ss-cells > div.is-final span { color: var(--accent-ink); }
+.ss-ad-notes { display: flex; flex-direction: column; gap: 5px; font-size: 13px; color: var(--ink-2); }
+.ss-ad-notes b { color: var(--ink); font-weight: 600; }
+
+.ss-dashed { display: flex; align-items: flex-start; gap: 12px; padding: 13px 14px; border: 1px dashed var(--line-2); border-radius: 16px; color: var(--ink-2); }
+.ss-dashed-icon { flex: none; width: 34px; height: 34px; border-radius: 10px; background: var(--surface-2); color: var(--ink-3); display: grid; place-items: center; }
+.ss-dashed-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ss-dashed-text strong { font-size: 14px; font-weight: 600; }
+.ss-dashed-text span { font-size: 12px; line-height: 1.45; color: var(--ink-3); }
+
+.ss-code {
+  display: block; padding: 10px 12px; border-radius: 12px; background: var(--surface-2);
+  font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; line-height: 1.5;
+  color: var(--ink-2); overflow-wrap: anywhere; user-select: all;
+}
+.ss-btn {
+  min-height: 44px; border-radius: 14px; border: 1px solid var(--line-2); background: var(--surface);
+  color: var(--ink); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+}
+
+/* ── Yapay zekâ ── */
+.ss-ai { display: flex; flex-direction: column; }
+.ss-ai-row { display: flex; align-items: center; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--line); }
+.ss-ai-row:first-child { padding-top: 0; }
+.ss-ai-row:last-child { border-bottom: 0; padding-bottom: 0; }
+.ss-ai-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ss-ai-text strong { font-size: 14.5px; font-weight: 600; }
+.ss-ai-count { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 1px; }
+.ss-ai-count b { font-size: 18px; font-weight: 600; line-height: 1.1; }
+.ss-ai-count b.is-zero { color: var(--ink-3); }
+
+/* ── Canlı liste ── */
+.ss-live-pill {
+  flex: none; margin-right: 8px; height: 34px; padding: 0 12px; border-radius: 999px;
+  display: inline-flex; align-items: center; gap: 8px;
+  background: var(--accent-2); color: var(--accent-ink); font-size: 13.5px; font-weight: 600;
+}
+.ss-visitors { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.ss-visitor { display: flex; gap: 12px; align-items: flex-start; padding: 13px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 18px; }
+.ss-visitor-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.ss-visitor-top { display: flex; justify-content: space-between; gap: 8px; }
+.ss-visitor-top strong { min-width: 0; font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ss-visitor-time { flex: none; font-size: 12.5px; font-weight: 600; color: var(--accent-ink); }
+.ss-visitor-where { font-size: 13px; color: var(--ink-2); }
+.ss-visitor-line { font-size: 12px; line-height: 1.4; color: var(--ink-3); overflow-wrap: anywhere; }
+.ss-visitor-flag { align-self: flex-start; margin-top: 3px; font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 999px; background: var(--accent-2); color: var(--accent-ink); }
+
+/* ── Talep detayındaki kaynak kartı ── */
+.ss-origin { display: flex; flex-direction: column; gap: 10px; }
+.ss-origin-source { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 14px; background: var(--surface-2); }
+.ss-origin-source.is-ad { background: var(--accent-2); color: var(--accent-ink); }
+.ss-origin-source > div { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ss-origin-source strong { font-size: 14.5px; font-weight: 600; }
+.ss-origin-source span { font-size: 12.5px; overflow-wrap: anywhere; }
+.ss-origin-pages { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line); }
+.ss-origin-pages ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; font-size: 13.5px; }
+.ss-origin-pages li { display: flex; justify-content: space-between; gap: 12px; }
+.ss-origin-pages li span:last-child { flex: none; color: var(--ink-3); }
+
+/* Dört bölüm çipi 360 px genişlikte de tek satıra sığsın. */
+.ss-page .inq-chip { padding: 0 11px; font-size: 12.5px; }

@@ -9,6 +9,13 @@ import { MobilePushRow } from './MobilePushRow';
 // etiket + chevron. Alt navigasyon çubuğu bu ekranın parçası değil; global
 // shell (BottomTabBar) sağlar.
 
+// Site (ziyaret istatistikleri) satırının ikonu: sütun grafik.
+const SiteStatsIcon = (p) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" {...p}>
+    <path d="M4 20V10" /><path d="M10 20V4" /><path d="M16 20v-7" /><path d="M22 20H2" />
+  </svg>
+);
+
 const SECTIONS = [
   {
     label: 'Stüdyo',
@@ -22,6 +29,7 @@ const SECTIONS = [
     items: [
       { id: 'finance', label: 'Finans', icon: Icon.Wallet, tone: 'sage' },
       { id: 'movements', label: 'Hareketler', icon: Icon.Repeat, tone: 'blue' },
+      { id: 'site-stats', label: 'Site', icon: SiteStatsIcon, tone: 'amber' },
     ],
   },
   {

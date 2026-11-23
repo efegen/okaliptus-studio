@@ -1637,3 +1637,22 @@ export async function updateSiteInquiry(id, patch) {
   });
   return ensureMutationResult(payload, 'Talep güncellenemedi.');
 }
+
+// ─── Site (web sitesi ziyaret istatistikleri) ───────────────────────────────
+// Sitenin her sayfasından gelen çerezsiz sinyallerin özeti (bkz.
+// backend/src/services/site-stats.service.ts). Yetki: site.stats.read (owner).
+
+// period: today | 7d | 30d → { totals, series, pages, regions, devices, speed,
+// sources, links, ads, forms, events, crawlers, geo }
+export async function getSiteStatsOverview(period = '7d') {
+  const payload = await apiGet(`/site-stats/overview?period=${encodeURIComponent(period)}`);
+  if (!payload?.data?.totals) throw new Error('Site istatistikleri alınamadı.');
+  return payload.data;
+}
+
+// Şu an sitede olanlar → { count, visitors, pages }
+export async function getSiteStatsLive() {
+  const payload = await apiGet('/site-stats/live');
+  if (typeof payload?.data?.count !== 'number') throw new Error('Canlı liste alınamadı.');
+  return payload.data;
+}
