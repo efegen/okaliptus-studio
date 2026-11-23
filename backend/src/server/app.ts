@@ -33,6 +33,7 @@ import { eventsRouter, listStudentEventBalancesHandler } from "./routes/events.r
 import { notesRouter } from "./routes/notes.router.js";
 import { siteFeedHandler, siteFeedLimiter, siteProductsRouter } from "./routes/site.router.js";
 import { publicFormsRouter, siteInquiriesRouter } from "./routes/site-inquiries.router.js";
+import { sitePulseRouter, siteStatsRouter } from "./routes/site-stats.router.js";
 import { requireAuth } from "./middleware/requireAuth.js";
 import { cloudflareClientIp } from "./middleware/clientIp.js";
 import { publishWrites } from "./middleware/publishWrites.js";
@@ -58,6 +59,9 @@ export function createApp() {
   // Web sitesi formları (oturumsuz, çerezsiz). Panelin CORS/CSRF katmanından
   // ÖNCE: kendi Origin listesi, kendi gövde sınırı ve istek sınırları var.
   // Sitenin adresi ALLOWED_ORIGINS'e girmez (bkz. site-inquiries.router.ts).
+  // Ziyaret sinyalleri (bkz. site-stats.router.ts) formların 404 yakalayıcısından
+  // ÖNCE bağlanır; her durumda gövdesiz 204 döner, işleme arkada yapılır.
+  app.use("/public/pulse", sitePulseRouter);
   app.use("/public", publicFormsRouter);
 
   app.use((req, res, next) => {
@@ -152,6 +156,8 @@ export function createApp() {
   app.use("/site-products", requireCan("marketplace.manage"), siteProductsRouter);
   // Web sitesi formlarından gelen talepler ("Talepler" ekranı).
   app.use("/site-inquiries", requireCan("inquiries.manage"), siteInquiriesRouter);
+  // Web sitesi ziyaret istatistikleri ("Site" ekranı) — yalnız owner.
+  app.use("/site-stats", requireCan("site.stats.read"), siteStatsRouter);
 
   // KPI — karışık: /weekly + /occupancy-flow rol-bazlı alan soyar,
   // /finance-flow router içinde requireCan ile sert bloklu (asistan finansal görmez).

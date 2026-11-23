@@ -29,6 +29,9 @@ const CAPABILITIES = {
   // Web sitesi formlarından gelen talepler (ad, telefon, e-posta). Asistana
   // açmak ürün kararı; açılırsa buraya 'assistant' eklenir.
   'inquiries.manage': ['owner', 'admin', 'instructor'],
+  // Web sitesi ziyaret istatistikleri ("Site" ekranı). Kullanıcı kararı: yalnız
+  // owner görür; başka role açmak = buraya eklemek.
+  'site.stats.read': ['owner'],
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Capability = keyof typeof CAPABILITIES;

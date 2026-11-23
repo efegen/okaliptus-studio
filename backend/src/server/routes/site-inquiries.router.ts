@@ -41,6 +41,7 @@ import {
 } from "../../services/site-inquiries.service.js";
 import { publishWrite } from "../../services/live-sync.service.js";
 import { alertSiteFormsBusy, notifySiteInquiriesNow } from "../../services/notification-scheduler.js";
+import { attachInquiryOrigin } from "../../services/site-stats.service.js";
 import { parseId, sendError } from "../middleware/response.js";
 
 const RATE_LIMITED = {
@@ -152,6 +153,12 @@ publicFormsRouter.post("/inquiries", perDay, perTenMinutes, burstMarker, parseBo
       console.info(`[site-forms] talep #${result.id} (${parsed.input.kind}${result.notify ? "" : ", bildirimsiz"})`);
       publishWrite("POST", "/site-inquiries");
       if (result.notify) notifySiteInquiriesNow();
+      // Talebin geldiği ziyaretin özeti (kaynak, reklam, il, gezilen sayfalar).
+      // Yanıttan sonra, arkada; bulunamazsa ya da hata olursa talep etkilenmez.
+      const agent = req.headers["user-agent"];
+      void attachInquiryOrigin(result.id, { ip: req.ip ?? "", ua: typeof agent === "string" ? agent : "" }).catch((err) =>
+        console.warn(`[site-forms] talep #${result.id} için ziyaret özeti yazılamadı: ${(err as Error).message}`),
+      );
     }
   } catch (err) {
     if (err instanceof SiteFormsBusyError) {

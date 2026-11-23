@@ -425,6 +425,7 @@ type InquiryRow = {
   last_email: string | null;
   last_at: string | null;
   duplicate_count: string | null;
+  origin: Record<string, unknown> | null;
 };
 
 export type SiteInquiry = {
@@ -451,6 +452,9 @@ export type SiteInquiry = {
   updatedAt: string;
   // Telefonu kayıtlı bir öğrenciyle eşleşiyorsa (son 10 hane).
   student: { id: string; fullName: string } | null;
+  // Formun geldiği ziyaretin özeti (bkz. site-stats.service.ts → InquiryOrigin);
+  // ziyaret bulunamadıysa null.
+  origin: Record<string, unknown> | null;
 };
 
 const SELECT_INQUIRY = `
@@ -459,7 +463,7 @@ const SELECT_INQUIRY = `
          i.handled_by, u.display_name AS handled_by_name, i.handled_at::text, i.note,
          i.updated_at::text, st.id AS student_id, st.full_name AS student_name,
          last.details AS last_details, last.message AS last_message, last.email AS last_email,
-         last.created_at::text AS last_at, dup.n AS duplicate_count
+         last.created_at::text AS last_at, dup.n AS duplicate_count, i.origin
     FROM site_inquiries i
     LEFT JOIN users u ON u.id = i.handled_by
     LEFT JOIN LATERAL (
@@ -508,6 +512,7 @@ function toInquiry(r: InquiryRow): SiteInquiry {
     note: r.note,
     updatedAt: r.updated_at,
     student: r.student_id ? { id: r.student_id, fullName: r.student_name ?? "" } : null,
+    origin: r.origin ?? null,
   };
 }
 

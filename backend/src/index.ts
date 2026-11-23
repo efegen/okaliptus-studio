@@ -8,6 +8,7 @@ import { startHepsiburadaOrderPoller, stopHepsiburadaOrderPoller } from "./servi
 import { startNotificationScheduler, stopNotificationScheduler } from "./services/notification-scheduler.js";
 import { startSiteRefreshScheduler, stopSiteRefreshScheduler } from "./services/site-refresh.service.js";
 import { closeAllStreams } from "./services/live-sync.service.js";
+import { startSiteStats, stopSiteStats } from "./services/site-stats.service.js";
 
 async function main(): Promise<void> {
   await verifyDatabaseConnection();
@@ -37,6 +38,10 @@ async function main(): Promise<void> {
   // değişince siteyi yeniden build ettirir (bkz. site-refresh.service.ts).
   startSiteRefreshScheduler();
 
+  // Web sitesi ziyaret istatistikleri: bellekteki süre/kaydırma değerlerini
+  // 20 saniyede bir yazar, günde birkaç kez özet çıkarır (bkz. site-stats.service.ts).
+  startSiteStats();
+
   const shutdown = async (signal: string) => {
     console.log(`${signal} received, shutting down.`);
 
@@ -44,6 +49,7 @@ async function main(): Promise<void> {
     stopHepsiburadaOrderPoller();
     stopNotificationScheduler();
     stopSiteRefreshScheduler();
+    await stopSiteStats();
     // Açık SSE akışları bitmeden server.close() tamamlanmaz; önce kapat ki
     // istemciler yeni sunucuya hemen yeniden bağlansın.
     closeAllStreams();
